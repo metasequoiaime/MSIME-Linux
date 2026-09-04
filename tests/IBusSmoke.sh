@@ -139,6 +139,7 @@ def refocus_when_active():
     active_engine = context.get_engine()
     if active_engine is not None and active_engine.get_name() == "metasequoiaime":
         context.focus_in()
+        return GLib.SOURCE_REMOVE
     return GLib.SOURCE_CONTINUE
 
 
