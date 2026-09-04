@@ -56,6 +56,23 @@ const char *scheme_name(SchemeType scheme)
     return nullptr;
 }
 
+const char *punctuation_name(PunctuationMode mode)
+{
+    switch (mode)
+    {
+    case PunctuationMode::Chinese:
+        return "chinese";
+    case PunctuationMode::English:
+        return "english";
+    }
+    return nullptr;
+}
+
+bool valid_character_width(CharacterWidth width)
+{
+    return width == CharacterWidth::Half || width == CharacterWidth::Full;
+}
+
 bool write_all(int descriptor, const char *data, std::size_t size)
 {
     std::size_t written = 0;
@@ -174,6 +191,50 @@ InputSettings SettingsStore::load(std::string *warning) const
         g_clear_error(&value_error);
     }
 
+    if (g_key_file_has_key(key_file, kGroup, "punctuation", nullptr))
+    {
+        gchar *value = g_key_file_get_string(key_file, kGroup, "punctuation", nullptr);
+        if (value != nullptr && std::string_view(value) == "english")
+        {
+            settings.punctuation_mode = PunctuationMode::English;
+        }
+        else if (value == nullptr || std::string_view(value) != "chinese")
+        {
+            invalid = true;
+        }
+        g_free(value);
+    }
+
+    if (g_key_file_has_key(key_file, kGroup, "full-width", nullptr))
+    {
+        GError *value_error = nullptr;
+        const gboolean value = g_key_file_get_boolean(key_file, kGroup, "full-width", &value_error);
+        if (value_error == nullptr)
+        {
+            settings.character_width = value ? CharacterWidth::Full : CharacterWidth::Half;
+        }
+        else
+        {
+            invalid = true;
+        }
+        g_clear_error(&value_error);
+    }
+
+    if (g_key_file_has_key(key_file, kGroup, "comma-period-paging", nullptr))
+    {
+        GError *value_error = nullptr;
+        const gboolean value = g_key_file_get_boolean(key_file, kGroup, "comma-period-paging", &value_error);
+        if (value_error == nullptr)
+        {
+            settings.comma_period_paging = value;
+        }
+        else
+        {
+            invalid = true;
+        }
+        g_clear_error(&value_error);
+    }
+
     g_key_file_unref(key_file);
     if (invalid)
     {
@@ -187,7 +248,9 @@ bool SettingsStore::save(const InputSettings &settings, std::string *error) cons
     set_message(error, "");
     const char *mode = mode_name(settings.mode);
     const char *scheme = scheme_name(settings.scheme);
-    if (mode == nullptr || scheme == nullptr || settings.page_size < kMinimumPageSize ||
+    const char *punctuation = punctuation_name(settings.punctuation_mode);
+    if (mode == nullptr || scheme == nullptr || punctuation == nullptr ||
+        !valid_character_width(settings.character_width) || settings.page_size < kMinimumPageSize ||
         settings.page_size > kMaximumPageSize)
     {
         set_message(error, "Input settings were outside the supported range.");
@@ -218,6 +281,9 @@ bool SettingsStore::save(const InputSettings &settings, std::string *error) cons
     g_key_file_set_string(key_file, kGroup, "mode", mode);
     g_key_file_set_string(key_file, kGroup, "scheme", scheme);
     g_key_file_set_integer(key_file, kGroup, "page-size", static_cast<gint>(settings.page_size));
+    g_key_file_set_string(key_file, kGroup, "punctuation", punctuation);
+    g_key_file_set_boolean(key_file, kGroup, "full-width", settings.character_width == CharacterWidth::Full);
+    g_key_file_set_boolean(key_file, kGroup, "comma-period-paging", settings.comma_period_paging);
 
     gsize data_size = 0;
     GError *data_error = nullptr;

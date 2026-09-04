@@ -40,6 +40,9 @@ printf '%s\n' \
     'mode=direct' \
     'scheme=wubi' \
     'page-size=3' \
+    'punctuation=english' \
+    'full-width=true' \
+    'comma-period-paging=true' \
     'future-option=preserve-me' \
     >"$XDG_CONFIG_HOME/metasequoiaime/config.ini"
 
@@ -81,6 +84,8 @@ if not bus.is_connected():
 context = bus.create_input_context("metasequoia-smoke")
 expected = {
     "InputMode",
+    "Punctuation",
+    "CharacterWidth",
     "Scheme",
     "Scheme.Quanpin",
     "Scheme.Shuangpin",
@@ -89,6 +94,7 @@ expected = {
 }
 payloads = []
 property_snapshots = []
+property_updates = []
 loop = GLib.MainLoop()
 
 
@@ -114,6 +120,19 @@ def registered_properties(_connection, _sender, _path, _interface, _signal, para
         loop.quit()
 
 
+def updated_property(_connection, _sender, _path, _interface, _signal, parameters):
+    serialized = parameters.get_child_value(0).get_variant()
+    prop = IBus.Serializable.deserialize_object(serialized)
+    property_updates.append((prop.get_key(), prop.get_label().get_text(), prop.get_state()))
+
+
+def latest_property(key):
+    for updated_key, label, state in reversed(property_updates):
+        if updated_key == key:
+            return label, state
+    return None
+
+
 connection = bus.get_connection()
 connection.signal_subscribe(
     None,
@@ -123,6 +142,15 @@ connection.signal_subscribe(
     None,
     Gio.DBusSignalFlags.NONE,
     registered_properties,
+)
+connection.signal_subscribe(
+    None,
+    "org.freedesktop.IBus.InputContext",
+    "UpdateProperty",
+    context.get_object_path(),
+    None,
+    Gio.DBusSignalFlags.NONE,
+    updated_property,
 )
 context.set_capabilities(
     IBus.Capabilite.FOCUS
@@ -165,25 +193,37 @@ if not (
     and initial_properties["Scheme"][0] == "五笔"
     and initial_properties["Scheme.Wubi"][1] == IBus.PropState.CHECKED
     and initial_properties["Scheme.Quanpin"][1] == IBus.PropState.UNCHECKED
+    and initial_properties["Punctuation"] == ("英标", IBus.PropState.UNCHECKED)
+    and initial_properties["CharacterWidth"] == ("全", IBus.PropState.CHECKED)
 ):
-    raise RuntimeError(f"Persisted mode/scheme were not reflected in initial IBus properties: {initial_properties}")
+    raise RuntimeError(f"Persisted input settings were not reflected in initial IBus properties: {initial_properties}")
 
 context.property_activate("Scheme.Japanese", IBus.PropState.CHECKED)
 context.property_activate("InputMode", IBus.PropState.CHECKED)
+context.property_activate("Punctuation", IBus.PropState.CHECKED)
+context.property_activate("CharacterWidth", IBus.PropState.UNCHECKED)
 settings_path = Path(os.environ["XDG_CONFIG_HOME"]) / "metasequoiaime" / "config.ini"
 
 
 def settings_saved():
     contents = settings_path.read_text(encoding="utf-8")
-    if all(
+    saved = all(
         value in contents
         for value in (
             "mode=ime",
             "scheme=japanese",
             "page-size=3",
+            "punctuation=chinese",
+            "full-width=false",
+            "comma-period-paging=true",
             "future-option=preserve-me",
         )
-    ):
+    )
+    synchronized = (
+        latest_property("Punctuation") == ("中标", IBus.PropState.CHECKED)
+        and latest_property("CharacterWidth") == ("半", IBus.PropState.UNCHECKED)
+    )
+    if saved and synchronized:
         settings_loop.quit()
         return GLib.SOURCE_REMOVE
     return GLib.SOURCE_CONTINUE
@@ -196,9 +236,59 @@ settings_loop.run()
 saved_contents = settings_path.read_text(encoding="utf-8")
 if not all(
     value in saved_contents
-    for value in ("mode=ime", "scheme=japanese", "page-size=3", "future-option=preserve-me")
+    for value in (
+        "mode=ime",
+        "scheme=japanese",
+        "page-size=3",
+        "punctuation=chinese",
+        "full-width=false",
+        "comma-period-paging=true",
+        "future-option=preserve-me",
+    )
 ):
     raise RuntimeError("IBus property changes were not persisted through SettingsStore.")
+if not (
+    latest_property("Punctuation") == ("中标", IBus.PropState.CHECKED)
+    and latest_property("CharacterWidth") == ("半", IBus.PropState.UNCHECKED)
+):
+    raise RuntimeError(f"IBus property activations were not synchronized: {property_updates}")
+
+if not context.process_key_event(IBus.KEY_period, 0, IBus.ModifierType.CONTROL_MASK):
+    raise RuntimeError("Ctrl+period was not handled by the active IBus engine.")
+if not context.process_key_event(
+    IBus.KEY_space,
+    0,
+    IBus.ModifierType.CONTROL_MASK | IBus.ModifierType.SHIFT_MASK,
+):
+    raise RuntimeError("Ctrl+Shift+Space was not handled by the active IBus engine.")
+
+
+def hotkeys_are_saved_and_synchronized():
+    contents = settings_path.read_text(encoding="utf-8")
+    return (
+        "punctuation=english" in contents
+        and "full-width=true" in contents
+        and latest_property("Punctuation") == ("英标", IBus.PropState.UNCHECKED)
+        and latest_property("CharacterWidth") == ("全", IBus.PropState.CHECKED)
+    )
+
+
+def wait_for_hotkeys():
+    if hotkeys_are_saved_and_synchronized():
+        hotkey_loop.quit()
+        return GLib.SOURCE_REMOVE
+    return GLib.SOURCE_CONTINUE
+
+
+hotkey_loop = GLib.MainLoop()
+GLib.timeout_add(20, wait_for_hotkeys)
+GLib.timeout_add_seconds(5, hotkey_loop.quit)
+hotkey_loop.run()
+if not hotkeys_are_saved_and_synchronized():
+    raise RuntimeError(
+        f"Parity hotkeys were not persisted and synchronized: {settings_path.read_text(encoding='utf-8')}; "
+        f"updates: {property_updates}"
+    )
 
 auxiliary_messages = []
 warning_loop = GLib.MainLoop()

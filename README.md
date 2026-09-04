@@ -4,7 +4,7 @@ Linux frontend for Metasequoia IME. The first frontend targets IBus and reuses t
 
 The engine submodule is currently pinned to the `houko` fork's `feat/linux-desktop-core` branch while the required native frontend API is being integrated upstream. Once the Engine pull request lands, the gitlink can move back to the upstream default branch.
 
-The desktop-core slice supports runtime switching among Quanpin, Shuangpin, Wubi and Japanese Romaji, a Chinese/direct-input toggle, live candidates from `msime.db`, keyboard and mouse candidate selection, paging, and persistent per-user settings.
+The current desktop experience supports runtime switching among Quanpin, Shuangpin, Wubi and Japanese Romaji, a Chinese/direct-input toggle, live candidates from `msime.db`, keyboard and mouse candidate selection, paging, Chinese/English punctuation, half/full-width input, and persistent per-user settings.
 
 ## Dependencies
 
@@ -47,11 +47,12 @@ rm "$data_home/metasequoiaime/msime.db"
 ## Controls and settings
 
 - Tap either Shift key by itself to switch between Chinese conversion and direct input. Shift used with another key is left alone.
+- Press `Ctrl+.` to switch between Chinese and English punctuation. Press `Ctrl+Shift+Space` to switch between half-width and full-width input. Both states are also available from the IBus language-bar menu.
 - Use the IBus language-bar menu to select Quanpin, Shuangpin, Wubi or Japanese Romaji.
-- Use Up/Down to move the candidate cursor. PageUp/PageDown, `-`/`=`, `,`/`.`, and Shift+Tab/Tab change pages.
-- Use `1`–`9` or keypad `1`–`9` to select from the visible page. Space commits the highlighted candidate, Return commits the raw input, and Escape cancels.
+- Use Up/Down to move the candidate cursor. PageUp/PageDown, `-`/`=`, and Shift+Tab/Tab change pages. Comma/period paging is available as an opt-in setting and is disabled by default.
+- Use `1`–`9` or keypad `1`–`9` to select from the visible page. Space commits the highlighted candidate, Return commits the raw input, and Escape cancels. Punctuation commits together with the highlighted candidate when a composition is active; apostrophe remains a pinyin separator.
 
-Settings are stored in `$XDG_CONFIG_HOME/metasequoiaime/config.ini`, falling back to `~/.config/metasequoiaime/config.ini`. To reset mode, scheme and page size, remove that file while the engine is not active; it will be recreated with defaults after the next property change.
+Settings are stored in `$XDG_CONFIG_HOME/metasequoiaime/config.ini`, falling back to `~/.config/metasequoiaime/config.ini`. The `[input]` group stores `mode`, `scheme`, `page-size`, `punctuation`, `full-width`, and `comma-period-paging`. Defaults are Chinese input, Quanpin, page size 9, Chinese punctuation, half width, and comma/period paging disabled. Edit or remove the file while the engine is not active; it will be written atomically after the next property or hotkey change.
 
 ## Desktop-core parity
 
@@ -62,7 +63,8 @@ Settings are stored in `$XDG_CONFIG_HOME/metasequoiaime/config.ini`, falling bac
 | Candidate cursor, paging, digits and mouse selection | Supported | Controller and IBus adapter tests |
 | XDG configuration with atomic replacement | Supported | Filesystem and IBus lifecycle tests |
 | IBus registration and current-user install | Supported | D-Bus and install CI smoke gates |
-| Punctuation, full-width mode and user-frequency UX | Planned | Desktop experience phase |
+| Chinese/English punctuation and full-width mode | Supported | Transform, controller, mapper, settings and real D-Bus tests |
+| User-frequency UX | Planned | Desktop experience phase |
 | Emoji, kaomoji, phrases and extended input modes | Planned | Local extensions phase |
 | Cloud, AI, translation, voice and settings UI | Planned | Online and desktop-tools phases |
 

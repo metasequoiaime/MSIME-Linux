@@ -13,6 +13,9 @@ struct InputSettings
     InputMode mode = InputMode::Ime;
     SchemeType scheme = SchemeType::Quanpin;
     std::size_t page_size = 9;
+    PunctuationMode punctuation_mode = PunctuationMode::Chinese;
+    CharacterWidth character_width = CharacterWidth::Half;
+    bool comma_period_paging = false;
 };
 
 class SettingsStore

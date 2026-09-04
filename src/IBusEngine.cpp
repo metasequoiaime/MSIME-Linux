@@ -12,9 +12,12 @@ namespace
 using metasequoia::linux_ime::FrontendKey;
 using metasequoia::linux_ime::IBusKeyDisposition;
 using metasequoia::linux_ime::IBusModeToggleTracker;
+using metasequoia::linux_ime::CharacterWidth;
 using metasequoia::linux_ime::InputController;
 using metasequoia::linux_ime::InputMode;
+using metasequoia::linux_ime::InputOptions;
 using metasequoia::linux_ime::InputSettings;
+using metasequoia::linux_ime::PunctuationMode;
 using metasequoia::linux_ime::SettingsStore;
 using metasequoia::linux_ime::translate_ibus_key;
 
@@ -27,6 +30,8 @@ struct _MetasequoiaEngine
     std::string *settings_warning = nullptr;
     IBusPropList *properties = nullptr;
     IBusProperty *mode_property = nullptr;
+    IBusProperty *punctuation_property = nullptr;
+    IBusProperty *character_width_property = nullptr;
     IBusProperty *scheme_menu = nullptr;
     IBusProperty *quanpin_property = nullptr;
     IBusProperty *shuangpin_property = nullptr;
@@ -92,6 +97,14 @@ void initialize_properties(MetasequoiaEngine *engine)
                                             PROP_STATE_CHECKED);
     append_property(engine->properties, engine->mode_property);
 
+    engine->punctuation_property = create_property("Punctuation", PROP_TYPE_TOGGLE, "中标",
+                                                   "切换中文/英文标点（Ctrl+.）", PROP_STATE_CHECKED);
+    append_property(engine->properties, engine->punctuation_property);
+
+    engine->character_width_property = create_property("CharacterWidth", PROP_TYPE_TOGGLE, "半",
+                                                       "切换全角/半角（Ctrl+Shift+Space）");
+    append_property(engine->properties, engine->character_width_property);
+
     IBusPropList *schemes = ibus_prop_list_new();
     g_object_ref_sink(schemes);
     engine->quanpin_property =
@@ -119,6 +132,18 @@ void update_property_values(MetasequoiaEngine *engine)
     ibus_property_set_symbol(engine->mode_property, text(ime_mode ? "中" : "英"));
     ibus_property_set_state(engine->mode_property, ime_mode ? PROP_STATE_CHECKED : PROP_STATE_UNCHECKED);
 
+    const bool chinese_punctuation = engine->controller->punctuation_mode() == PunctuationMode::Chinese;
+    ibus_property_set_label(engine->punctuation_property, text(chinese_punctuation ? "中标" : "英标"));
+    ibus_property_set_symbol(engine->punctuation_property, text(chinese_punctuation ? "中标" : "英标"));
+    ibus_property_set_state(engine->punctuation_property,
+                            chinese_punctuation ? PROP_STATE_CHECKED : PROP_STATE_UNCHECKED);
+
+    const bool full_width = engine->controller->character_width() == CharacterWidth::Full;
+    ibus_property_set_label(engine->character_width_property, text(full_width ? "全" : "半"));
+    ibus_property_set_symbol(engine->character_width_property, text(full_width ? "全" : "半"));
+    ibus_property_set_state(engine->character_width_property,
+                            full_width ? PROP_STATE_CHECKED : PROP_STATE_UNCHECKED);
+
     const SchemeType active_scheme = engine->controller->scheme();
     ibus_property_set_label(engine->scheme_menu, text(scheme_label(active_scheme)));
     ibus_property_set_symbol(engine->scheme_menu, text(scheme_label(active_scheme)));
@@ -136,6 +161,8 @@ void sync_properties(MetasequoiaEngine *engine)
 {
     update_property_values(engine);
     ibus_engine_update_property(IBUS_ENGINE(engine), engine->mode_property);
+    ibus_engine_update_property(IBUS_ENGINE(engine), engine->punctuation_property);
+    ibus_engine_update_property(IBUS_ENGINE(engine), engine->character_width_property);
     ibus_engine_update_property(IBUS_ENGINE(engine), engine->scheme_menu);
     ibus_engine_update_property(IBUS_ENGINE(engine), engine->quanpin_property);
     ibus_engine_update_property(IBUS_ENGINE(engine), engine->shuangpin_property);
@@ -159,6 +186,9 @@ void save_settings(MetasequoiaEngine *engine)
     settings.mode = engine->controller->mode();
     settings.scheme = engine->controller->scheme();
     settings.page_size = engine->controller->page_size();
+    settings.punctuation_mode = engine->controller->punctuation_mode();
+    settings.character_width = engine->controller->character_width();
+    settings.comma_period_paging = engine->controller->comma_period_paging();
     if (engine->settings_store->save(settings, engine->settings_warning))
     {
         engine->settings_warning->clear();
@@ -251,6 +281,11 @@ gboolean process_key_event(IBusEngine *ibus_engine, guint keyval, guint keycode,
     }
 
     apply_result(engine, result);
+    if (translation.event.key == FrontendKey::TogglePunctuation || translation.event.key == FrontendKey::ToggleWidth)
+    {
+        save_settings(engine);
+        sync_properties(engine);
+    }
     return TRUE;
 }
 
@@ -330,6 +365,18 @@ void property_activate(IBusEngine *ibus_engine, const gchar *property_name, guin
         result = engine->controller->set_mode(property_state == PROP_STATE_CHECKED ? InputMode::Ime
                                                                                    : InputMode::Direct);
     }
+    else if (std::strcmp(property_name, "Punctuation") == 0)
+    {
+        result = engine->controller->set_punctuation_mode(property_state == PROP_STATE_CHECKED
+                                                              ? PunctuationMode::Chinese
+                                                              : PunctuationMode::English);
+    }
+    else if (std::strcmp(property_name, "CharacterWidth") == 0)
+    {
+        result = engine->controller->set_character_width(property_state == PROP_STATE_CHECKED
+                                                             ? CharacterWidth::Full
+                                                             : CharacterWidth::Half);
+    }
     else if (property_state == PROP_STATE_CHECKED && std::strcmp(property_name, "Scheme.Quanpin") == 0)
     {
         result = engine->controller->switch_scheme(SchemeType::Quanpin);
@@ -395,7 +442,12 @@ void metasequoia_engine_init(MetasequoiaEngine *engine)
     engine->settings_store = new SettingsStore();
     engine->settings_warning = new std::string();
     const InputSettings settings = engine->settings_store->load(engine->settings_warning);
-    engine->controller = new InputController(settings.scheme, settings.page_size);
+    InputOptions options;
+    options.page_size = settings.page_size;
+    options.punctuation_mode = settings.punctuation_mode;
+    options.character_width = settings.character_width;
+    options.comma_period_paging = settings.comma_period_paging;
+    engine->controller = new InputController(settings.scheme, options);
     (void)engine->controller->set_mode(settings.mode);
     engine->mode_toggle = new IBusModeToggleTracker();
     initialize_properties(engine);
