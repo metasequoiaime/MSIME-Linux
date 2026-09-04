@@ -39,6 +39,8 @@ int main()
         require(model.settings().page_size == 7, "The page size was not applied.");
         require(model.set("cloud-enabled", "false", &error), "A valid online toggle could not be applied.");
         require(!model.settings().online.cloud_candidates_enabled, "The online toggle was not applied.");
+        require(model.set("floating-toolbar", "false", &error), "A valid toolbar toggle could not be applied.");
+        require(!model.settings().floating_toolbar_enabled, "The toolbar toggle was not applied.");
         require(!model.set("page-size", "99", &error) && !error.empty(),
                 "An out-of-range page size was accepted.");
         require(!model.set("unknown-setting", "x", &error) && !error.empty(),

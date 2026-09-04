@@ -13,8 +13,10 @@ The Linux desktop tools include a GTK settings application, a clipboard-history 
 On Debian/Ubuntu:
 
 ```sh
-sudo apt install build-essential cmake pkg-config libibus-1.0-dev libboost-dev libfmt-dev libspdlog-dev libsqlite3-dev libcurl4-openssl-dev libsecret-1-dev gnome-keyring python3 python3-gi python3-pypinyin gir1.2-ibus-1.0 ibus dbus-x11 iso-codes
+sudo apt install build-essential cmake pkg-config libibus-1.0-dev libboost-dev libfmt-dev libspdlog-dev libsqlite3-dev libcurl4-openssl-dev libsecret-1-dev libgtk-3-dev gnome-keyring python3 python3-gi python3-pypinyin gir1.2-ibus-1.0 ibus dbus-x11 iso-codes
 ```
+
+For local Chinese handwriting recognition, also install `tesseract-ocr` and `tesseract-ocr-chi-sim`. The desktop tool remains usable without them and reports the missing backend in its status line.
 
 ## Build and test
 
@@ -75,10 +77,10 @@ rm -r "$data_home/metasequoiaime/helpcodes"
 - Set `preedit-style=raw`, `pinyin`, or `hidden` to show the typed keys, segmented pinyin, or no inline preedit. Hidden inline preedit does not hide the candidate lookup table.
 - Quanpin and Shuangpin helpcodes are independently controlled by `quanpin-helpcode` and `shuangpin-helpcode`. Their schema keys accept `lantian`, `ziranma`, `shouyou2_0`, `shouyouplus`, or `xiaohe`; helpcodes activate only after a complete base spelling.
 - Local candidate learning uses `frequency-adjustment=disabled|pin|halve|linear|promote`. `pin` moves a selected non-leading candidate to the top, `halve` halves its rank, `linear` advances by `frequency-linear-step`, and `promote` advances one slot or to slot five when it is farther back. `frequency-trigger-count` controls how many selections trigger an adjustment; both numeric settings accept 1–10.
-- Launch `metasequoia-ime-settings` (also available from the desktop applications menu) to edit the same XDG settings without hand-editing `config.ini`. Secret Service credentials are intentionally omitted from the form. Launch `metasequoia-ime-tools` for clipboard history, a screen keyboard that builds text for the clipboard, and the handwriting workspace.
+- Launch `metasequoia-ime-settings` (also available from the desktop applications menu) to edit the same XDG settings without hand-editing `config.ini`. Secret Service credentials are intentionally omitted from the form. Launch `metasequoia-ime-tools` for clipboard history, a screen keyboard that builds text for the clipboard, and the handwriting workspace. Launch `metasequoia-ime-toolbar` for an always-on-top shortcut bar to these desktop tools.
 - Set `voice.enabled=true` and configure the `[voice]` endpoint/model in the settings application, then run `metasequoia-ime-voice --file recording.wav` or `metasequoia-ime-voice --record 5`. The API token is stored in Secret Service under the voice provider and is never written to `config.ini`; failed transcription leaves the local input engine unaffected.
 
-Settings are stored in `$XDG_CONFIG_HOME/metasequoiaime/config.ini`, falling back to `~/.config/metasequoiaime/config.ini`. The `[input]` group stores the local input settings listed above. Online non-secret values are stored in `[online]` (`cloud-enabled`, `connect-timeout-ms`, `total-timeout-ms`), `[ai]` (`enabled`, `provider`, `endpoint`, `model`, `prompt`, `candidate-limit`), and `[translation]` (`enabled`, `provider`, `target-language`, `endpoint`). AI and translation tokens are stored in the desktop Secret Service under provider-isolated attributes and are never written to this file. Edit or remove the file while the engine is not active; it will be written atomically after the next property or hotkey change. Learned weights and English raw entries are journaled in `${XDG_DATA_HOME:-$HOME/.local/share}/metasequoiaime/msime_user.db`; rerunning `scripts/install.sh` replays that journal into staged `msime.db`, `others.db`, and `english.db` files before replacing the live dictionary set as one unit.
+Settings are stored in `$XDG_CONFIG_HOME/metasequoiaime/config.ini`, falling back to `~/.config/metasequoiaime/config.ini`. The `[input]` group stores the local input settings listed above. Online non-secret values are stored in `[online]` (`cloud-enabled`, `connect-timeout-ms`, `total-timeout-ms`), `[ai]` (`enabled`, `provider`, `endpoint`, `model`, `prompt`, `candidate-limit`), and `[translation]` (`enabled`, `provider`, `target-language`, `endpoint`). Utility visibility is stored in `[utility]` (`clipboard-history`, `floating-toolbar`), and voice options are stored in `[voice]` (`enabled`, `provider`, `endpoint`, `model`, `language`). AI, translation and voice tokens are stored in the desktop Secret Service under provider-isolated attributes and are never written to this file. Edit or remove the file while the engine is not active; it will be written atomically after the next property or hotkey change. Learned weights and English raw entries are journaled in `${XDG_DATA_HOME:-$HOME/.local/share}/metasequoiaime/msime_user.db`; rerunning `scripts/install.sh` replays that journal into staged `msime.db`, `others.db`, and `english.db` files before replacing the live dictionary set as one unit.
 
 ## Desktop-core parity
 
@@ -110,7 +112,8 @@ Settings are stored in `$XDG_CONFIG_HOME/metasequoiaime/config.ini`, falling bac
 | Screen keyboard workspace | Supported | GTK desktop-tools executable and headless check |
 | Voice transcription from recorded WAV | Supported | HTTPS multipart provider contract tests and standalone CLI |
 | Microphone voice capture | Supported | Standalone CLI capture through `arecord` or `pw-record`; provider transcription remains optional |
-| Handwriting recognition and floating toolbar | Planned | Optional desktop integrations; no backend is selected by default |
+| Handwriting recognition | Supported | GTK stroke canvas and Tesseract `chi_sim+eng` backend; clear install guidance when unavailable |
+| Floating toolbar | Supported | Always-on-top GTK utility with desktop-tool launchers and install smoke |
 
 ## Scope
 

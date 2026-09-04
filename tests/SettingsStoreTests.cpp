@@ -203,6 +203,7 @@ int main()
     saved.mixed_emoji_candidates_enabled = true;
     saved.mixed_kaomoji_candidates_enabled = true;
     saved.clipboard_history_enabled = true;
+    saved.floating_toolbar_enabled = false;
     saved.voice.enabled = true;
     saved.voice.provider = "openai";
     saved.voice.endpoint = "https://voice.example.test/v1/audio/transcriptions";
@@ -254,6 +255,7 @@ int main()
                 round_trip.mixed_emoji_candidates_enabled == saved.mixed_emoji_candidates_enabled &&
                 round_trip.mixed_kaomoji_candidates_enabled == saved.mixed_kaomoji_candidates_enabled &&
                 round_trip.clipboard_history_enabled == saved.clipboard_history_enabled &&
+                round_trip.floating_toolbar_enabled == saved.floating_toolbar_enabled &&
                 round_trip.voice.enabled == saved.voice.enabled && round_trip.voice.provider == saved.voice.provider &&
                 round_trip.voice.endpoint == saved.voice.endpoint && round_trip.voice.model == saved.voice.model &&
                 round_trip.voice.language == saved.voice.language && round_trip.voice.token.empty(),

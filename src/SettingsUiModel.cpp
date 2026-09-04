@@ -251,6 +251,8 @@ void SettingsUiModel::rebuild_rows()
         bool_value(settings_.mixed_kaomoji_candidates_enabled), SettingsControl::Boolean);
     add(rows_, "clipboard-history", "Clipboard history", bool_value(settings_.clipboard_history_enabled),
         SettingsControl::Boolean);
+    add(rows_, "floating-toolbar", "Floating toolbar", bool_value(settings_.floating_toolbar_enabled),
+        SettingsControl::Boolean);
     add(rows_, "voice-enabled", "Voice input", bool_value(settings_.voice.enabled), SettingsControl::Boolean);
     add(rows_, "voice-provider", "Voice provider", settings_.voice.provider, SettingsControl::Choice,
         {"openai", "siliconflow", "groq", "custom"});
@@ -327,7 +329,7 @@ bool SettingsUiModel::set(const std::string &id, const std::string &value, std::
              id == "quanpin-helpcode" || id == "shuangpin-helpcode" || id == "unicode-mode" ||
              id == "super-jianpin-mode" || id == "temporary-english-mode" || id == "temporary-japanese-mode" ||
              id == "mixed-english-candidates" || id == "mixed-emoji-candidates" || id == "mixed-kaomoji-candidates" ||
-             id == "clipboard-history" || id == "voice-enabled" || id == "cloud-enabled" || id == "ai-enabled" ||
+             id == "clipboard-history" || id == "floating-toolbar" || id == "voice-enabled" || id == "cloud-enabled" || id == "ai-enabled" ||
              id == "translation-enabled")
     {
         bool value_as_bool = false;
@@ -350,6 +352,7 @@ bool SettingsUiModel::set(const std::string &id, const std::string &value, std::
             else if (id == "mixed-emoji-candidates") candidate.mixed_emoji_candidates_enabled = value_as_bool;
             else if (id == "mixed-kaomoji-candidates") candidate.mixed_kaomoji_candidates_enabled = value_as_bool;
             else if (id == "clipboard-history") candidate.clipboard_history_enabled = value_as_bool;
+            else if (id == "floating-toolbar") candidate.floating_toolbar_enabled = value_as_bool;
             else if (id == "voice-enabled") candidate.voice.enabled = value_as_bool;
             else if (id == "cloud-enabled") candidate.online.cloud_candidates_enabled = value_as_bool;
             else if (id == "ai-enabled") candidate.online.ai.enabled = value_as_bool;

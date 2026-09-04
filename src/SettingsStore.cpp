@@ -893,6 +893,7 @@ InputSettings SettingsStore::load(std::string *warning) const
                 valid_translation_language);
     load_string(kTranslationGroup, "endpoint", settings.online.translation_endpoint, valid_https_endpoint);
     load_boolean(kUtilityGroup, "clipboard-history", settings.clipboard_history_enabled);
+    load_boolean(kUtilityGroup, "floating-toolbar", settings.floating_toolbar_enabled);
     load_boolean(kVoiceGroup, "enabled", settings.voice.enabled);
     load_string(kVoiceGroup, "provider", settings.voice.provider,
                 [](std::string_view value) { return valid_utf8_text(value, 64, false) && !value.empty(); });
@@ -1032,6 +1033,7 @@ bool SettingsStore::save(const InputSettings &settings, std::string *error) cons
     g_key_file_set_boolean(key_file, kGroup, "mixed-kaomoji-candidates",
                            settings.mixed_kaomoji_candidates_enabled);
     g_key_file_set_boolean(key_file, kUtilityGroup, "clipboard-history", settings.clipboard_history_enabled);
+    g_key_file_set_boolean(key_file, kUtilityGroup, "floating-toolbar", settings.floating_toolbar_enabled);
 
     g_key_file_set_boolean(key_file, kOnlineGroup, "cloud-enabled", settings.online.cloud_candidates_enabled);
     g_key_file_set_integer(key_file, kOnlineGroup, "connect-timeout-ms",

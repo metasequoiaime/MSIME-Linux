@@ -61,6 +61,7 @@ struct InputSettings
     bool mixed_emoji_candidates_enabled = false;
     bool mixed_kaomoji_candidates_enabled = false;
     bool clipboard_history_enabled = false;
+    bool floating_toolbar_enabled = true;
     VoiceInputConfig voice;
     OnlineSettings online;
 };

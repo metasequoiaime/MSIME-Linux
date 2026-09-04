@@ -13,6 +13,7 @@ replay_executable="$build_root/metasequoia-ime-dictionary-replay"
 settings_executable="$build_root/metasequoia-ime-settings"
 tools_executable="$build_root/metasequoia-ime-tools"
 voice_executable="$build_root/metasequoia-ime-voice"
+toolbar_executable="$build_root/metasequoia-ime-toolbar"
 helpcode_source_dir="$project_root/vendor/MetasequoiaImeHelpCode/helpcodes"
 helpcode_files=(
     helpcode.txt
@@ -108,7 +109,7 @@ if [[ ! -x "$replay_executable" ]]; then
     echo "Dictionary replay output is missing. Run scripts/build.sh first." >&2
     exit 1
 fi
-for utility_executable in "$settings_executable" "$tools_executable" "$voice_executable"; do
+for utility_executable in "$settings_executable" "$tools_executable" "$voice_executable" "$toolbar_executable"; do
     if [[ ! -x "$utility_executable" ]]; then
         echo "Build output is missing: $utility_executable. Configure with METASEQUOIA_IME_BUILD_SETTINGS_UI=ON." >&2
         exit 1
@@ -139,10 +140,12 @@ install -m 0755 "$replay_executable" "$libexec_dir/metasequoia-ime-dictionary-re
 install -m 0755 "$settings_executable" "$bin_dir/metasequoia-ime-settings"
 install -m 0755 "$tools_executable" "$bin_dir/metasequoia-ime-tools"
 install -m 0755 "$voice_executable" "$bin_dir/metasequoia-ime-voice"
+install -m 0755 "$toolbar_executable" "$bin_dir/metasequoia-ime-toolbar"
 install -m 0644 "$build_root/metasequoiaime.xml" "$component_dir/metasequoiaime.xml"
 install -m 0644 "$build_root/metasequoia-ime-settings.desktop" "$applications_dir/metasequoia-ime-settings.desktop"
 install -m 0644 "$build_root/metasequoia-ime-tools.desktop" "$applications_dir/metasequoia-ime-tools.desktop"
 install -m 0644 "$build_root/metasequoia-ime-voice.desktop" "$applications_dir/metasequoia-ime-voice.desktop"
+install -m 0644 "$build_root/metasequoia-ime-toolbar.desktop" "$applications_dir/metasequoia-ime-toolbar.desktop"
 staged_main_database=$(mktemp "$data_dir/.msime.db.install.XXXXXX")
 staged_others_database=$(mktemp "$data_dir/.others.db.install.XXXXXX")
 staged_english_database=$(mktemp "$data_dir/.english.db.install.XXXXXX")

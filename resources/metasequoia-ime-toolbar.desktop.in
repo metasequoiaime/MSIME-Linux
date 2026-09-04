@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Metasequoia IME Floating Toolbar
+Name[zh_CN]=水杉输入法悬浮工具栏
+Comment=Quick access to Metasequoia IME desktop tools
+Exec=@CMAKE_INSTALL_FULL_BINDIR@/metasequoia-ime-toolbar
+Icon=input-keyboard
+Terminal=false
+Categories=Utility;Accessibility;
