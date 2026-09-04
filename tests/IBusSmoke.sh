@@ -442,6 +442,35 @@ if not context.process_key_event(IBus.KEY_space, 0, 0):
 wait_for_commit("一")
 
 
+lookup_updates.clear()
+committed_text.clear()
+if not context.process_key_event(IBus.KEY_T, 0, IBus.ModifierType.SHIFT_MASK):
+    raise RuntimeError("Shift+T did not enter date/time mode.")
+for keyval in (IBus.KEY_r, IBus.KEY_q):
+    if not context.process_key_event(keyval, 0, 0):
+        raise RuntimeError("Date keyword input was not handled.")
+
+
+def date_candidate_observed():
+    if any(first_candidate and visible for first_candidate, visible in lookup_updates):
+        date_loop.quit()
+        return GLib.SOURCE_REMOVE
+    return GLib.SOURCE_CONTINUE
+
+
+date_loop = GLib.MainLoop()
+GLib.timeout_add(20, date_candidate_observed)
+GLib.timeout_add_seconds(5, date_loop.quit)
+date_loop.run()
+date_candidates = [first_candidate for first_candidate, visible in lookup_updates if first_candidate and visible]
+if not date_candidates:
+    raise RuntimeError(f"Date/time mode did not publish a current-date candidate: {lookup_updates}")
+expected_date = date_candidates[-1]
+if not context.process_key_event(IBus.KEY_space, 0, 0):
+    raise RuntimeError("Space did not select the current-date candidate.")
+wait_for_commit(expected_date)
+
+
 preedit_updates.clear()
 lookup_updates.clear()
 for keyval in (IBus.KEY_n, IBus.KEY_i, IBus.KEY_h, IBus.KEY_a, IBus.KEY_o, IBus.KEY_F):

@@ -557,6 +557,30 @@ int main()
                     disabled_unicode_controller.local_input_mode() == LocalInputMode::None,
                 "A disabled Unicode mode intercepted Shift+U.");
 
+        InputController date_time_controller(SchemeType::Quanpin, 3);
+        FrontendKeyEvent date_time_prefix{FrontendKey::Character, 'T'};
+        date_time_prefix.shift_only = true;
+        require(date_time_controller.handle_key(date_time_prefix).handled &&
+                    date_time_controller.local_input_mode() == LocalInputMode::DateTime &&
+                    date_time_controller.preedit() == "T",
+                "The controller did not enter date/time mode from Shift+T.");
+        require(date_time_controller.handle_key({FrontendKey::Character, 'r'}).handled &&
+                    date_time_controller.handle_key({FrontendKey::Character, 'q'}).handled &&
+                    !date_time_controller.candidates().empty(),
+                "The controller did not expose current-date candidates for rq.");
+        const std::string current_date = date_time_controller.candidates().front().word;
+        const auto date_space = date_time_controller.handle_key(key(FrontendKey::Space));
+        require(date_space.handled && date_space.commit == current_date &&
+                    date_time_controller.local_input_mode() == LocalInputMode::None,
+                "Space did not commit and leave date/time mode.");
+
+        InputOptions disabled_date_time_options;
+        disabled_date_time_options.local_modes.date_time = false;
+        InputController disabled_date_time_controller(SchemeType::Quanpin, disabled_date_time_options);
+        require(disabled_date_time_controller.handle_key(date_time_prefix).handled &&
+                    disabled_date_time_controller.local_input_mode() == LocalInputMode::None,
+                "A disabled date/time mode intercepted Shift+T.");
+
         InputOptions full_width_options;
         full_width_options.character_width = CharacterWidth::Full;
         full_width_options.punctuation_mode = PunctuationMode::English;

@@ -55,6 +55,7 @@ rm -r "$data_home/metasequoiaime/helpcodes"
 - Use Up/Down to move the candidate cursor. PageUp/PageDown, `-`/`=`, and Shift+Tab/Tab change pages. Comma/period paging is available as an opt-in setting and is disabled by default.
 - Use `1`–`9` or keypad `1`–`9` to select from the visible page. Space commits the highlighted candidate, Return commits the raw input, and Escape cancels. Punctuation commits together with the highlighted candidate when a composition is active; apostrophe remains a pinyin separator.
 - In Quanpin or Shuangpin, press `Shift+U` with no active composition to enter Unicode mode. Type a hexadecimal scalar such as `4e00` or `+1f600`; Space commits the highlighted character, and `Shift+1`–`Shift+9` select another visible candidate. Set `unicode-mode=false` to disable this mode.
+- In Quanpin or Shuangpin, press `Shift+T` with no active composition for local date/time output. Use `rq`, `riqi`, or `date` for the current date; `sj`, `shijian`, or `time` for the current time; and `xq`, `xingqi`, or `week` for the current weekday.
 - Set `word-to-character=true` to make `[` commit the first Han character and `]` the last Han character of the highlighted candidate. If `bracket-paging=true`, bracket paging takes precedence and word-to-character selection is disabled for those keys.
 - With `smart-punctuation=true`, comma, period and colon remain ASCII after an ASCII letter or digit. Repeating the same mark within two seconds replaces it with its Chinese form when `smart-punctuation-repeat-to-chinese=true`; unavailable surrounding text safely falls back to Chinese punctuation.
 - With `paired-punctuation=true`, opening quotes, brackets, braces, book-title marks and parentheses insert both halves and leave the cursor between them.
@@ -79,6 +80,7 @@ Settings are stored in `$XDG_CONFIG_HOME/metasequoiaime/config.ini`, falling bac
 | Raw/segmented/hidden preedit and helpcodes | Supported | Engine, controller, settings, installed-data and real D-Bus lookup smoke |
 | Local candidate frequency learning | Supported | Five-mode Engine persistence tests plus controller, settings and real D-Bus/XDG journal smoke |
 | Explicit Unicode scalar input | Supported | Engine scalar validation, controller/mapper/settings tests and real D-Bus commit smoke |
+| Local date, time and weekday candidates | Supported | Deterministic Engine formatter tests plus controller and real D-Bus commit smoke |
 | Emoji, kaomoji, phrases and extended input modes | Planned | Local extensions phase |
 | Cloud, AI, translation, voice and settings UI | Planned | Online and desktop-tools phases |
 
