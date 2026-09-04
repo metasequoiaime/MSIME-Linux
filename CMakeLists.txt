@@ -21,6 +21,7 @@ target_include_directories(MetasequoiaImeLinuxCore PUBLIC ${CMAKE_CURRENT_SOURCE
 target_compile_options(MetasequoiaImeLinuxCore PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 add_library(MetasequoiaImeLinuxOnline STATIC
+            src/online/AiSuggestionProvider.cpp
             src/online/CurlHttpTransport.cpp
             src/online/GoogleCloudProvider.cpp
             src/online/OnlineCandidateService.cpp)
