@@ -31,6 +31,18 @@ int main()
         {
             require(row.id.find("token") == std::string::npos, "Secret credentials leaked into the settings model.");
         }
+        require(settings_section_for_id("page-size") == SettingsUiSection::Appearance &&
+                    settings_section_for_id("scheme") == SettingsUiSection::Input &&
+                    settings_section_for_id("quanpin-helpcode") == SettingsUiSection::Helpcode &&
+                    settings_section_for_id("temporary-english-mode") == SettingsUiSection::Shortcuts &&
+                    settings_section_for_id("frequency-adjustment") == SettingsUiSection::Dictionary &&
+                    settings_section_for_id("voice-enabled") == SettingsUiSection::Voice &&
+                    settings_section_for_id("clipboard-history") == SettingsUiSection::DesktopTools &&
+                    settings_section_for_id("ai-enabled") == SettingsUiSection::Online,
+                "Settings rows were assigned to the wrong Windows-style section.");
+        require(std::string(settings_section_title(SettingsUiSection::Appearance)) == "外观" &&
+                    std::string(settings_section_title(SettingsUiSection::Voice)) == "语音输入",
+                "Settings section titles were not localized.");
 
         std::string error;
         require(model.set("scheme", "shuangpin", &error), "A valid choice could not be applied.");

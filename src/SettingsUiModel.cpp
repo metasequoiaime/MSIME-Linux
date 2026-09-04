@@ -181,6 +181,68 @@ bool set_choice(std::string_view value, std::initializer_list<std::string_view> 
 }
 } // namespace
 
+SettingsUiSection settings_section_for_id(const std::string &id)
+{
+    if (id == "page-size" || id == "punctuation" || id == "width" || id == "preedit-style" ||
+        id == "smart-punctuation" || id == "smart-punctuation-repeat-to-chinese" || id == "paired-punctuation" ||
+        id == "bracket-paging" || id == "word-to-character")
+    {
+        return SettingsUiSection::Appearance;
+    }
+    if (id == "mode" || id == "scheme" || id == "comma-period-paging" || id == "mixed-english-candidates" ||
+        id == "mixed-english-minimum-prefix" || id == "mixed-emoji-candidates" || id == "mixed-kaomoji-candidates")
+    {
+        return SettingsUiSection::Input;
+    }
+    if (id == "quanpin-helpcode" || id == "quanpin-helpcode-schema" || id == "shuangpin-helpcode" ||
+        id == "shuangpin-helpcode-schema")
+    {
+        return SettingsUiSection::Helpcode;
+    }
+    if (id == "unicode-mode" || id == "super-jianpin-mode" || id == "temporary-english-mode" ||
+        id == "temporary-japanese-mode")
+    {
+        return SettingsUiSection::Shortcuts;
+    }
+    if (id == "frequency-adjustment" || id == "frequency-trigger-count" || id == "frequency-linear-step")
+    {
+        return SettingsUiSection::Dictionary;
+    }
+    if (id.rfind("voice-", 0) == 0)
+    {
+        return SettingsUiSection::Voice;
+    }
+    if (id == "clipboard-history" || id == "floating-toolbar")
+    {
+        return SettingsUiSection::DesktopTools;
+    }
+    return SettingsUiSection::Online;
+}
+
+const char *settings_section_title(SettingsUiSection section)
+{
+    switch (section)
+    {
+    case SettingsUiSection::Appearance:
+        return "外观";
+    case SettingsUiSection::Input:
+        return "输入";
+    case SettingsUiSection::Helpcode:
+        return "辅助码";
+    case SettingsUiSection::Shortcuts:
+        return "快捷功能";
+    case SettingsUiSection::Dictionary:
+        return "词库与调频";
+    case SettingsUiSection::Voice:
+        return "语音输入";
+    case SettingsUiSection::DesktopTools:
+        return "实用工具";
+    case SettingsUiSection::Online:
+        return "AI 与在线服务";
+    }
+    return "设置";
+}
+
 SettingsUiModel::SettingsUiModel(InputSettings settings) : settings_(std::move(settings))
 {
     rebuild_rows();

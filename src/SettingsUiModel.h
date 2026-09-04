@@ -15,6 +15,21 @@ enum class SettingsControl
     Text,
 };
 
+enum class SettingsUiSection
+{
+    Appearance,
+    Input,
+    Helpcode,
+    Shortcuts,
+    Dictionary,
+    Voice,
+    DesktopTools,
+    Online,
+};
+
+SettingsUiSection settings_section_for_id(const std::string &id);
+const char *settings_section_title(SettingsUiSection section);
+
 struct SettingsUiRow
 {
     std::string id;
