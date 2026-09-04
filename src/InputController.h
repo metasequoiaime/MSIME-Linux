@@ -42,6 +42,7 @@ class InputController
 
     KeyResult handle_key(const FrontendKeyEvent &event);
     KeyResult select_candidate(std::size_t absolute_index);
+    KeyResult select_page_candidate(std::size_t page_index);
     KeyResult set_mode(InputMode mode);
     KeyResult switch_scheme(SchemeType scheme_type);
     void reset();

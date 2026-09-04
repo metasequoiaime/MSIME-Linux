@@ -90,6 +90,15 @@ KeyResult InputController::select_candidate(std::size_t absolute_index)
     return result;
 }
 
+KeyResult InputController::select_page_candidate(std::size_t page_index)
+{
+    if (!has_composition() || page_index >= page_size_)
+    {
+        return {};
+    }
+    return select_candidate(page_start() + page_index);
+}
+
 KeyResult InputController::set_mode(InputMode mode)
 {
     if (mode_ == mode)

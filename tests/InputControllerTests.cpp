@@ -124,6 +124,12 @@ int main()
 
         type(controller, "nihao");
         controller.handle_key(key(FrontendKey::PageDown));
+        const auto page_click = controller.select_page_candidate(1);
+        require(page_click.handled && page_click.commit == "candidate-4",
+                "A page-relative candidate click committed the wrong absolute candidate.");
+
+        type(controller, "nihao");
+        controller.handle_key(key(FrontendKey::PageDown));
         controller.handle_key(key(FrontendKey::PageDown));
         controller.handle_key(key(FrontendKey::PageDown));
         const auto missing_page_digit = controller.handle_key(digit(9));

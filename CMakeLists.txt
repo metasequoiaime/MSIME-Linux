@@ -11,17 +11,19 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_subdirectory(vendor/MetasequoiaImeEngine engine)
 
+add_library(MetasequoiaImeLinuxCore STATIC src/InputController.cpp)
+target_link_libraries(MetasequoiaImeLinuxCore PUBLIC MetasequoiaIme::Engine)
+target_include_directories(MetasequoiaImeLinuxCore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_options(MetasequoiaImeLinuxCore PRIVATE -Wall -Wextra -Wpedantic -Werror)
+
 if(BUILD_TESTING)
     add_executable(MetasequoiaImeLinuxTests tests/InputSessionTests.cpp)
     target_link_libraries(MetasequoiaImeLinuxTests PRIVATE MetasequoiaIme::Engine)
     target_compile_options(MetasequoiaImeLinuxTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
     add_test(NAME input_session COMMAND MetasequoiaImeLinuxTests)
 
-    add_executable(MetasequoiaImeLinuxControllerTests
-        src/InputController.cpp
-        tests/InputControllerTests.cpp
-    )
-    target_link_libraries(MetasequoiaImeLinuxControllerTests PRIVATE MetasequoiaIme::Engine)
+    add_executable(MetasequoiaImeLinuxControllerTests tests/InputControllerTests.cpp)
+    target_link_libraries(MetasequoiaImeLinuxControllerTests PRIVATE MetasequoiaImeLinuxCore)
     target_compile_options(MetasequoiaImeLinuxControllerTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
     add_test(NAME input_controller COMMAND MetasequoiaImeLinuxControllerTests)
 endif()
@@ -34,7 +36,7 @@ if(METASEQUOIA_IME_BUILD_IBUS)
     pkg_check_modules(IBUS REQUIRED IMPORTED_TARGET ibus-1.0)
 
     add_executable(metasequoia-ime-ibus src/IBusEngine.cpp)
-    target_link_libraries(metasequoia-ime-ibus PRIVATE MetasequoiaIme::Engine PkgConfig::IBUS)
+    target_link_libraries(metasequoia-ime-ibus PRIVATE MetasequoiaImeLinuxCore PkgConfig::IBUS)
     target_compile_options(metasequoia-ime-ibus PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
     configure_file(resources/metasequoiaime.xml.in ${CMAKE_CURRENT_BINARY_DIR}/metasequoiaime.xml @ONLY)

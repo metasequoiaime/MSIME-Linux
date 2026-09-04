@@ -1,22 +1,21 @@
-#include "core/input_session.h"
+#include "InputController.h"
 
 #include <ibus.h>
 
-#include <algorithm>
-#include <cctype>
-#include <cstdint>
-#include <memory>
 #include <string>
 
 namespace
 {
-constexpr guint kCandidatePageSize = 9;
 constexpr guint kModifierMask = IBUS_CONTROL_MASK | IBUS_MOD1_MASK | IBUS_SUPER_MASK | IBUS_META_MASK;
+
+using metasequoia::linux_ime::FrontendKey;
+using metasequoia::linux_ime::FrontendKeyEvent;
+using metasequoia::linux_ime::InputController;
 
 struct _MetasequoiaEngine
 {
     IBusEngine parent;
-    metasequoia::InputSession *session = nullptr;
+    InputController *controller = nullptr;
 };
 
 struct _MetasequoiaEngineClass
@@ -34,21 +33,27 @@ G_DEFINE_TYPE(MetasequoiaEngine, metasequoia_engine, IBUS_TYPE_ENGINE)
 
 void update_preedit(MetasequoiaEngine *engine)
 {
-    const std::string &preedit = engine->session->preedit();
+    const std::string &preedit = engine->controller->preedit();
     IBusText *text = ibus_text_new_from_string(preedit.c_str());
     ibus_engine_update_preedit_text(IBUS_ENGINE(engine), text, static_cast<guint>(preedit.size()), !preedit.empty());
 }
 
 void update_lookup_table(MetasequoiaEngine *engine)
 {
-    IBusLookupTable *table = ibus_lookup_table_new(kCandidatePageSize, 0, TRUE, TRUE);
-    for (const WordItem &candidate : engine->session->candidates())
+    IBusLookupTable *table = ibus_lookup_table_new(static_cast<guint>(engine->controller->page_size()), 0, TRUE, FALSE);
+    for (const WordItem &candidate : engine->controller->candidates())
     {
         IBusText *text = ibus_text_new_from_string(candidate.word.c_str());
         ibus_lookup_table_append_candidate(table, text);
     }
 
-    const gboolean visible = engine->session->has_composition() && !engine->session->candidates().empty();
+    if (!engine->controller->candidates().empty())
+    {
+        (void)ibus_lookup_table_set_cursor_pos(
+            table, static_cast<guint>(engine->controller->highlighted_candidate()));
+    }
+
+    const gboolean visible = engine->controller->has_composition() && !engine->controller->candidates().empty();
     ibus_engine_update_lookup_table(IBUS_ENGINE(engine), table, visible);
 }
 
@@ -67,17 +72,77 @@ void apply_result(MetasequoiaEngine *engine, const metasequoia::KeyResult &resul
     update_lookup_table(engine);
 }
 
-void commit_leading_candidate(MetasequoiaEngine *engine)
+void commit_for_passthrough(MetasequoiaEngine *engine)
 {
-    if (!engine->session->has_composition())
-    {
-        return;
-    }
-    const auto result = engine->session->handle_command(metasequoia::Command::CommitCandidate);
-    if (result.handled)
+    FrontendKeyEvent event;
+    event.host_shortcut = true;
+    const auto result = engine->controller->handle_key(event);
+    if (result.commit.has_value())
     {
         apply_result(engine, result);
     }
+}
+
+bool translate_key(guint keyval, FrontendKeyEvent &event)
+{
+    switch (keyval)
+    {
+    case IBUS_BackSpace:
+        event.key = FrontendKey::Backspace;
+        return true;
+    case IBUS_Return:
+    case IBUS_KP_Enter:
+        event.key = FrontendKey::Enter;
+        return true;
+    case IBUS_Escape:
+        event.key = FrontendKey::Escape;
+        return true;
+    case IBUS_space:
+        event.key = FrontendKey::Space;
+        return true;
+    case IBUS_Up:
+        event.key = FrontendKey::Up;
+        return true;
+    case IBUS_Down:
+        event.key = FrontendKey::Down;
+        return true;
+    case IBUS_Page_Up:
+    case IBUS_KP_Page_Up:
+    case IBUS_minus:
+    case IBUS_comma:
+    case IBUS_ISO_Left_Tab:
+        event.key = FrontendKey::PageUp;
+        return true;
+    case IBUS_Page_Down:
+    case IBUS_KP_Page_Down:
+    case IBUS_equal:
+    case IBUS_period:
+    case IBUS_Tab:
+        event.key = FrontendKey::PageDown;
+        return true;
+    default:
+        break;
+    }
+
+    if (keyval >= '1' && keyval <= '9')
+    {
+        event.key = FrontendKey::Digit;
+        event.digit = keyval - '0';
+        return true;
+    }
+    if (keyval >= IBUS_KP_1 && keyval <= IBUS_KP_9)
+    {
+        event.key = FrontendKey::Digit;
+        event.digit = keyval - IBUS_KP_1 + 1;
+        return true;
+    }
+    if ((keyval >= 'a' && keyval <= 'z') || (keyval >= 'A' && keyval <= 'Z') || keyval == IBUS_apostrophe)
+    {
+        event.key = FrontendKey::Character;
+        event.character = static_cast<char>(keyval);
+        return true;
+    }
+    return false;
 }
 
 gboolean process_key_event(IBusEngine *ibus_engine, guint keyval, guint keycode, guint state)
@@ -92,41 +157,21 @@ gboolean process_key_event(IBusEngine *ibus_engine, guint keyval, guint keycode,
 
     if ((state & kModifierMask) != 0)
     {
-        commit_leading_candidate(engine);
+        commit_for_passthrough(engine);
         return FALSE;
     }
 
-    metasequoia::KeyResult result;
-    switch (keyval)
+    FrontendKeyEvent event;
+    if (!translate_key(keyval, event))
     {
-    case IBUS_BackSpace:
-        result = engine->session->handle_command(metasequoia::Command::Backspace);
-        break;
-    case IBUS_Return:
-    case IBUS_KP_Enter:
-        result = engine->session->handle_command(metasequoia::Command::CommitRaw);
-        break;
-    case IBUS_Escape:
-        result = engine->session->handle_command(metasequoia::Command::Cancel);
-        break;
-    case IBUS_space:
-        result = engine->session->handle_command(metasequoia::Command::CommitCandidate);
-        break;
-    default:
-        if (keyval >= '1' && keyval <= '9')
-        {
-            result = engine->session->select_candidate(keyval - '1');
-        }
-        else if ((keyval >= 'a' && keyval <= 'z') || (keyval >= 'A' && keyval <= 'Z') || keyval == '\'')
-        {
-            result = engine->session->handle_character(static_cast<char>(keyval));
-        }
-        break;
+        commit_for_passthrough(engine);
+        return FALSE;
     }
 
+    const auto result = engine->controller->handle_key(event);
     if (!result.handled)
     {
-        commit_leading_candidate(engine);
+        commit_for_passthrough(engine);
         return FALSE;
     }
 
@@ -144,7 +189,7 @@ void focus_in(IBusEngine *ibus_engine)
 void focus_out(IBusEngine *ibus_engine)
 {
     auto *engine = METASEQUOIA_ENGINE(ibus_engine);
-    commit_leading_candidate(engine);
+    commit_for_passthrough(engine);
     ibus_engine_hide_preedit_text(ibus_engine);
     update_lookup_table(engine);
 }
@@ -152,7 +197,7 @@ void focus_out(IBusEngine *ibus_engine)
 void reset(IBusEngine *ibus_engine)
 {
     auto *engine = METASEQUOIA_ENGINE(ibus_engine);
-    engine->session->handle_command(metasequoia::Command::Cancel);
+    engine->controller->reset();
     update_preedit(engine);
     update_lookup_table(engine);
 }
@@ -162,18 +207,48 @@ void candidate_clicked(IBusEngine *ibus_engine, guint index, guint button, guint
     (void)button;
     (void)state;
     auto *engine = METASEQUOIA_ENGINE(ibus_engine);
-    const auto result = engine->session->select_candidate(index);
+    const auto result = engine->controller->select_page_candidate(index);
     if (result.handled)
     {
         apply_result(engine, result);
     }
 }
 
+void navigate(IBusEngine *ibus_engine, FrontendKey key)
+{
+    auto *engine = METASEQUOIA_ENGINE(ibus_engine);
+    const auto result = engine->controller->handle_key({key});
+    if (result.handled)
+    {
+        apply_result(engine, result);
+    }
+}
+
+void page_up(IBusEngine *ibus_engine)
+{
+    navigate(ibus_engine, FrontendKey::PageUp);
+}
+
+void page_down(IBusEngine *ibus_engine)
+{
+    navigate(ibus_engine, FrontendKey::PageDown);
+}
+
+void cursor_up(IBusEngine *ibus_engine)
+{
+    navigate(ibus_engine, FrontendKey::Up);
+}
+
+void cursor_down(IBusEngine *ibus_engine)
+{
+    navigate(ibus_engine, FrontendKey::Down);
+}
+
 void finalize(GObject *object)
 {
     auto *engine = METASEQUOIA_ENGINE(object);
-    delete engine->session;
-    engine->session = nullptr;
+    delete engine->controller;
+    engine->controller = nullptr;
     G_OBJECT_CLASS(metasequoia_engine_parent_class)->finalize(object);
 }
 
@@ -184,13 +259,17 @@ void metasequoia_engine_class_init(MetasequoiaEngineClass *klass)
     engine_class->focus_in = focus_in;
     engine_class->focus_out = focus_out;
     engine_class->reset = reset;
+    engine_class->page_up = page_up;
+    engine_class->page_down = page_down;
+    engine_class->cursor_up = cursor_up;
+    engine_class->cursor_down = cursor_down;
     engine_class->candidate_clicked = candidate_clicked;
     G_OBJECT_CLASS(klass)->finalize = finalize;
 }
 
 void metasequoia_engine_init(MetasequoiaEngine *engine)
 {
-    engine->session = new metasequoia::InputSession(SchemeType::Quanpin);
+    engine->controller = new InputController(SchemeType::Quanpin);
 }
 } // namespace
 
