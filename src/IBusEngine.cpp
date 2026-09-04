@@ -112,7 +112,7 @@ void initialize_properties(MetasequoiaEngine *engine)
     append_property(engine->properties, engine->scheme_menu);
 }
 
-void sync_properties(MetasequoiaEngine *engine)
+void update_property_values(MetasequoiaEngine *engine)
 {
     const bool ime_mode = engine->controller->mode() == InputMode::Ime;
     ibus_property_set_label(engine->mode_property, text(ime_mode ? "中" : "英"));
@@ -130,7 +130,11 @@ void sync_properties(MetasequoiaEngine *engine)
                             active_scheme == SchemeType::Wubi ? PROP_STATE_CHECKED : PROP_STATE_UNCHECKED);
     ibus_property_set_state(engine->japanese_property,
                             active_scheme == SchemeType::JapaneseRomaji ? PROP_STATE_CHECKED : PROP_STATE_UNCHECKED);
+}
 
+void sync_properties(MetasequoiaEngine *engine)
+{
+    update_property_values(engine);
     ibus_engine_update_property(IBUS_ENGINE(engine), engine->mode_property);
     ibus_engine_update_property(IBUS_ENGINE(engine), engine->scheme_menu);
     ibus_engine_update_property(IBUS_ENGINE(engine), engine->quanpin_property);
@@ -395,6 +399,7 @@ void metasequoia_engine_init(MetasequoiaEngine *engine)
     (void)engine->controller->set_mode(settings.mode);
     engine->mode_toggle = new IBusModeToggleTracker();
     initialize_properties(engine);
+    update_property_values(engine);
 }
 
 void bus_disconnected(IBusBus *bus, gpointer user_data)

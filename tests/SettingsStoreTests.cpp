@@ -124,6 +124,10 @@ int main()
             "Invalid settings did not fall back field by field.");
     require(!warning.empty(), "Invalid settings did not produce a diagnostic warning.");
 
+    std::filesystem::remove(config_path);
+    std::filesystem::create_directory(config_path);
+    require(!store.save(saved, &error) && !error.empty(), "A settings replacement failure was not reported.");
+
     std::filesystem::remove_all(config_home);
     return 0;
 }

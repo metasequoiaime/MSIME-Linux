@@ -88,13 +88,29 @@ expected = {
     "Scheme.Japanese",
 }
 payloads = []
+property_snapshots = []
 loop = GLib.MainLoop()
+
+
+def collect_properties(prop_list, destination):
+    index = 0
+    while prop_list is not None:
+        prop = prop_list.get(index)
+        if prop is None:
+            break
+        destination[prop.get_key()] = (prop.get_label().get_text(), prop.get_state())
+        collect_properties(prop.get_sub_props(), destination)
+        index += 1
 
 
 def registered_properties(_connection, _sender, _path, _interface, _signal, parameters):
     payloads.append(str(parameters))
-    payload = "\n".join(payloads)
-    if all(key in payload for key in expected):
+    serialized = parameters.get_child_value(0).get_variant()
+    prop_list = IBus.Serializable.deserialize_object(serialized)
+    snapshot = {}
+    collect_properties(prop_list, snapshot)
+    property_snapshots.append(snapshot)
+    if expected <= snapshot.keys():
         loop.quit()
 
 
@@ -111,6 +127,7 @@ connection.signal_subscribe(
 context.set_capabilities(
     IBus.Capabilite.FOCUS
     | IBus.Capabilite.PREEDIT_TEXT
+    | IBus.Capabilite.AUXILIARY_TEXT
     | IBus.Capabilite.LOOKUP_TABLE
     | IBus.Capabilite.PROPERTY
 )
@@ -140,6 +157,15 @@ if missing:
         f"IBus properties were not registered: {missing}; active engine: {active_name}; "
         f"processes: {engine_processes}; payload: {payload}"
     )
+
+initial_properties = property_snapshots[-1]
+if not (
+    initial_properties["InputMode"] == ("英", IBus.PropState.UNCHECKED)
+    and initial_properties["Scheme"][0] == "五笔"
+    and initial_properties["Scheme.Wubi"][1] == IBus.PropState.CHECKED
+    and initial_properties["Scheme.Quanpin"][1] == IBus.PropState.UNCHECKED
+):
+    raise RuntimeError(f"Persisted mode/scheme were not reflected in initial IBus properties: {initial_properties}")
 
 context.property_activate("Scheme.Japanese", IBus.PropState.CHECKED)
 context.property_activate("InputMode", IBus.PropState.CHECKED)
@@ -172,6 +198,40 @@ if not all(
     for value in ("mode=ime", "scheme=japanese", "page-size=3", "future-option=preserve-me")
 ):
     raise RuntimeError("IBus property changes were not persisted through SettingsStore.")
+
+auxiliary_messages = []
+warning_loop = GLib.MainLoop()
+
+
+def auxiliary_updated(_connection, _sender, _path, _interface, _signal, parameters):
+    serialized = parameters.get_child_value(0).get_variant()
+    message = IBus.Serializable.deserialize_object(serialized).get_text()
+    visible = parameters.get_child_value(1).get_boolean()
+    auxiliary_messages.append((message, visible))
+    if visible:
+        warning_loop.quit()
+
+
+connection.signal_subscribe(
+    None,
+    "org.freedesktop.IBus.InputContext",
+    "UpdateAuxiliaryText",
+    context.get_object_path(),
+    None,
+    Gio.DBusSignalFlags.NONE,
+    auxiliary_updated,
+)
+settings_path.unlink()
+settings_path.mkdir()
+context.property_activate("Scheme.Quanpin", IBus.PropState.CHECKED)
+GLib.timeout_add_seconds(5, warning_loop.quit)
+warning_loop.run()
+
+expected_warning = "Unable to preserve the existing input settings."
+if (expected_warning, True) not in auxiliary_messages:
+    raise RuntimeError(f"A settings save failure did not publish the expected warning: {auxiliary_messages}")
+if not context.process_key_event(IBus.KEY_n, 0, 0):
+    raise RuntimeError("A settings save failure interrupted subsequent input.")
 print("Registered IBus properties: " + ", ".join(sorted(expected)))
 PYTHON
 then
