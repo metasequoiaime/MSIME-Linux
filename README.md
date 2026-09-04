@@ -33,7 +33,7 @@ To build the tested core without IBus headers, use `-DMETASEQUOIA_IME_BUILD_IBUS
 ./scripts/install.sh
 ```
 
-The installer puts the engine in `~/.local/libexec`, the IBus component descriptor in `~/.local/share/ibus/component`, and the dictionary in `~/.local/share/metasequoiaime`. Restart IBus, then select “Metasequoia IME” in the desktop input-source settings.
+The installer puts the engine in `~/.local/libexec`, and installs the IBus component descriptor and dictionary under `${XDG_DATA_HOME:-$HOME/.local/share}`. Restart IBus, then select “Metasequoia IME” in the desktop input-source settings.
 
 To uninstall the current-user installation, remove the engine plus the component and dictionary under `${XDG_DATA_HOME:-$HOME/.local/share}`, then restart IBus:
 
