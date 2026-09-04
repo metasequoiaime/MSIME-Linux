@@ -202,6 +202,13 @@ int main()
     saved.mixed_english_minimum_prefix = 4;
     saved.mixed_emoji_candidates_enabled = true;
     saved.mixed_kaomoji_candidates_enabled = true;
+    saved.clipboard_history_enabled = true;
+    saved.voice.enabled = true;
+    saved.voice.provider = "openai";
+    saved.voice.endpoint = "https://voice.example.test/v1/audio/transcriptions";
+    saved.voice.model = "whisper-1";
+    saved.voice.language = "zh";
+    saved.voice.token = "voice-settings-round-trip-secret";
     saved.online.cloud_candidates_enabled = false;
     saved.online.ai.enabled = true;
     saved.online.ai.provider = AiProvider::OpenAI;
@@ -245,7 +252,11 @@ int main()
                 round_trip.mixed_english_candidates_enabled == saved.mixed_english_candidates_enabled &&
                 round_trip.mixed_english_minimum_prefix == saved.mixed_english_minimum_prefix &&
                 round_trip.mixed_emoji_candidates_enabled == saved.mixed_emoji_candidates_enabled &&
-                round_trip.mixed_kaomoji_candidates_enabled == saved.mixed_kaomoji_candidates_enabled,
+                round_trip.mixed_kaomoji_candidates_enabled == saved.mixed_kaomoji_candidates_enabled &&
+                round_trip.clipboard_history_enabled == saved.clipboard_history_enabled &&
+                round_trip.voice.enabled == saved.voice.enabled && round_trip.voice.provider == saved.voice.provider &&
+                round_trip.voice.endpoint == saved.voice.endpoint && round_trip.voice.model == saved.voice.model &&
+                round_trip.voice.language == saved.voice.language && round_trip.voice.token.empty(),
             "Settings did not survive a round trip.");
     require(round_trip.online.cloud_candidates_enabled == saved.online.cloud_candidates_enabled &&
                 round_trip.online.ai.enabled == saved.online.ai.enabled &&
@@ -264,7 +275,8 @@ int main()
             "Non-secret online settings did not survive a round trip or a token leaked through the key file.");
     const std::string saved_contents = read_file(store.config_path());
     require(saved_contents.find(saved.online.ai.token) == std::string::npos &&
-                saved_contents.find(saved.online.translation_token) == std::string::npos,
+                saved_contents.find(saved.online.translation_token) == std::string::npos &&
+                saved_contents.find(saved.voice.token) == std::string::npos,
             "An API token was written to config.ini.");
 
     const auto config_path = store.config_path();
@@ -499,11 +511,13 @@ int main()
             "Settings and credentials could not be saved together.");
     const InputSettings hydrated = store.load(secrets, &secret_diagnostic);
     require(hydrated.online.ai.enabled && hydrated.online.ai.token == saved.online.ai.token &&
-                hydrated.online.translation_token == saved.online.translation_token && secret_diagnostic.empty(),
+                hydrated.online.translation_token == saved.online.translation_token && hydrated.voice.enabled &&
+                hydrated.voice.token == saved.voice.token && secret_diagnostic.empty(),
             "Credentials were not restored from the secret store.");
     const std::string hydrated_contents = read_file(config_path);
     require(hydrated_contents.find(saved.online.ai.token) == std::string::npos &&
                 hydrated_contents.find(saved.online.translation_token) == std::string::npos &&
+                hydrated_contents.find(saved.voice.token) == std::string::npos &&
                 secret_diagnostic.find(saved.online.ai.token) == std::string::npos &&
                 secret_diagnostic.find(saved.online.translation_token) == std::string::npos,
             "A credential appeared in config.ini or a diagnostic.");
