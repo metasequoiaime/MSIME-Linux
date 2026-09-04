@@ -26,6 +26,7 @@ test -x "$HOME/.local/libexec/metasequoia-ime-ibus"
 test -x "$HOME/.local/libexec/metasequoia-ime-dictionary-replay"
 test -f "$XDG_DATA_HOME/ibus/component/metasequoiaime.xml"
 test -f "$data_dir/msime.db"
+test -f "$data_dir/others.db"
 test -f "$data_dir/helpcodes/helpcode.txt"
 test -f "$data_dir/helpcodes/zrm_helpcode_big_unique.txt"
 test -f "$data_dir/helpcodes/shouyou2_0_helpcode.txt"
@@ -56,6 +57,18 @@ main_database.execute(
 )
 main_database.commit()
 main_database.close()
+
+with sqlite3.connect(data_dir / "others.db") as others_database:
+    emoji = others_database.execute(
+        "SELECT emoji FROM emoji_pinyin WHERE key='xiaolian' ORDER BY sort_order LIMIT 1"
+    ).fetchone()
+    kaomoji = others_database.execute(
+        "SELECT kaomoji FROM kaomoji WHERE pinyin='haixiu' ORDER BY sort_order LIMIT 1"
+    ).fetchone()
+if emoji != ("😀",) or kaomoji != ("(*/ω＼*)",):
+    raise SystemExit(
+        f"installed expressive dictionary was incomplete: emoji={emoji}, kaomoji={kaomoji}"
+    )
 
 user_database = sqlite3.connect(data_dir / "msime_user.db")
 user_database.execute(
@@ -161,6 +174,9 @@ with sqlite3.connect(data_dir / "msime_user.db") as user_database:
         "INSERT INTO user_dictionary_operations(dictionary,key,value,operation,weight) "
         "VALUES('pinyin','!','invalid replay row','upsert',1)"
     )
+with sqlite3.connect(data_dir / "others.db") as others_database:
+    others_database.execute("CREATE TABLE failed_upgrade_marker(value TEXT)")
+    others_database.execute("INSERT INTO failed_upgrade_marker VALUES('preserve-live-others')")
 PYTHON
 )
 
@@ -196,4 +212,8 @@ if quick_phrase != ("user@example.com", 20) or deleted_shipped_phrase != 0:
         "failed dictionary replay replaced live quick-phrase state: "
         f"upsert={quick_phrase}, deleted_count={deleted_shipped_phrase}"
     )
+with sqlite3.connect(data_dir / "others.db") as others_database:
+    marker = others_database.execute("SELECT value FROM failed_upgrade_marker").fetchone()
+if marker != ("preserve-live-others",):
+    raise SystemExit(f"failed dictionary replay replaced live others.db: {marker}")
 PYTHON

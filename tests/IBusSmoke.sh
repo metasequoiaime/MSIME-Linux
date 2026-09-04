@@ -40,6 +40,7 @@ mkdir -p "$HOME" "$XDG_CACHE_HOME" "$XDG_CONFIG_HOME" "$XDG_RUNTIME_DIR" "$IBUS_
     "$METASEQUOIA_IME_DATA_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"
 cp --reflink=auto "$source_data_dir/msime.db" "$METASEQUOIA_IME_DATA_DIR/msime.db"
+cp --reflink=auto "$source_data_dir/others.db" "$METASEQUOIA_IME_DATA_DIR/others.db"
 ln -s "$source_helpcode_dir" "$METASEQUOIA_IME_DATA_DIR/helpcodes"
 sed "s|<exec>.*</exec>|<exec>$engine --ibus</exec>|" "$component" >"$IBUS_COMPONENT_PATH/metasequoiaime.xml"
 mkdir -p "$XDG_CONFIG_HOME/metasequoiaime"
@@ -496,6 +497,66 @@ if not any(first_candidate == "永远滴神" and visible for first_candidate, vi
 if not context.process_key_event(IBus.KEY_space, 0, 0):
     raise RuntimeError("Space did not select the quick-phrase candidate.")
 wait_for_commit("永远滴神")
+
+
+lookup_updates.clear()
+committed_text.clear()
+if not context.process_key_event(IBus.KEY_E, 0, IBus.ModifierType.SHIFT_MASK):
+    raise RuntimeError("Shift+E did not enter Emoji mode.")
+for keyval in (
+    IBus.KEY_x, IBus.KEY_i, IBus.KEY_a, IBus.KEY_o,
+    IBus.KEY_l, IBus.KEY_i, IBus.KEY_a, IBus.KEY_n,
+):
+    if not context.process_key_event(keyval, 0, 0):
+        raise RuntimeError("Emoji full-pinyin input was not handled.")
+
+
+def emoji_candidate_observed():
+    if any(first_candidate == "😀" and visible for first_candidate, visible in lookup_updates):
+        emoji_loop.quit()
+        return GLib.SOURCE_REMOVE
+    return GLib.SOURCE_CONTINUE
+
+
+emoji_loop = GLib.MainLoop()
+GLib.timeout_add(20, emoji_candidate_observed)
+GLib.timeout_add_seconds(5, emoji_loop.quit)
+emoji_loop.run()
+if not any(first_candidate == "😀" and visible for first_candidate, visible in lookup_updates):
+    raise RuntimeError(f"Emoji mode did not publish the xiaolian candidate: {lookup_updates}")
+if not context.process_key_event(IBus.KEY_space, 0, 0):
+    raise RuntimeError("Space did not select the Emoji candidate.")
+wait_for_commit("😀")
+
+
+lookup_updates.clear()
+committed_text.clear()
+if not context.process_key_event(IBus.KEY_M, 0, IBus.ModifierType.SHIFT_MASK):
+    raise RuntimeError("Shift+M did not enter kaomoji mode.")
+for keyval in (
+    IBus.KEY_h, IBus.KEY_a, IBus.KEY_i,
+    IBus.KEY_x, IBus.KEY_i, IBus.KEY_u,
+):
+    if not context.process_key_event(keyval, 0, 0):
+        raise RuntimeError("Kaomoji full-pinyin input was not handled.")
+
+
+def kaomoji_candidate_observed():
+    if any(first_candidate == "(*/ω＼*)" and visible for first_candidate, visible in lookup_updates):
+        kaomoji_loop.quit()
+        return GLib.SOURCE_REMOVE
+    return GLib.SOURCE_CONTINUE
+
+
+kaomoji_loop = GLib.MainLoop()
+GLib.timeout_add(20, kaomoji_candidate_observed)
+GLib.timeout_add_seconds(5, kaomoji_loop.quit)
+kaomoji_loop.run()
+if not any(first_candidate == "(*/ω＼*)" and visible for first_candidate, visible in lookup_updates):
+    raise RuntimeError(f"Kaomoji mode did not publish the haixiu candidate: {lookup_updates}")
+if not context.process_key_event(IBus.KEY_space, 0, 0):
+    raise RuntimeError("Space did not select the kaomoji candidate.")
+wait_for_commit("(*/ω＼*)")
 
 
 preedit_updates.clear()

@@ -138,6 +138,12 @@ int main()
         database.execute("CREATE TABLE quick_parases(key TEXT,value TEXT,weight INTEGER)");
         database.execute("INSERT INTO quick_parases VALUES('ab','控制器短语一',20)");
         database.execute("INSERT INTO quick_parases VALUES('aa','控制器短语二',10)");
+        Database others_database(data_directory / "others.db");
+        others_database.execute("CREATE TABLE emoji_pinyin(key TEXT,emoji TEXT,sort_order INTEGER)");
+        others_database.execute("INSERT INTO emoji_pinyin VALUES('xiaolian','😀',10)");
+        others_database.execute(
+            "CREATE TABLE kaomoji(pinyin TEXT,jianpin TEXT,kaomoji TEXT,sort_order INTEGER)");
+        others_database.execute("INSERT INTO kaomoji VALUES('haixiu','hx','(*/ω＼*)',10)");
 
         InputController controller(SchemeType::Quanpin, 3);
         require(controller.mode() == InputMode::Ime, "The controller did not start in IME mode.");
@@ -607,6 +613,49 @@ int main()
         require(disabled_quick_phrase_controller.handle_key(quick_phrase_prefix).handled &&
                     disabled_quick_phrase_controller.local_input_mode() == LocalInputMode::None,
                 "A disabled quick-phrase mode intercepted Shift+K.");
+
+        InputController expressive_controller(SchemeType::Quanpin, 3);
+        FrontendKeyEvent emoji_prefix{FrontendKey::Character, 'E'};
+        emoji_prefix.shift_only = true;
+        require(expressive_controller.handle_key(emoji_prefix).handled &&
+                    expressive_controller.local_input_mode() == LocalInputMode::Emoji &&
+                    expressive_controller.preedit() == "E",
+                "The controller did not enter Emoji mode from Shift+E.");
+        type(expressive_controller, "xiaolian");
+        require(expressive_controller.candidates().size() == 1 &&
+                    expressive_controller.candidates().front().word == "😀",
+                "The controller did not expose the Emoji candidate.");
+        const auto emoji_space = expressive_controller.handle_key(key(FrontendKey::Space));
+        require(emoji_space.handled && emoji_space.commit == "😀" &&
+                    expressive_controller.local_input_mode() == LocalInputMode::None,
+                "Space did not commit and leave Emoji mode.");
+
+        FrontendKeyEvent kaomoji_prefix{FrontendKey::Character, 'M'};
+        kaomoji_prefix.shift_only = true;
+        require(expressive_controller.handle_key(kaomoji_prefix).handled &&
+                    expressive_controller.local_input_mode() == LocalInputMode::Kaomoji &&
+                    expressive_controller.preedit() == "M",
+                "The controller did not enter kaomoji mode from Shift+M.");
+        type(expressive_controller, "haixiu");
+        require(expressive_controller.candidates().size() == 1 &&
+                    expressive_controller.candidates().front().word == "(*/ω＼*)",
+                "The controller did not expose the kaomoji candidate.");
+        const auto kaomoji_space = expressive_controller.handle_key(key(FrontendKey::Space));
+        require(kaomoji_space.handled && kaomoji_space.commit == "(*/ω＼*)" &&
+                    expressive_controller.local_input_mode() == LocalInputMode::None,
+                "Space did not commit and leave kaomoji mode.");
+
+        InputOptions disabled_expressive_options;
+        disabled_expressive_options.local_modes.emoji = false;
+        disabled_expressive_options.local_modes.kaomoji = false;
+        InputController disabled_expressive_controller(SchemeType::Quanpin, disabled_expressive_options);
+        require(disabled_expressive_controller.handle_key(emoji_prefix).handled &&
+                    disabled_expressive_controller.local_input_mode() == LocalInputMode::None,
+                "A disabled Emoji mode intercepted Shift+E.");
+        disabled_expressive_controller.handle_key(key(FrontendKey::Escape));
+        require(disabled_expressive_controller.handle_key(kaomoji_prefix).handled &&
+                    disabled_expressive_controller.local_input_mode() == LocalInputMode::None,
+                "A disabled kaomoji mode intercepted Shift+M.");
 
         InputOptions full_width_options;
         full_width_options.character_width = CharacterWidth::Full;
