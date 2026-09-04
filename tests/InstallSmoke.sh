@@ -41,6 +41,11 @@ from pathlib import Path
 
 data_dir = Path(sys.argv[1])
 main_database = sqlite3.connect(data_dir / "msime.db")
+seeded_quick_phrase = main_database.execute(
+    "SELECT value,weight FROM quick_parases WHERE key='yyds'"
+).fetchone()
+if seeded_quick_phrase != ("永远滴神", 10):
+    raise SystemExit(f"installed dictionary did not contain the shipped quick phrase: {seeded_quick_phrase}")
 original_weight = main_database.execute(
     "SELECT weight FROM tbl_1_n WHERE key='ni' AND value='你'"
 ).fetchone()[0]
@@ -72,6 +77,14 @@ user_database.execute(
     "VALUES('pinyin','ni','你','upsert',?)",
     (learned_weight,),
 )
+user_database.execute(
+    "INSERT INTO user_dictionary_operations(dictionary,key,value,operation,weight) "
+    "VALUES('quick','mail','user@example.com','upsert',20)"
+)
+user_database.execute(
+    "INSERT INTO user_dictionary_operations(dictionary,key,value,operation,weight) "
+    "VALUES('quick','yyds','永远滴神','delete',0)"
+)
 user_database.commit()
 user_database.close()
 PYTHON
@@ -93,9 +106,20 @@ with sqlite3.connect(data_dir / "msime.db") as database:
     actual_weight = database.execute(
         "SELECT weight FROM tbl_1_n WHERE key='ni' AND value='你'"
     ).fetchone()[0]
+    replayed_quick_phrase = database.execute(
+        "SELECT weight FROM quick_parases WHERE key='mail' AND value='user@example.com'"
+    ).fetchone()
+    deleted_shipped_phrase = database.execute(
+        "SELECT COUNT(*) FROM quick_parases WHERE key='yyds' AND value='永远滴神'"
+    ).fetchone()[0]
 if actual_weight != expected_weight:
     raise SystemExit(
         f"journal replay lost learned weight: expected {expected_weight}, got {actual_weight}"
+    )
+if replayed_quick_phrase != (20,) or deleted_shipped_phrase != 0:
+    raise SystemExit(
+        "quick-phrase journal replay did not preserve user upserts and deletions: "
+        f"upsert={replayed_quick_phrase}, deleted_count={deleted_shipped_phrase}"
     )
 PYTHON
 
@@ -127,6 +151,11 @@ with sqlite3.connect(data_dir / "msime.db") as database:
     print(database.execute(
         "SELECT weight FROM tbl_1_n WHERE key='ni' AND value='你'"
     ).fetchone()[0])
+    quick_phrase = database.execute(
+        "SELECT value,weight FROM quick_parases WHERE key='mail'"
+    ).fetchone()
+    if quick_phrase != ("user@example.com", 20):
+        raise SystemExit(f"quick phrase was missing before failed-upgrade coverage: {quick_phrase}")
 with sqlite3.connect(data_dir / "msime_user.db") as user_database:
     user_database.execute(
         "INSERT INTO user_dictionary_operations(dictionary,key,value,operation,weight) "
@@ -151,9 +180,20 @@ with sqlite3.connect(data_dir / "msime.db") as database:
     actual_weight = database.execute(
         "SELECT weight FROM tbl_1_n WHERE key='ni' AND value='你'"
     ).fetchone()[0]
+    quick_phrase = database.execute(
+        "SELECT value,weight FROM quick_parases WHERE key='mail'"
+    ).fetchone()
+    deleted_shipped_phrase = database.execute(
+        "SELECT COUNT(*) FROM quick_parases WHERE key='yyds' AND value='永远滴神'"
+    ).fetchone()[0]
 if actual_weight != expected_weight:
     raise SystemExit(
         "failed dictionary replay replaced the live database: "
         f"expected {expected_weight}, got {actual_weight}"
+    )
+if quick_phrase != ("user@example.com", 20) or deleted_shipped_phrase != 0:
+    raise SystemExit(
+        "failed dictionary replay replaced live quick-phrase state: "
+        f"upsert={quick_phrase}, deleted_count={deleted_shipped_phrase}"
     )
 PYTHON

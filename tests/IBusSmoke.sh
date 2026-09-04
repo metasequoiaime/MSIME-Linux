@@ -471,6 +471,33 @@ if not context.process_key_event(IBus.KEY_space, 0, 0):
 wait_for_commit(expected_date)
 
 
+lookup_updates.clear()
+committed_text.clear()
+if not context.process_key_event(IBus.KEY_K, 0, IBus.ModifierType.SHIFT_MASK):
+    raise RuntimeError("Shift+K did not enter quick-phrase mode.")
+for keyval in (IBus.KEY_y, IBus.KEY_y, IBus.KEY_d, IBus.KEY_s):
+    if not context.process_key_event(keyval, 0, 0):
+        raise RuntimeError("Quick-phrase code input was not handled.")
+
+
+def quick_phrase_candidate_observed():
+    if any(first_candidate == "永远滴神" and visible for first_candidate, visible in lookup_updates):
+        quick_phrase_loop.quit()
+        return GLib.SOURCE_REMOVE
+    return GLib.SOURCE_CONTINUE
+
+
+quick_phrase_loop = GLib.MainLoop()
+GLib.timeout_add(20, quick_phrase_candidate_observed)
+GLib.timeout_add_seconds(5, quick_phrase_loop.quit)
+quick_phrase_loop.run()
+if not any(first_candidate == "永远滴神" and visible for first_candidate, visible in lookup_updates):
+    raise RuntimeError(f"Quick-phrase mode did not publish the shipped yyds candidate: {lookup_updates}")
+if not context.process_key_event(IBus.KEY_space, 0, 0):
+    raise RuntimeError("Space did not select the quick-phrase candidate.")
+wait_for_commit("永远滴神")
+
+
 preedit_updates.clear()
 lookup_updates.clear()
 for keyval in (IBus.KEY_n, IBus.KEY_i, IBus.KEY_h, IBus.KEY_a, IBus.KEY_o, IBus.KEY_F):

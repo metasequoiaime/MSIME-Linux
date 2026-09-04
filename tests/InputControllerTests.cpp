@@ -135,6 +135,9 @@ int main()
         database.execute("INSERT INTO tbl_1_x VALUES('xi', 'x', '丁频', 70)");
         database.execute("INSERT INTO tbl_1_x VALUES('xi', 'x', '戊频', 60)");
         database.execute("INSERT INTO tbl_1_x VALUES('xi', 'x', '己频', 50)");
+        database.execute("CREATE TABLE quick_parases(key TEXT,value TEXT,weight INTEGER)");
+        database.execute("INSERT INTO quick_parases VALUES('ab','控制器短语一',20)");
+        database.execute("INSERT INTO quick_parases VALUES('aa','控制器短语二',10)");
 
         InputController controller(SchemeType::Quanpin, 3);
         require(controller.mode() == InputMode::Ime, "The controller did not start in IME mode.");
@@ -580,6 +583,30 @@ int main()
         require(disabled_date_time_controller.handle_key(date_time_prefix).handled &&
                     disabled_date_time_controller.local_input_mode() == LocalInputMode::None,
                 "A disabled date/time mode intercepted Shift+T.");
+
+        InputController quick_phrase_controller(SchemeType::Quanpin, 3);
+        FrontendKeyEvent quick_phrase_prefix{FrontendKey::Character, 'K'};
+        quick_phrase_prefix.shift_only = true;
+        require(quick_phrase_controller.handle_key(quick_phrase_prefix).handled &&
+                    quick_phrase_controller.local_input_mode() == LocalInputMode::QuickPhrase &&
+                    quick_phrase_controller.preedit() == "K",
+                "The controller did not enter quick-phrase mode from Shift+K.");
+        const auto quick_phrase_query = quick_phrase_controller.handle_key({FrontendKey::Character, 'a'});
+        require(quick_phrase_query.handled && !quick_phrase_query.diagnostic.has_value() &&
+                    quick_phrase_controller.candidates().size() == 2 &&
+                    quick_phrase_controller.candidates().front().word == "控制器短语一",
+                "The controller did not expose ordered quick-phrase candidates.");
+        const auto quick_phrase_space = quick_phrase_controller.handle_key(key(FrontendKey::Space));
+        require(quick_phrase_space.handled && quick_phrase_space.commit == "控制器短语一" &&
+                    quick_phrase_controller.local_input_mode() == LocalInputMode::None,
+                "Space did not commit and leave quick-phrase mode.");
+
+        InputOptions disabled_quick_phrase_options;
+        disabled_quick_phrase_options.local_modes.quick_phrase = false;
+        InputController disabled_quick_phrase_controller(SchemeType::Quanpin, disabled_quick_phrase_options);
+        require(disabled_quick_phrase_controller.handle_key(quick_phrase_prefix).handled &&
+                    disabled_quick_phrase_controller.local_input_mode() == LocalInputMode::None,
+                "A disabled quick-phrase mode intercepted Shift+K.");
 
         InputOptions full_width_options;
         full_width_options.character_width = CharacterWidth::Full;
