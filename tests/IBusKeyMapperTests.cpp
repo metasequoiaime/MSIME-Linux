@@ -104,12 +104,17 @@ int main()
 
     const auto lower = translate_ibus_key(IBUS_a, 0);
     require(lower.disposition == IBusKeyDisposition::Dispatch && lower.event.key == FrontendKey::Character &&
-                lower.event.character == 'a',
+                lower.event.character == 'a' && !lower.event.shift_only,
             "A lowercase composition character mapped incorrectly.");
     const auto upper = translate_ibus_key(IBUS_Z, IBUS_SHIFT_MASK);
     require(upper.disposition == IBusKeyDisposition::Dispatch && upper.event.key == FrontendKey::Character &&
-                upper.event.character == 'Z',
+                upper.event.character == 'Z' && upper.event.shift_only,
             "An uppercase composition character mapped incorrectly.");
+    const auto caps_lock_upper = translate_ibus_key(IBUS_U, IBUS_LOCK_MASK);
+    require(caps_lock_upper.disposition == IBusKeyDisposition::Dispatch &&
+                caps_lock_upper.event.key == FrontendKey::Character &&
+                caps_lock_upper.event.character == 'U' && !caps_lock_upper.event.shift_only,
+            "Caps Lock was mistaken for the Shift-only local-mode modifier.");
     require_punctuation(IBUS_apostrophe, 0, '\'', "Apostrophe did not reach punctuation arbitration.");
     require_punctuation(IBUS_comma, 0, ',', "Comma did not reach punctuation arbitration.");
     require_punctuation(IBUS_period, 0, '.', "Period did not reach punctuation arbitration.");
@@ -117,7 +122,11 @@ int main()
     require_punctuation(IBUS_equal, 0, '=', "Equals did not reach punctuation arbitration.");
     require_punctuation(IBUS_bracketleft, 0, '[', "Left bracket did not reach punctuation arbitration.");
     require_punctuation(IBUS_bracketright, 0, ']', "Right bracket did not reach punctuation arbitration.");
-    require_punctuation(IBUS_exclam, IBUS_SHIFT_MASK, '!', "Shifted punctuation mapped incorrectly.");
+    const auto shifted_punctuation = translate_ibus_key(IBUS_exclam, IBUS_SHIFT_MASK);
+    require(shifted_punctuation.disposition == IBusKeyDisposition::Dispatch &&
+                shifted_punctuation.event.key == FrontendKey::Punctuation &&
+                shifted_punctuation.event.character == '!' && shifted_punctuation.event.shift_only,
+            "Shifted punctuation lost its local-mode modifier.");
 
     const auto keypad_decimal = translate_ibus_key(IBUS_KP_Decimal, 0);
     require(keypad_decimal.disposition == IBusKeyDisposition::Forward && keypad_decimal.event.host_shortcut,
@@ -125,8 +134,13 @@ int main()
 
     const auto digit = translate_ibus_key(IBUS_9, 0);
     require(digit.disposition == IBusKeyDisposition::Dispatch && digit.event.key == FrontendKey::Digit &&
-                digit.event.digit == 9,
+                digit.event.digit == 9 && !digit.event.shift_only,
             "A main-keyboard digit mapped incorrectly.");
+    const auto shifted_digit = translate_ibus_key(IBUS_1, IBUS_SHIFT_MASK);
+    require(shifted_digit.disposition == IBusKeyDisposition::Dispatch &&
+                shifted_digit.event.key == FrontendKey::Digit && shifted_digit.event.digit == 1 &&
+                shifted_digit.event.shift_only,
+            "A Shift-only digit lost the Unicode candidate-selection modifier.");
     const auto keypad_digit = translate_ibus_key(IBUS_KP_1, 0);
     require(keypad_digit.disposition == IBusKeyDisposition::Dispatch &&
                 keypad_digit.event.key == FrontendKey::Digit && keypad_digit.event.digit == 1,

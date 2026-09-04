@@ -49,13 +49,16 @@ struct FrontendKeyEvent
     unsigned digit = 0;
     bool host_shortcut = false;
     std::optional<char32_t> preceding_character;
+    bool shift_only = false;
 
     FrontendKeyEvent() = default;
     FrontendKeyEvent(FrontendKey key_value, char character_value = 0, unsigned digit_value = 0,
                      bool host_shortcut_value = false,
-                     std::optional<char32_t> preceding_character_value = std::nullopt)
+                     std::optional<char32_t> preceding_character_value = std::nullopt,
+                     bool shift_only_value = false)
         : key(key_value), character(character_value), digit(digit_value),
-          host_shortcut(host_shortcut_value), preceding_character(preceding_character_value)
+          host_shortcut(host_shortcut_value), preceding_character(preceding_character_value),
+          shift_only(shift_only_value)
     {
     }
 };
@@ -93,6 +96,7 @@ struct InputOptions
     FrequencyAdjustmentMode frequency_adjustment_mode = FrequencyAdjustmentMode::Disabled;
     int frequency_trigger_count = 1;
     int frequency_linear_step = 1;
+    LocalModeOptions local_modes;
     std::function<std::chrono::steady_clock::time_point()> now;
 };
 
@@ -132,6 +136,8 @@ class InputController
     FrequencyAdjustmentMode frequency_adjustment_mode() const;
     int frequency_trigger_count() const;
     int frequency_linear_step() const;
+    LocalInputMode local_input_mode() const;
+    bool unicode_mode_enabled() const;
     SchemeType scheme() const;
     bool has_composition() const;
     const std::string &preedit() const;

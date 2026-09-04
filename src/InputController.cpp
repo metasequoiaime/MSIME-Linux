@@ -19,6 +19,13 @@ bool valid_preedit_style(PreeditStyle style)
 {
     return style == PreeditStyle::Raw || style == PreeditStyle::Pinyin || style == PreeditStyle::Hidden;
 }
+
+unsigned shifted_digit_symbol(char character)
+{
+    constexpr char symbols[] = "!@#$%^&*(";
+    const auto found = std::find(std::begin(symbols), std::end(symbols) - 1, character);
+    return found == std::end(symbols) - 1 ? 0 : static_cast<unsigned>(found - std::begin(symbols) + 1);
+}
 } // namespace
 
 ControllerResult::ControllerResult(bool handled_value, std::optional<std::string> commit_value,
@@ -62,6 +69,7 @@ InputController::InputController(SchemeType scheme_type, InputOptions options)
     }
     session_.set_quanpin_helpcode_enabled(quanpin_helpcode_enabled_);
     session_.set_shuangpin_helpcode_enabled(shuangpin_helpcode_enabled_);
+    session_.set_local_mode_options(options.local_modes);
     if (!session_.set_frequency_adjustment(
             {frequency_adjustment_mode_, frequency_trigger_count_, frequency_linear_step_}))
     {
@@ -106,13 +114,30 @@ ControllerResult InputController::handle_key(const FrontendKeyEvent &event)
         switch (event.key)
         {
         case FrontendKey::Character:
-            result = session_.handle_character(event.character);
+            result = session_.handle_character(event.character, event.shift_only);
             if (result.handled)
             {
                 reset_highlight();
             }
             return result;
         case FrontendKey::Punctuation:
+            if (local_input_mode() != LocalInputMode::None)
+            {
+                if (event.shift_only)
+                {
+                    const unsigned selection = shifted_digit_symbol(event.character);
+                    if (selection != 0)
+                    {
+                        return select_page_candidate(selection - 1);
+                    }
+                }
+                result = session_.handle_character(event.character, event.shift_only);
+                if (result.handled)
+                {
+                    reset_highlight();
+                }
+                return result;
+            }
             if (event.character == '\'' && has_composition())
             {
                 result = session_.handle_character(event.character);
@@ -181,6 +206,15 @@ ControllerResult InputController::handle_key(const FrontendKeyEvent &event)
             }
             break;
         case FrontendKey::Digit:
+            if (local_input_mode() != LocalInputMode::None && !event.shift_only)
+            {
+                result = session_.handle_character(static_cast<char>('0' + event.digit));
+                if (result.handled)
+                {
+                    reset_highlight();
+                }
+                return result;
+            }
             if (!has_composition())
             {
                 break;
@@ -426,6 +460,16 @@ int InputController::frequency_trigger_count() const
 int InputController::frequency_linear_step() const
 {
     return frequency_linear_step_;
+}
+
+LocalInputMode InputController::local_input_mode() const
+{
+    return session_.local_input_mode();
+}
+
+bool InputController::unicode_mode_enabled() const
+{
+    return session_.local_mode_options().unicode;
 }
 
 SchemeType InputController::scheme() const

@@ -84,7 +84,8 @@ int main()
                 defaults.quanpin_helpcode_schema == "lantian" && defaults.shuangpin_helpcode_enabled &&
                 defaults.shuangpin_helpcode_schema == "lantian" &&
                 defaults.frequency_adjustment_mode == FrequencyAdjustmentMode::Promote &&
-                defaults.frequency_trigger_count == 1 && defaults.frequency_linear_step == 1,
+                defaults.frequency_trigger_count == 1 && defaults.frequency_linear_step == 1 &&
+                defaults.unicode_mode_enabled,
             "Missing settings did not use defaults.");
     require(warning.empty(), "A missing optional settings file produced a warning.");
 
@@ -108,6 +109,7 @@ int main()
     saved.frequency_adjustment_mode = FrequencyAdjustmentMode::Halve;
     saved.frequency_trigger_count = 3;
     saved.frequency_linear_step = 4;
+    saved.unicode_mode_enabled = false;
     std::string error;
     require(store.save(saved, &error) && error.empty(), "Valid settings could not be saved.");
     const InputSettings round_trip = store.load(&warning);
@@ -128,7 +130,8 @@ int main()
                 round_trip.shuangpin_helpcode_schema == saved.shuangpin_helpcode_schema &&
                 round_trip.frequency_adjustment_mode == saved.frequency_adjustment_mode &&
                 round_trip.frequency_trigger_count == saved.frequency_trigger_count &&
-                round_trip.frequency_linear_step == saved.frequency_linear_step,
+                round_trip.frequency_linear_step == saved.frequency_linear_step &&
+                round_trip.unicode_mode_enabled == saved.unicode_mode_enabled,
             "Settings did not survive a round trip.");
 
     const auto config_path = store.config_path();
@@ -153,6 +156,7 @@ int main()
                "frequency-adjustment=linear\n"
                "frequency-trigger-count=6\n"
                "frequency-linear-step=7\n"
+               "unicode-mode=false\n"
                "future-option=keep-me\n"
                "\n"
                "[future]\n"
@@ -179,6 +183,7 @@ int main()
     updated.frequency_adjustment_mode = FrequencyAdjustmentMode::Pin;
     updated.frequency_trigger_count = 8;
     updated.frequency_linear_step = 9;
+    updated.unicode_mode_enabled = true;
     require(store.save(updated, &error), "Existing settings could not be replaced.");
     require(inode(config_path) != original_inode, "The settings file was modified in place instead of atomically replaced.");
     const std::string preserved = read_file(config_path);
@@ -211,7 +216,8 @@ int main()
                "shuangpin-helpcode-schema=unsupported\n"
                "frequency-adjustment=unexpected\n"
                "frequency-trigger-count=0\n"
-               "frequency-linear-step=11\n");
+               "frequency-linear-step=11\n"
+               "unicode-mode=unexpected\n");
     const InputSettings invalid = store.load(&warning);
     require(invalid.mode == InputMode::Ime && invalid.scheme == SchemeType::Quanpin && invalid.page_size == 9 &&
                 invalid.punctuation_mode == PunctuationMode::Chinese &&
@@ -222,7 +228,8 @@ int main()
                 invalid.quanpin_helpcode_schema == "lantian" && invalid.shuangpin_helpcode_enabled &&
                 invalid.shuangpin_helpcode_schema == "lantian" &&
                 invalid.frequency_adjustment_mode == FrequencyAdjustmentMode::Promote &&
-                invalid.frequency_trigger_count == 1 && invalid.frequency_linear_step == 1,
+                invalid.frequency_trigger_count == 1 && invalid.frequency_linear_step == 1 &&
+                invalid.unicode_mode_enabled,
             "Invalid settings did not fall back field by field.");
     require(!warning.empty(), "Invalid settings did not produce a diagnostic warning.");
 

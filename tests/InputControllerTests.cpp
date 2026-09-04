@@ -22,6 +22,7 @@ using metasequoia::linux_ime::InputOptions;
 using metasequoia::linux_ime::PunctuationMode;
 using metasequoia::linux_ime::PreeditStyle;
 using metasequoia::FrequencyAdjustmentMode;
+using metasequoia::LocalInputMode;
 
 class Database
 {
@@ -84,10 +85,11 @@ FrontendKeyEvent key(FrontendKey value)
     return {value};
 }
 
-FrontendKeyEvent digit(unsigned value)
+FrontendKeyEvent digit(unsigned value, bool shift_only = false)
 {
     FrontendKeyEvent event{FrontendKey::Digit};
     event.digit = value;
+    event.shift_only = shift_only;
     return event;
 }
 
@@ -487,6 +489,73 @@ int main()
         require(!frequency_controller.candidates().empty() &&
                     frequency_controller.candidates().front().word == "己频",
                 "The controller did not expose the shared Engine's learned candidate order.");
+
+        InputController unicode_controller(SchemeType::Quanpin, 3);
+        FrontendKeyEvent unicode_prefix{FrontendKey::Character, 'U'};
+        unicode_prefix.shift_only = true;
+        require(unicode_controller.handle_key(unicode_prefix).handled &&
+                    unicode_controller.local_input_mode() == LocalInputMode::Unicode &&
+                    unicode_controller.preedit() == "U",
+                "The controller did not enter Unicode mode from Shift+U.");
+        require(unicode_controller.handle_key(digit(4)).handled,
+                "A bare digit did not extend Unicode composition.");
+        require(unicode_controller.handle_key({FrontendKey::Character, 'e'}).handled,
+                "A hexadecimal letter did not extend Unicode composition.");
+        require(unicode_controller.handle_key(digit(0)).handled &&
+                    unicode_controller.handle_key(digit(0)).handled &&
+                    unicode_controller.candidates().size() == 1 &&
+                    unicode_controller.candidates().front().word == "一",
+                "The controller did not expose the generated Unicode candidate.");
+        const auto unicode_space = unicode_controller.handle_key(key(FrontendKey::Space));
+        require(unicode_space.handled && unicode_space.commit == "一" &&
+                    unicode_controller.local_input_mode() == LocalInputMode::None,
+                "Space did not commit and leave Unicode mode.");
+
+        require(unicode_controller.handle_key(unicode_prefix).handled &&
+                    unicode_controller.handle_key(punctuation('+')).handled,
+                "The controller did not route the optional Unicode plus prefix.");
+        for (const char character : std::string("1f600"))
+        {
+            const auto result = character >= '0' && character <= '9'
+                ? unicode_controller.handle_key(digit(static_cast<unsigned>(character - '0')))
+                : unicode_controller.handle_key({FrontendKey::Character, character});
+            require(result.handled, "The controller rejected Unicode hexadecimal input.");
+        }
+        const auto unicode_shift_digit = unicode_controller.handle_key(digit(1, true));
+        require(unicode_shift_digit.handled && unicode_shift_digit.commit == "😀" &&
+                    unicode_controller.local_input_mode() == LocalInputMode::None,
+                "Shift+1 did not select the Unicode candidate.");
+
+        require(unicode_controller.handle_key(unicode_prefix).handled,
+                "The controller could not re-enter Unicode mode for shifted punctuation selection.");
+        for (const char character : std::string("4e00"))
+        {
+            const auto result = character >= '0' && character <= '9'
+                ? unicode_controller.handle_key(digit(static_cast<unsigned>(character - '0')))
+                : unicode_controller.handle_key({FrontendKey::Character, character});
+            require(result.handled, "The controller rejected Unicode input before shifted punctuation selection.");
+        }
+        FrontendKeyEvent shifted_exclamation = punctuation('!');
+        shifted_exclamation.shift_only = true;
+        const auto unicode_shift_symbol = unicode_controller.handle_key(shifted_exclamation);
+        require(unicode_shift_symbol.handled && unicode_shift_symbol.commit == "一" &&
+                    unicode_controller.local_input_mode() == LocalInputMode::None,
+                "A physical Shift+1 key symbol did not select the Unicode candidate.");
+
+        require(unicode_controller.handle_key(unicode_prefix).handled,
+                "The controller could not re-enter Unicode mode for invalid-input handling.");
+        const std::string unicode_preedit = unicode_controller.preedit();
+        require(unicode_controller.handle_key(punctuation('?')).handled &&
+                    unicode_controller.preedit() == unicode_preedit,
+                "Invalid Unicode punctuation leaked to the application or changed preedit.");
+        unicode_controller.handle_key(key(FrontendKey::Escape));
+
+        InputOptions disabled_unicode_options;
+        disabled_unicode_options.local_modes.unicode = false;
+        InputController disabled_unicode_controller(SchemeType::Quanpin, disabled_unicode_options);
+        require(disabled_unicode_controller.handle_key(unicode_prefix).handled &&
+                    disabled_unicode_controller.local_input_mode() == LocalInputMode::None,
+                "A disabled Unicode mode intercepted Shift+U.");
 
         InputOptions full_width_options;
         full_width_options.character_width = CharacterWidth::Full;

@@ -29,6 +29,7 @@ struct InputSettings
     FrequencyAdjustmentMode frequency_adjustment_mode = FrequencyAdjustmentMode::Promote;
     int frequency_trigger_count = 1;
     int frequency_linear_step = 1;
+    bool unicode_mode_enabled = true;
 };
 
 class SettingsStore

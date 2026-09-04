@@ -64,6 +64,7 @@ printf '%s\n' \
     'frequency-adjustment=pin' \
     'frequency-trigger-count=1' \
     'frequency-linear-step=2' \
+    'unicode-mode=true' \
     'future-option=preserve-me' \
     >"$XDG_CONFIG_HOME/metasequoiaime/config.ini"
 
@@ -289,6 +290,7 @@ def settings_saved():
             "frequency-adjustment=pin",
             "frequency-trigger-count=1",
             "frequency-linear-step=2",
+            "unicode-mode=true",
             "future-option=preserve-me",
         )
     )
@@ -329,6 +331,7 @@ if not all(
         "frequency-adjustment=pin",
         "frequency-trigger-count=1",
         "frequency-linear-step=2",
+        "unicode-mode=true",
         "future-option=preserve-me",
     )
 ):
@@ -410,6 +413,33 @@ def wait_for_commit(expected_text):
     commit_loop.run()
     if expected_text not in committed_text:
         raise RuntimeError(f"Expected IBus commit {expected_text!r}, received: {committed_text}")
+
+
+lookup_updates.clear()
+committed_text.clear()
+if not context.process_key_event(IBus.KEY_U, 0, IBus.ModifierType.SHIFT_MASK):
+    raise RuntimeError("Shift+U did not enter Unicode mode.")
+for keyval in (IBus.KEY_4, IBus.KEY_e, IBus.KEY_0, IBus.KEY_0):
+    if not context.process_key_event(keyval, 0, 0):
+        raise RuntimeError("Unicode hexadecimal input was not handled.")
+
+
+def unicode_candidate_observed():
+    if any(first_candidate == "一" and visible for first_candidate, visible in lookup_updates):
+        unicode_loop.quit()
+        return GLib.SOURCE_REMOVE
+    return GLib.SOURCE_CONTINUE
+
+
+unicode_loop = GLib.MainLoop()
+GLib.timeout_add(20, unicode_candidate_observed)
+GLib.timeout_add_seconds(5, unicode_loop.quit)
+unicode_loop.run()
+if not any(first_candidate == "一" and visible for first_candidate, visible in lookup_updates):
+    raise RuntimeError(f"Unicode mode did not publish its generated candidate: {lookup_updates}")
+if not context.process_key_event(IBus.KEY_space, 0, 0):
+    raise RuntimeError("Space did not select the Unicode candidate.")
+wait_for_commit("一")
 
 
 preedit_updates.clear()

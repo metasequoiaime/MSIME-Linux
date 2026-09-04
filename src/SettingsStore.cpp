@@ -479,6 +479,21 @@ InputSettings SettingsStore::load(std::string *warning) const
         g_clear_error(&value_error);
     }
 
+    if (g_key_file_has_key(key_file, kGroup, "unicode-mode", nullptr))
+    {
+        GError *value_error = nullptr;
+        const gboolean value = g_key_file_get_boolean(key_file, kGroup, "unicode-mode", &value_error);
+        if (value_error == nullptr)
+        {
+            settings.unicode_mode_enabled = value;
+        }
+        else
+        {
+            invalid = true;
+        }
+        g_clear_error(&value_error);
+    }
+
     g_key_file_unref(key_file);
     if (invalid)
     {
@@ -553,6 +568,7 @@ bool SettingsStore::save(const InputSettings &settings, std::string *error) cons
     g_key_file_set_string(key_file, kGroup, "frequency-adjustment", frequency_adjustment);
     g_key_file_set_integer(key_file, kGroup, "frequency-trigger-count", settings.frequency_trigger_count);
     g_key_file_set_integer(key_file, kGroup, "frequency-linear-step", settings.frequency_linear_step);
+    g_key_file_set_boolean(key_file, kGroup, "unicode-mode", settings.unicode_mode_enabled);
 
     gsize data_size = 0;
     GError *data_error = nullptr;
