@@ -75,7 +75,7 @@ int main()
         database.execute("INSERT INTO tbl_2_n VALUES('ni''hao', 'nh', '你好', 200)");
         database.execute("INSERT INTO tbl_2_n VALUES('ni''hao', 'nh', '拟好', 100)");
 
-        metasequoia::InputSession session(SchemeType::Quanpin);
+        metasequoia::InputSession session(SchemeType::Quanpin, true, true, true, false);
         type(session, "nihao");
         require(session.preedit() == "nihao", "The preedit did not mirror raw pinyin.");
         require(session.candidates().size() >= 2, "The engine did not return both candidates.");

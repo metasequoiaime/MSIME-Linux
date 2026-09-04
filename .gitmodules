@@ -1,7 +1,10 @@
 [submodule "vendor/MetasequoiaImeEngine"]
 	path = vendor/MetasequoiaImeEngine
-	url = https://github.com/houko/MetasequoiaImeEngine.git
-	branch = feat/shared-input-session
+	url = https://github.com/metasequoiaime/MSIME-Engine.git
+	branch = master
 [submodule "vendor/MetasequoiaImeDict"]
 	path = vendor/MetasequoiaImeDict
-	url = https://github.com/metasequoiaime/MetasequoiaImeDict.git
+	url = https://github.com/metasequoiaime/MSIME-Dict.git
+[submodule "vendor/MetasequoiaImeHelpCode"]
+	path = vendor/MetasequoiaImeHelpCode
+	url = https://github.com/metasequoiaime/MetasequoiaImeHelpCode.git
