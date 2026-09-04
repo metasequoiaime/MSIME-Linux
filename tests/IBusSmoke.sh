@@ -69,6 +69,8 @@ printf '%s\n' \
     'unicode-mode=true' \
     'mixed-english-candidates=true' \
     'mixed-english-minimum-prefix=2' \
+    'mixed-emoji-candidates=true' \
+    'mixed-kaomoji-candidates=true' \
     'future-option=preserve-me' \
     >"$XDG_CONFIG_HOME/metasequoiaime/config.ini"
 
@@ -124,6 +126,7 @@ property_snapshots = []
 property_updates = []
 preedit_updates = []
 lookup_updates = []
+lookup_candidate_updates = []
 loop = GLib.MainLoop()
 
 
@@ -166,10 +169,13 @@ def lookup_updated(_connection, _sender, _path, _interface, _signal, parameters)
     serialized = parameters.get_child_value(0).get_variant()
     table = IBus.Serializable.deserialize_object(serialized)
     first_candidate = None
-    if table.get_number_of_candidates() > 0:
+    candidate_count = table.get_number_of_candidates()
+    if candidate_count > 0:
         first_candidate = table.get_candidate(0).get_text()
+    candidates = tuple(table.get_candidate(index).get_text() for index in range(candidate_count))
     visible = parameters.get_child_value(1).get_boolean()
     lookup_updates.append((first_candidate, visible))
+    lookup_candidate_updates.append((candidates, visible))
 
 
 def latest_property(key):
@@ -297,6 +303,8 @@ def settings_saved():
             "unicode-mode=true",
             "mixed-english-candidates=true",
             "mixed-english-minimum-prefix=2",
+            "mixed-emoji-candidates=true",
+            "mixed-kaomoji-candidates=true",
             "future-option=preserve-me",
         )
     )
@@ -340,6 +348,8 @@ if not all(
         "unicode-mode=true",
         "mixed-english-candidates=true",
         "mixed-english-minimum-prefix=2",
+        "mixed-emoji-candidates=true",
+        "mixed-kaomoji-candidates=true",
         "future-option=preserve-me",
     )
 ):
@@ -421,6 +431,52 @@ def wait_for_commit(expected_text):
     commit_loop.run()
     if expected_text not in committed_text:
         raise RuntimeError(f"Expected IBus commit {expected_text!r}, received: {committed_text}")
+
+
+lookup_candidate_updates.clear()
+data_directory = Path(os.environ["METASEQUOIA_IME_DATA_DIR"])
+with sqlite3.connect(data_directory / "english.db") as database:
+    expected_mixed_english = database.execute(
+        "SELECT display FROM english_words WHERE word>=? AND word<? "
+        "ORDER BY CASE WHEN word=? THEN 0 ELSE 1 END,weight DESC,length(word),word,display LIMIT 1",
+        ("ni", "ni{", "ni"),
+    ).fetchone()[0]
+with sqlite3.connect(data_directory / "others.db") as database:
+    expected_mixed_emoji = database.execute(
+        "SELECT emoji FROM emoji_pinyin WHERE key>=? AND key<? ORDER BY sort_order LIMIT 1",
+        ("ni", "ni\x7f"),
+    ).fetchone()[0]
+    expected_mixed_kaomoji = database.execute(
+        "SELECT kaomoji FROM kaomoji WHERE (pinyin>=? AND pinyin<?) OR (jianpin>=? AND jianpin<?) "
+        "ORDER BY sort_order LIMIT 1",
+        ("ni", "ni\x7f", "ni", "ni\x7f"),
+    ).fetchone()[0]
+expected_mixed_prefix = ("你", expected_mixed_english, expected_mixed_emoji, expected_mixed_kaomoji)
+for keyval in (IBus.KEY_n, IBus.KEY_i):
+    if not context.process_key_event(keyval, 0, 0):
+        raise RuntimeError("Mixed-candidate pinyin input was not handled.")
+
+
+def mixed_candidates_observed():
+    if any(visible and candidates[:4] == expected_mixed_prefix
+           for candidates, visible in lookup_candidate_updates):
+        mixed_candidates_loop.quit()
+        return GLib.SOURCE_REMOVE
+    return GLib.SOURCE_CONTINUE
+
+
+mixed_candidates_loop = GLib.MainLoop()
+GLib.timeout_add(20, mixed_candidates_observed)
+GLib.timeout_add_seconds(5, mixed_candidates_loop.quit)
+mixed_candidates_loop.run()
+if not any(visible and candidates[:4] == expected_mixed_prefix
+           for candidates, visible in lookup_candidate_updates):
+    raise RuntimeError(
+        f"Mixed English/Emoji/kaomoji ordering was not published: "
+        f"expected={expected_mixed_prefix!r}, updates={lookup_candidate_updates}"
+    )
+if not context.process_key_event(IBus.KEY_Escape, 0, 0):
+    raise RuntimeError("Escape did not cancel the mixed-candidate composition.")
 
 
 lookup_updates.clear()
@@ -665,11 +721,35 @@ if not context.process_key_event(IBus.KEY_Escape, 0, 0):
     raise RuntimeError("Escape did not cancel the helpcode smoke composition.")
 
 committed_text.clear()
+lookup_candidate_updates.clear()
 for keyval in (IBus.KEY_n, IBus.KEY_i, IBus.KEY_h, IBus.KEY_a, IBus.KEY_o):
     if not context.process_key_event(keyval, 0, 0):
         raise RuntimeError("The frequency-learning composition was not handled.")
-if not context.process_key_event(IBus.KEY_2, 0, 0):
-    raise RuntimeError("The second candidate was not handled for frequency learning.")
+
+
+def frequency_candidate_observed():
+    if any(visible and "拟好" in candidates for candidates, visible in lookup_candidate_updates):
+        frequency_candidate_loop.quit()
+        return GLib.SOURCE_REMOVE
+    return GLib.SOURCE_CONTINUE
+
+
+frequency_candidate_loop = GLib.MainLoop()
+GLib.timeout_add(20, frequency_candidate_observed)
+GLib.timeout_add_seconds(5, frequency_candidate_loop.quit)
+frequency_candidate_loop.run()
+frequency_candidates = next(
+    (candidates for candidates, visible in reversed(lookup_candidate_updates)
+     if visible and "拟好" in candidates),
+    None,
+)
+if frequency_candidates is None:
+    raise RuntimeError(f"The local candidate was absent from the mixed lookup table: {lookup_candidate_updates}")
+for _ in range(frequency_candidates.index("拟好")):
+    if not context.process_key_event(IBus.KEY_Down, 0, 0):
+        raise RuntimeError("Down did not navigate to the local candidate through mixed candidates.")
+if not context.process_key_event(IBus.KEY_space, 0, 0):
+    raise RuntimeError("Space did not select the local candidate for frequency learning.")
 wait_for_commit("拟好")
 
 lookup_updates.clear()

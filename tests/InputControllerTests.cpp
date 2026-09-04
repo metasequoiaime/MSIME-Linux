@@ -156,9 +156,11 @@ int main()
         database.execute("INSERT INTO quick_parases VALUES('aa','控制器短语二',10)");
         Database others_database(data_directory / "others.db");
         others_database.execute("CREATE TABLE emoji_pinyin(key TEXT,emoji TEXT,sort_order INTEGER)");
+        others_database.execute("INSERT INTO emoji_pinyin VALUES('xi','✨',0)");
         others_database.execute("INSERT INTO emoji_pinyin VALUES('xiaolian','😀',10)");
         others_database.execute(
             "CREATE TABLE kaomoji(pinyin TEXT,jianpin TEXT,kaomoji TEXT,sort_order INTEGER)");
+        others_database.execute("INSERT INTO kaomoji VALUES('xi','x','(^_^)',0)");
         others_database.execute("INSERT INTO kaomoji VALUES('haixiu','hx','(*/ω＼*)',10)");
         Database english_database(data_directory / "english.db");
         english_database.execute(
@@ -686,21 +688,27 @@ int main()
         InputOptions mixed_english_options;
         mixed_english_options.english_input.mixed_candidates = true;
         mixed_english_options.english_input.minimum_prefix = 2;
+        mixed_english_options.mixed_expressive.emoji_candidates = true;
+        mixed_english_options.mixed_expressive.kaomoji_candidates = true;
         InputController mixed_english_controller(SchemeType::Quanpin, mixed_english_options);
         type(mixed_english_controller, "xi");
         if (!mixed_english_controller.mixed_english_candidates_enabled() ||
             mixed_english_controller.mixed_english_minimum_prefix() != 2 ||
-            mixed_english_controller.candidates().size() != 8 ||
-            !std::all_of(mixed_english_controller.candidates().begin(),
-                         mixed_english_controller.candidates().begin() + 6,
-                         [](const WordItem &candidate) {
-                             return candidate.source == CandidateSource::Database ||
-                                    candidate.source == CandidateSource::UserDatabase;
-                         }) ||
-            mixed_english_controller.candidates()[6].word != "Xi" ||
-            mixed_english_controller.candidates()[7].word != "Xigua")
+            !mixed_english_controller.mixed_emoji_candidates_enabled() ||
+            !mixed_english_controller.mixed_kaomoji_candidates_enabled() ||
+            mixed_english_controller.candidates().size() != 11 ||
+            (mixed_english_controller.candidates()[0].source != CandidateSource::Database &&
+             mixed_english_controller.candidates()[0].source != CandidateSource::UserDatabase) ||
+            mixed_english_controller.candidates()[1].word != "Xi" ||
+            mixed_english_controller.candidates()[1].source != CandidateSource::EnglishDictionary ||
+            mixed_english_controller.candidates()[2].word != "✨" ||
+            mixed_english_controller.candidates()[2].source != CandidateSource::Emoji ||
+            mixed_english_controller.candidates()[3].word != "(^_^)" ||
+            mixed_english_controller.candidates()[3].source != CandidateSource::Kaomoji ||
+            mixed_english_controller.candidates()[9].word != "Xigua" ||
+            mixed_english_controller.candidates()[10].word != "😀")
         {
-            std::string actual = "The controller did not append configured mixed English candidates:";
+            std::string actual = "The controller did not expose configured mixed candidates in stable order:";
             for (const auto &candidate : mixed_english_controller.candidates())
             {
                 actual += " [" + candidate.word + "]";

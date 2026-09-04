@@ -526,6 +526,36 @@ InputSettings SettingsStore::load(std::string *warning) const
         g_clear_error(&value_error);
     }
 
+    if (g_key_file_has_key(key_file, kGroup, "mixed-emoji-candidates", nullptr))
+    {
+        GError *value_error = nullptr;
+        const gboolean value = g_key_file_get_boolean(key_file, kGroup, "mixed-emoji-candidates", &value_error);
+        if (value_error == nullptr)
+        {
+            settings.mixed_emoji_candidates_enabled = value;
+        }
+        else
+        {
+            invalid = true;
+        }
+        g_clear_error(&value_error);
+    }
+
+    if (g_key_file_has_key(key_file, kGroup, "mixed-kaomoji-candidates", nullptr))
+    {
+        GError *value_error = nullptr;
+        const gboolean value = g_key_file_get_boolean(key_file, kGroup, "mixed-kaomoji-candidates", &value_error);
+        if (value_error == nullptr)
+        {
+            settings.mixed_kaomoji_candidates_enabled = value;
+        }
+        else
+        {
+            invalid = true;
+        }
+        g_clear_error(&value_error);
+    }
+
     g_key_file_unref(key_file);
     if (invalid)
     {
@@ -607,6 +637,10 @@ bool SettingsStore::save(const InputSettings &settings, std::string *error) cons
                            settings.mixed_english_candidates_enabled);
     g_key_file_set_integer(key_file, kGroup, "mixed-english-minimum-prefix",
                            static_cast<gint>(settings.mixed_english_minimum_prefix));
+    g_key_file_set_boolean(key_file, kGroup, "mixed-emoji-candidates",
+                           settings.mixed_emoji_candidates_enabled);
+    g_key_file_set_boolean(key_file, kGroup, "mixed-kaomoji-candidates",
+                           settings.mixed_kaomoji_candidates_enabled);
 
     gsize data_size = 0;
     GError *data_error = nullptr;

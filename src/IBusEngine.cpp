@@ -210,6 +210,8 @@ void save_settings(MetasequoiaEngine *engine)
     settings.unicode_mode_enabled = engine->controller->unicode_mode_enabled();
     settings.mixed_english_candidates_enabled = engine->controller->mixed_english_candidates_enabled();
     settings.mixed_english_minimum_prefix = engine->controller->mixed_english_minimum_prefix();
+    settings.mixed_emoji_candidates_enabled = engine->controller->mixed_emoji_candidates_enabled();
+    settings.mixed_kaomoji_candidates_enabled = engine->controller->mixed_kaomoji_candidates_enabled();
     if (engine->settings_store->save(settings, engine->settings_warning))
     {
         engine->settings_warning->clear();
@@ -547,6 +549,8 @@ void metasequoia_engine_init(MetasequoiaEngine *engine)
     options.local_modes.unicode = settings.unicode_mode_enabled;
     options.english_input.mixed_candidates = settings.mixed_english_candidates_enabled;
     options.english_input.minimum_prefix = settings.mixed_english_minimum_prefix;
+    options.mixed_expressive.emoji_candidates = settings.mixed_emoji_candidates_enabled;
+    options.mixed_expressive.kaomoji_candidates = settings.mixed_kaomoji_candidates_enabled;
     engine->controller = new InputController(settings.scheme, options);
     (void)engine->controller->set_mode(settings.mode);
     engine->mode_toggle = new IBusModeToggleTracker();

@@ -99,6 +99,7 @@ struct InputOptions
     int frequency_linear_step = 1;
     LocalModeOptions local_modes;
     EnglishInputOptions english_input;
+    MixedExpressiveOptions mixed_expressive;
     std::function<std::chrono::steady_clock::time_point()> now;
 };
 
@@ -143,6 +144,8 @@ class InputController
     bool unicode_mode_enabled() const;
     bool mixed_english_candidates_enabled() const;
     std::size_t mixed_english_minimum_prefix() const;
+    bool mixed_emoji_candidates_enabled() const;
+    bool mixed_kaomoji_candidates_enabled() const;
     bool dedicated_english_mode() const;
     SchemeType scheme() const;
     bool has_composition() const;

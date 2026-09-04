@@ -74,6 +74,7 @@ InputController::InputController(SchemeType scheme_type, InputOptions options)
     {
         throw std::invalid_argument("English input options were outside the supported range.");
     }
+    session_.set_mixed_expressive_options(options.mixed_expressive);
     if (!session_.set_frequency_adjustment(
             {frequency_adjustment_mode_, frequency_trigger_count_, frequency_linear_step_}))
     {
@@ -499,6 +500,16 @@ bool InputController::mixed_english_candidates_enabled() const
 std::size_t InputController::mixed_english_minimum_prefix() const
 {
     return session_.english_input_options().minimum_prefix;
+}
+
+bool InputController::mixed_emoji_candidates_enabled() const
+{
+    return session_.mixed_expressive_options().emoji_candidates;
+}
+
+bool InputController::mixed_kaomoji_candidates_enabled() const
+{
+    return session_.mixed_expressive_options().kaomoji_candidates;
 }
 
 bool InputController::dedicated_english_mode() const
