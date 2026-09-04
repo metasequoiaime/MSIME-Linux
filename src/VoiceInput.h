@@ -19,6 +19,10 @@ struct VoiceInputConfig
     std::string model = "whisper-1";
     std::string language = "zh";
     std::string token;
+    bool polish_enabled = false;
+    std::string polish_endpoint = "https://api.openai.com/v1/chat/completions";
+    std::string polish_model = "gpt-4o-mini";
+    std::string polish_prompt = "整理语音转写，修正明显错别字并补充标点，只输出整理后的文本。";
 };
 
 class VoiceInputProvider
@@ -30,6 +34,9 @@ class VoiceInputProvider
     std::optional<std::string> transcribe(std::string_view audio, const VoiceInputConfig &config,
                                           const online::CancellationCheck &cancelled,
                                           std::string *error = nullptr) const;
+    std::optional<std::string> polish(std::string_view text, const VoiceInputConfig &config,
+                                      const online::CancellationCheck &cancelled,
+                                      std::string *error = nullptr) const;
     static std::optional<std::string> parse_transcription(std::string_view response);
 
   private:

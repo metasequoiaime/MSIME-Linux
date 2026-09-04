@@ -41,6 +41,11 @@ int main()
         require(!model.settings().online.cloud_candidates_enabled, "The online toggle was not applied.");
         require(model.set("floating-toolbar", "false", &error), "A valid toolbar toggle could not be applied.");
         require(!model.settings().floating_toolbar_enabled, "The toolbar toggle was not applied.");
+        require(model.set("voice-polish-enabled", "true", &error), "A valid voice polish toggle could not be applied.");
+        require(model.set("voice-polish-prompt", "请整理并补充标点。", &error),
+                "A valid voice polish prompt could not be applied.");
+        require(model.settings().voice.polish_enabled && model.settings().voice.polish_prompt == "请整理并补充标点。",
+                "Voice polish settings were not applied.");
         require(!model.set("page-size", "99", &error) && !error.empty(),
                 "An out-of-range page size was accepted.");
         require(!model.set("unknown-setting", "x", &error) && !error.empty(),

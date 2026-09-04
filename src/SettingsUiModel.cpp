@@ -259,6 +259,12 @@ void SettingsUiModel::rebuild_rows()
     add(rows_, "voice-endpoint", "Voice endpoint", settings_.voice.endpoint, SettingsControl::Text);
     add(rows_, "voice-model", "Voice model", settings_.voice.model, SettingsControl::Text);
     add(rows_, "voice-language", "Voice language", settings_.voice.language, SettingsControl::Text);
+    add(rows_, "voice-polish-enabled", "Voice polish", bool_value(settings_.voice.polish_enabled),
+        SettingsControl::Boolean);
+    add(rows_, "voice-polish-endpoint", "Voice polish endpoint", settings_.voice.polish_endpoint,
+        SettingsControl::Text);
+    add(rows_, "voice-polish-model", "Voice polish model", settings_.voice.polish_model, SettingsControl::Text);
+    add(rows_, "voice-polish-prompt", "Voice polish prompt", settings_.voice.polish_prompt, SettingsControl::Text);
     add(rows_, "cloud-enabled", "Cloud candidates", bool_value(settings_.online.cloud_candidates_enabled),
         SettingsControl::Boolean);
     add(rows_, "connect-timeout-ms", "Connect timeout (ms)", std::to_string(settings_.online.connect_timeout.count()),
@@ -329,7 +335,8 @@ bool SettingsUiModel::set(const std::string &id, const std::string &value, std::
              id == "quanpin-helpcode" || id == "shuangpin-helpcode" || id == "unicode-mode" ||
              id == "super-jianpin-mode" || id == "temporary-english-mode" || id == "temporary-japanese-mode" ||
              id == "mixed-english-candidates" || id == "mixed-emoji-candidates" || id == "mixed-kaomoji-candidates" ||
-             id == "clipboard-history" || id == "floating-toolbar" || id == "voice-enabled" || id == "cloud-enabled" || id == "ai-enabled" ||
+             id == "clipboard-history" || id == "floating-toolbar" || id == "voice-enabled" ||
+             id == "voice-polish-enabled" || id == "cloud-enabled" || id == "ai-enabled" ||
              id == "translation-enabled")
     {
         bool value_as_bool = false;
@@ -354,6 +361,7 @@ bool SettingsUiModel::set(const std::string &id, const std::string &value, std::
             else if (id == "clipboard-history") candidate.clipboard_history_enabled = value_as_bool;
             else if (id == "floating-toolbar") candidate.floating_toolbar_enabled = value_as_bool;
             else if (id == "voice-enabled") candidate.voice.enabled = value_as_bool;
+            else if (id == "voice-polish-enabled") candidate.voice.polish_enabled = value_as_bool;
             else if (id == "cloud-enabled") candidate.online.cloud_candidates_enabled = value_as_bool;
             else if (id == "ai-enabled") candidate.online.ai.enabled = value_as_bool;
             else if (id == "translation-enabled") candidate.online.candidate_translations_enabled = value_as_bool;
@@ -428,12 +436,14 @@ bool SettingsUiModel::set(const std::string &id, const std::string &value, std::
         if (parsed) candidate.online.translation_target_language = value;
     }
     else if (id == "ai-endpoint" || id == "ai-model" || id == "ai-prompt" || id == "translation-endpoint" ||
-             id == "voice-endpoint" || id == "voice-model" || id == "voice-language")
+             id == "voice-endpoint" || id == "voice-model" || id == "voice-language" ||
+             id == "voice-polish-endpoint" || id == "voice-polish-model" || id == "voice-polish-prompt")
     {
-        const bool is_endpoint = id == "ai-endpoint" || id == "translation-endpoint" || id == "voice-endpoint";
-        const bool is_model = id == "ai-model" || id == "voice-model";
+        const bool is_endpoint = id == "ai-endpoint" || id == "translation-endpoint" || id == "voice-endpoint" ||
+                                 id == "voice-polish-endpoint";
+        const bool is_model = id == "ai-model" || id == "voice-model" || id == "voice-polish-model";
         const std::size_t maximum = is_endpoint ? 2048 : (is_model ? 256 : (id == "voice-language" ? 32 : 8192));
-        parsed = valid_text(value, maximum, id == "ai-prompt") &&
+        parsed = valid_text(value, maximum, id == "ai-prompt" || id == "voice-polish-prompt") &&
                  (!is_endpoint || value.empty() || value.rfind("https://", 0) == 0);
         if (parsed)
         {
@@ -443,7 +453,10 @@ bool SettingsUiModel::set(const std::string &id, const std::string &value, std::
             else if (id == "translation-endpoint") candidate.online.translation_endpoint = value;
             else if (id == "voice-endpoint") candidate.voice.endpoint = value;
             else if (id == "voice-model") candidate.voice.model = value;
-            else candidate.voice.language = value;
+            else if (id == "voice-language") candidate.voice.language = value;
+            else if (id == "voice-polish-endpoint") candidate.voice.polish_endpoint = value;
+            else if (id == "voice-polish-model") candidate.voice.polish_model = value;
+            else candidate.voice.polish_prompt = value;
         }
     }
     else

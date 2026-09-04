@@ -130,7 +130,7 @@ int main(int argc, char **argv)
     auto transport = std::make_shared<online::CurlHttpTransport>();
     VoiceInputProvider provider(transport);
     std::string error;
-    const auto text = provider.transcribe(audio, settings.voice, [] { return false; }, &error);
+    auto text = provider.transcribe(audio, settings.voice, [] { return false; }, &error);
     if (!text)
     {
         std::cerr << (error.empty() ? "Voice transcription failed." : error) << '\n';
@@ -140,6 +140,19 @@ int main(int argc, char **argv)
             std::filesystem::remove(audio_path, ignored);
         }
         return 1;
+    }
+    if (settings.voice.polish_enabled)
+    {
+        std::string polish_error;
+        const auto polished = provider.polish(*text, settings.voice, [] { return false; }, &polish_error);
+        if (polished)
+        {
+            text = polished;
+        }
+        else if (!polish_error.empty())
+        {
+            std::cerr << "Voice polish unavailable; using the raw transcription: " << polish_error << '\n';
+        }
     }
     if (temporary)
     {

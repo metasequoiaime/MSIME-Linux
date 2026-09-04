@@ -148,6 +148,76 @@ std::optional<std::string> VoiceInputProvider::transcribe(std::string_view audio
     return result;
 }
 
+std::optional<std::string> VoiceInputProvider::polish(std::string_view text, const VoiceInputConfig &config,
+                                                      const online::CancellationCheck &cancelled,
+                                                      std::string *error) const
+{
+    if (error != nullptr)
+    {
+        error->clear();
+    }
+    if (!transport_ || !config.polish_enabled || text.empty() || config.token.empty() || config.polish_model.empty() ||
+        config.polish_prompt.empty() || !endpoint_allowed(config.polish_endpoint, allow_insecure_loopback_for_tests_))
+    {
+        set_error(error, "Voice polish configuration or text was invalid.");
+        return std::nullopt;
+    }
+    boost::json::object system_message;
+    system_message["role"] = "system";
+    system_message["content"] = config.polish_prompt;
+    boost::json::object user_message;
+    user_message["role"] = "user";
+    user_message["content"] = std::string(text);
+    boost::json::array messages;
+    messages.push_back(std::move(system_message));
+    messages.push_back(std::move(user_message));
+    boost::json::object request_body;
+    request_body["model"] = config.polish_model;
+    request_body["stream"] = false;
+    request_body["messages"] = std::move(messages);
+
+    online::HttpRequest request;
+    request.method = online::HttpMethod::Post;
+    request.url = config.polish_endpoint;
+    request.headers = {"Authorization: Bearer " + config.token, "Content-Type: application/json"};
+    request.body = boost::json::serialize(request_body);
+    request.max_response_bytes = 256 * 1024;
+    const auto response = transport_->perform(request, cancelled);
+    if (response.status_code < 200 || response.status_code >= 300)
+    {
+        set_error(error, response.error.empty() ? "Voice polish request failed." : response.error.c_str());
+        return std::nullopt;
+    }
+    boost::system::error_code parse_error;
+    const boost::json::value parsed = boost::json::parse(response.body, parse_error);
+    if (parse_error || !parsed.is_object())
+    {
+        set_error(error, "Voice polish response was invalid.");
+        return std::nullopt;
+    }
+    const auto choices = parsed.as_object().find("choices");
+    if (choices == parsed.as_object().end() || !choices->value().is_array() || choices->value().as_array().empty() ||
+        !choices->value().as_array().front().is_object())
+    {
+        set_error(error, "Voice polish response did not contain content.");
+        return std::nullopt;
+    }
+    const auto message = choices->value().as_array().front().as_object().find("message");
+    if (message == choices->value().as_array().front().as_object().end() || !message->value().is_object())
+    {
+        set_error(error, "Voice polish response did not contain content.");
+        return std::nullopt;
+    }
+    const auto content = message->value().as_object().find("content");
+    if (content == message->value().as_object().end() || !content->value().is_string() ||
+        content->value().as_string().empty())
+    {
+        set_error(error, "Voice polish response did not contain content.");
+        return std::nullopt;
+    }
+    return std::string(content->value().as_string().c_str(), content->value().as_string().size());
+}
+
 std::optional<std::string> VoiceInputProvider::parse_transcription(std::string_view response)
 {
     boost::system::error_code parse_error;

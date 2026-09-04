@@ -60,6 +60,19 @@ int main()
         transport->response = {500, {}, "server"};
         require(!provider.transcribe("audio", config, [] { return false; }),
                 "A failed voice transcription response was accepted.");
+        config.polish_enabled = true;
+        config.polish_endpoint = "https://voice.example/v1/chat/completions";
+        config.polish_model = "polish-model";
+        config.polish_prompt = "请整理：";
+        transport->response = {200, R"({"choices":[{"message":{"content":"整理后的文本"}}]})", {}};
+        const auto polished = provider.polish("原始文本", config, [] { return false; });
+        require(polished && *polished == "整理后的文本", "Voice polish response was not parsed.");
+        require(transport->request.url == config.polish_endpoint &&
+                    transport->request.body.find("chat/completions") == std::string::npos &&
+                    transport->request.body.find("polish-model") != std::string::npos &&
+                    transport->request.body.find("原始文本") != std::string::npos &&
+                    transport->request.body.find("voice-secret") == std::string::npos,
+                "Voice polish request did not contain the configured model and text.");
         require(VoiceInputRecorder::valid_duration(5) && !VoiceInputRecorder::valid_duration(0) &&
                     !VoiceInputRecorder::valid_duration(121),
                 "Voice recorder duration validation was incorrect.");

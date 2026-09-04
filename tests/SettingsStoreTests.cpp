@@ -210,6 +210,10 @@ int main()
     saved.voice.model = "whisper-1";
     saved.voice.language = "zh";
     saved.voice.token = "voice-settings-round-trip-secret";
+    saved.voice.polish_enabled = true;
+    saved.voice.polish_endpoint = "https://voice.example.test/v1/chat/completions";
+    saved.voice.polish_model = "polish-model";
+    saved.voice.polish_prompt = "请整理文本。";
     saved.online.cloud_candidates_enabled = false;
     saved.online.ai.enabled = true;
     saved.online.ai.provider = AiProvider::OpenAI;
@@ -258,7 +262,10 @@ int main()
                 round_trip.floating_toolbar_enabled == saved.floating_toolbar_enabled &&
                 round_trip.voice.enabled == saved.voice.enabled && round_trip.voice.provider == saved.voice.provider &&
                 round_trip.voice.endpoint == saved.voice.endpoint && round_trip.voice.model == saved.voice.model &&
-                round_trip.voice.language == saved.voice.language && round_trip.voice.token.empty(),
+                round_trip.voice.language == saved.voice.language && round_trip.voice.polish_enabled == saved.voice.polish_enabled &&
+                round_trip.voice.polish_endpoint == saved.voice.polish_endpoint &&
+                round_trip.voice.polish_model == saved.voice.polish_model && round_trip.voice.polish_prompt == saved.voice.polish_prompt &&
+                round_trip.voice.token.empty(),
             "Settings did not survive a round trip.");
     require(round_trip.online.cloud_candidates_enabled == saved.online.cloud_candidates_enabled &&
                 round_trip.online.ai.enabled == saved.online.ai.enabled &&

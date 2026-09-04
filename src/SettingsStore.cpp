@@ -181,7 +181,10 @@ bool valid_voice_settings(const VoiceInputConfig &settings)
     return valid_utf8_text(settings.provider, 64, false) && !settings.provider.empty() &&
            valid_https_endpoint(settings.endpoint) && valid_utf8_text(settings.model, 256, false) &&
            !settings.model.empty() && valid_utf8_text(settings.language, 32, false) && !settings.language.empty() &&
-           (!settings.enabled || !settings.endpoint.empty());
+           (!settings.enabled || !settings.endpoint.empty()) && valid_https_endpoint(settings.polish_endpoint) &&
+           valid_utf8_text(settings.polish_model, 256, false) && !settings.polish_model.empty() &&
+           valid_utf8_text(settings.polish_prompt, 8192, true) && !settings.polish_prompt.empty() &&
+           (!settings.polish_enabled || !settings.polish_endpoint.empty());
 }
 
 const char *mode_name(InputMode mode)
@@ -902,6 +905,12 @@ InputSettings SettingsStore::load(std::string *warning) const
                 [](std::string_view value) { return valid_utf8_text(value, 256, false) && !value.empty(); });
     load_string(kVoiceGroup, "language", settings.voice.language,
                 [](std::string_view value) { return valid_utf8_text(value, 32, false) && !value.empty(); });
+    load_boolean(kVoiceGroup, "polish-enabled", settings.voice.polish_enabled);
+    load_string(kVoiceGroup, "polish-endpoint", settings.voice.polish_endpoint, valid_https_endpoint);
+    load_string(kVoiceGroup, "polish-model", settings.voice.polish_model,
+                [](std::string_view value) { return valid_utf8_text(value, 256, false) && !value.empty(); });
+    load_string(kVoiceGroup, "polish-prompt", settings.voice.polish_prompt,
+                [](std::string_view value) { return valid_utf8_text(value, 8192, true) && !value.empty(); });
 
     g_key_file_unref(key_file);
     if (invalid)
@@ -1060,6 +1069,10 @@ bool SettingsStore::save(const InputSettings &settings, std::string *error) cons
     g_key_file_set_string(key_file, kVoiceGroup, "endpoint", settings.voice.endpoint.c_str());
     g_key_file_set_string(key_file, kVoiceGroup, "model", settings.voice.model.c_str());
     g_key_file_set_string(key_file, kVoiceGroup, "language", settings.voice.language.c_str());
+    g_key_file_set_boolean(key_file, kVoiceGroup, "polish-enabled", settings.voice.polish_enabled);
+    g_key_file_set_string(key_file, kVoiceGroup, "polish-endpoint", settings.voice.polish_endpoint.c_str());
+    g_key_file_set_string(key_file, kVoiceGroup, "polish-model", settings.voice.polish_model.c_str());
+    g_key_file_set_string(key_file, kVoiceGroup, "polish-prompt", settings.voice.polish_prompt.c_str());
 
     constexpr const char *secret_keys[]{"token", "api-token", "api-key"};
     for (const char *secret_key : secret_keys)
