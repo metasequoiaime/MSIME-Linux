@@ -248,7 +248,10 @@ void clear_container(GtkWidget *container)
 bool flush_editors(AppState &state)
 {
     std::string error;
-    for (const auto &row : state.model.rows())
+    // SettingsUiModel::set rebuilds its row vector, so iterate over a snapshot
+    // rather than invalidating the range-for iterator on every edit.
+    const auto rows = state.model.rows();
+    for (const auto &row : rows)
     {
         const auto editor = state.editors.find(row.id);
         if (editor != state.editors.end() && !state.model.set(row.id, editor_value(row, editor->second), &error))
