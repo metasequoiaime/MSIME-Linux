@@ -16,6 +16,11 @@ target_link_libraries(MetasequoiaImeLinuxCore PUBLIC MetasequoiaIme::Engine)
 target_include_directories(MetasequoiaImeLinuxCore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_options(MetasequoiaImeLinuxCore PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
+add_executable(metasequoia-ime-dictionary-replay src/DictionaryReplay.cpp)
+target_link_libraries(metasequoia-ime-dictionary-replay PRIVATE MetasequoiaIme::Engine)
+target_compile_options(metasequoia-ime-dictionary-replay PRIVATE -Wall -Wextra -Wpedantic -Werror)
+install(TARGETS metasequoia-ime-dictionary-replay RUNTIME DESTINATION ${CMAKE_INSTALL_LIBEXECDIR})
+
 if(BUILD_TESTING)
     add_executable(MetasequoiaImeLinuxTextTransformTests tests/TextTransformTests.cpp src/TextTransform.cpp)
     target_include_directories(MetasequoiaImeLinuxTextTransformTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)

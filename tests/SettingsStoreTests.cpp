@@ -19,6 +19,7 @@ using metasequoia::linux_ime::CharacterWidth;
 using metasequoia::linux_ime::PunctuationMode;
 using metasequoia::linux_ime::PreeditStyle;
 using metasequoia::linux_ime::SettingsStore;
+using metasequoia::FrequencyAdjustmentMode;
 
 void require(bool condition, const char *message)
 {
@@ -81,7 +82,9 @@ int main()
                 defaults.smart_punctuation_repeat_to_chinese && defaults.paired_punctuation &&
                 defaults.preedit_style == PreeditStyle::Raw && defaults.quanpin_helpcode_enabled &&
                 defaults.quanpin_helpcode_schema == "lantian" && defaults.shuangpin_helpcode_enabled &&
-                defaults.shuangpin_helpcode_schema == "lantian",
+                defaults.shuangpin_helpcode_schema == "lantian" &&
+                defaults.frequency_adjustment_mode == FrequencyAdjustmentMode::Promote &&
+                defaults.frequency_trigger_count == 1 && defaults.frequency_linear_step == 1,
             "Missing settings did not use defaults.");
     require(warning.empty(), "A missing optional settings file produced a warning.");
 
@@ -102,6 +105,9 @@ int main()
     saved.quanpin_helpcode_schema = "xiaohe";
     saved.shuangpin_helpcode_enabled = false;
     saved.shuangpin_helpcode_schema = "ziranma";
+    saved.frequency_adjustment_mode = FrequencyAdjustmentMode::Halve;
+    saved.frequency_trigger_count = 3;
+    saved.frequency_linear_step = 4;
     std::string error;
     require(store.save(saved, &error) && error.empty(), "Valid settings could not be saved.");
     const InputSettings round_trip = store.load(&warning);
@@ -119,7 +125,10 @@ int main()
                 round_trip.quanpin_helpcode_enabled == saved.quanpin_helpcode_enabled &&
                 round_trip.quanpin_helpcode_schema == saved.quanpin_helpcode_schema &&
                 round_trip.shuangpin_helpcode_enabled == saved.shuangpin_helpcode_enabled &&
-                round_trip.shuangpin_helpcode_schema == saved.shuangpin_helpcode_schema,
+                round_trip.shuangpin_helpcode_schema == saved.shuangpin_helpcode_schema &&
+                round_trip.frequency_adjustment_mode == saved.frequency_adjustment_mode &&
+                round_trip.frequency_trigger_count == saved.frequency_trigger_count &&
+                round_trip.frequency_linear_step == saved.frequency_linear_step,
             "Settings did not survive a round trip.");
 
     const auto config_path = store.config_path();
@@ -141,6 +150,9 @@ int main()
                "quanpin-helpcode-schema=xiaohe\n"
                "shuangpin-helpcode=false\n"
                "shuangpin-helpcode-schema=ziranma\n"
+               "frequency-adjustment=linear\n"
+               "frequency-trigger-count=6\n"
+               "frequency-linear-step=7\n"
                "future-option=keep-me\n"
                "\n"
                "[future]\n"
@@ -164,6 +176,9 @@ int main()
     updated.quanpin_helpcode_schema = "shouyouplus";
     updated.shuangpin_helpcode_enabled = true;
     updated.shuangpin_helpcode_schema = "shouyou2_0";
+    updated.frequency_adjustment_mode = FrequencyAdjustmentMode::Pin;
+    updated.frequency_trigger_count = 8;
+    updated.frequency_linear_step = 9;
     require(store.save(updated, &error), "Existing settings could not be replaced.");
     require(inode(config_path) != original_inode, "The settings file was modified in place instead of atomically replaced.");
     const std::string preserved = read_file(config_path);
@@ -193,7 +208,10 @@ int main()
                "quanpin-helpcode=unexpected\n"
                "quanpin-helpcode-schema=unsupported\n"
                "shuangpin-helpcode=unexpected\n"
-               "shuangpin-helpcode-schema=unsupported\n");
+               "shuangpin-helpcode-schema=unsupported\n"
+               "frequency-adjustment=unexpected\n"
+               "frequency-trigger-count=0\n"
+               "frequency-linear-step=11\n");
     const InputSettings invalid = store.load(&warning);
     require(invalid.mode == InputMode::Ime && invalid.scheme == SchemeType::Quanpin && invalid.page_size == 9 &&
                 invalid.punctuation_mode == PunctuationMode::Chinese &&
@@ -202,7 +220,9 @@ int main()
                 invalid.smart_punctuation_repeat_to_chinese && invalid.paired_punctuation &&
                 invalid.preedit_style == PreeditStyle::Raw && invalid.quanpin_helpcode_enabled &&
                 invalid.quanpin_helpcode_schema == "lantian" && invalid.shuangpin_helpcode_enabled &&
-                invalid.shuangpin_helpcode_schema == "lantian",
+                invalid.shuangpin_helpcode_schema == "lantian" &&
+                invalid.frequency_adjustment_mode == FrequencyAdjustmentMode::Promote &&
+                invalid.frequency_trigger_count == 1 && invalid.frequency_linear_step == 1,
             "Invalid settings did not fall back field by field.");
     require(!warning.empty(), "Invalid settings did not produce a diagnostic warning.");
 
@@ -210,6 +230,14 @@ int main()
     unsupported.quanpin_helpcode_schema = "unknown";
     require(!store.save(unsupported, &error) && !error.empty(),
             "An unsupported helpcode schema was written to disk.");
+    unsupported = saved;
+    unsupported.frequency_adjustment_mode = static_cast<FrequencyAdjustmentMode>(99);
+    require(!store.save(unsupported, &error) && !error.empty(),
+            "An unsupported frequency adjustment mode was written to disk.");
+    unsupported = saved;
+    unsupported.frequency_trigger_count = 11;
+    require(!store.save(unsupported, &error) && !error.empty(),
+            "An out-of-range frequency trigger count was written to disk.");
 
     std::filesystem::remove(config_path);
     std::filesystem::create_directory(config_path);

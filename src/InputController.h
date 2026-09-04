@@ -64,12 +64,13 @@ struct ControllerResult
 {
     bool handled = false;
     std::optional<std::string> commit;
+    std::optional<std::string> diagnostic;
     std::size_t delete_before = 0;
     std::size_t cursor_left = 0;
 
     ControllerResult() = default;
     ControllerResult(bool handled, std::optional<std::string> commit, std::size_t delete_before = 0,
-                     std::size_t cursor_left = 0);
+                     std::size_t cursor_left = 0, std::optional<std::string> diagnostic = std::nullopt);
     ControllerResult(KeyResult result);
 };
 
@@ -89,6 +90,9 @@ struct InputOptions
     std::string quanpin_helpcode_schema = "lantian";
     bool shuangpin_helpcode_enabled = true;
     std::string shuangpin_helpcode_schema = "lantian";
+    FrequencyAdjustmentMode frequency_adjustment_mode = FrequencyAdjustmentMode::Disabled;
+    int frequency_trigger_count = 1;
+    int frequency_linear_step = 1;
     std::function<std::chrono::steady_clock::time_point()> now;
 };
 
@@ -125,6 +129,9 @@ class InputController
     const std::string &quanpin_helpcode_schema() const;
     bool shuangpin_helpcode_enabled() const;
     const std::string &shuangpin_helpcode_schema() const;
+    FrequencyAdjustmentMode frequency_adjustment_mode() const;
+    int frequency_trigger_count() const;
+    int frequency_linear_step() const;
     SchemeType scheme() const;
     bool has_composition() const;
     const std::string &preedit() const;
@@ -160,6 +167,9 @@ class InputController
     std::string quanpin_helpcode_schema_ = "lantian";
     bool shuangpin_helpcode_enabled_ = true;
     std::string shuangpin_helpcode_schema_ = "lantian";
+    FrequencyAdjustmentMode frequency_adjustment_mode_ = FrequencyAdjustmentMode::Disabled;
+    int frequency_trigger_count_ = 1;
+    int frequency_linear_step_ = 1;
     std::function<std::chrono::steady_clock::time_point()> now_;
     bool smart_punctuation_history_active_ = false;
     char smart_punctuation_history_key_ = 0;

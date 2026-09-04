@@ -31,19 +31,6 @@ jobs:
         run: ctest --test-dir build --output-on-failure --timeout 20 -R '^ibus_smoke$'
       - name: Current-user install smoke
         shell: bash
-        run: |
-          install_root=$(mktemp -d)
-          trap 'rm -rf "$install_root"' EXIT
-          HOME="$install_root/home" ./scripts/install.sh
-          test -x "$install_root/home/.local/libexec/metasequoia-ime-ibus"
-          test -f "$install_root/home/.local/share/ibus/component/metasequoiaime.xml"
-          test -f "$install_root/home/.local/share/metasequoiaime/msime.db"
-          test -f "$install_root/home/.local/share/metasequoiaime/helpcodes/helpcode.txt"
-          test -f "$install_root/home/.local/share/metasequoiaime/helpcodes/zrm_helpcode_big_unique.txt"
-          test -f "$install_root/home/.local/share/metasequoiaime/helpcodes/shouyou2_0_helpcode.txt"
-          test -f "$install_root/home/.local/share/metasequoiaime/helpcodes/shouyouplus_helpcode.txt"
-          test -f "$install_root/home/.local/share/metasequoiaime/helpcodes/xiaohe_helpcode.txt"
-          grep -F "<exec>$install_root/home/.local/libexec/metasequoia-ime-ibus --ibus</exec>" \
-            "$install_root/home/.local/share/ibus/component/metasequoiaime.xml"
+        run: tests/InstallSmoke.sh build
       - name: Check patches
         run: git diff --check

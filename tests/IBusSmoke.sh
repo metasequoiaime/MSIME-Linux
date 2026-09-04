@@ -39,7 +39,7 @@ export METASEQUOIA_IME_DATA_DIR="$smoke_root/data"
 mkdir -p "$HOME" "$XDG_CACHE_HOME" "$XDG_CONFIG_HOME" "$XDG_RUNTIME_DIR" "$IBUS_COMPONENT_PATH" \
     "$METASEQUOIA_IME_DATA_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"
-ln -s "$source_data_dir/msime.db" "$METASEQUOIA_IME_DATA_DIR/msime.db"
+cp --reflink=auto "$source_data_dir/msime.db" "$METASEQUOIA_IME_DATA_DIR/msime.db"
 ln -s "$source_helpcode_dir" "$METASEQUOIA_IME_DATA_DIR/helpcodes"
 sed "s|<exec>.*</exec>|<exec>$engine --ibus</exec>|" "$component" >"$IBUS_COMPONENT_PATH/metasequoiaime.xml"
 mkdir -p "$XDG_CONFIG_HOME/metasequoiaime"
@@ -61,6 +61,9 @@ printf '%s\n' \
     'quanpin-helpcode-schema=lantian' \
     'shuangpin-helpcode=true' \
     'shuangpin-helpcode-schema=xiaohe' \
+    'frequency-adjustment=pin' \
+    'frequency-trigger-count=1' \
+    'frequency-linear-step=2' \
     'future-option=preserve-me' \
     >"$XDG_CONFIG_HOME/metasequoiaime/config.ini"
 
@@ -89,6 +92,7 @@ if ! python3 - <<'PYTHON'
 import gi
 import os
 from pathlib import Path
+import sqlite3
 import subprocess
 
 gi.require_version("IBus", "1.0")
@@ -282,6 +286,9 @@ def settings_saved():
             "quanpin-helpcode-schema=lantian",
             "shuangpin-helpcode=true",
             "shuangpin-helpcode-schema=xiaohe",
+            "frequency-adjustment=pin",
+            "frequency-trigger-count=1",
+            "frequency-linear-step=2",
             "future-option=preserve-me",
         )
     )
@@ -319,6 +326,9 @@ if not all(
         "quanpin-helpcode-schema=lantian",
         "shuangpin-helpcode=true",
         "shuangpin-helpcode-schema=xiaohe",
+        "frequency-adjustment=pin",
+        "frequency-trigger-count=1",
+        "frequency-linear-step=2",
         "future-option=preserve-me",
     )
 ):
@@ -431,13 +441,52 @@ if not any(first_candidate == "拟好" and visible for first_candidate, visible 
 if not context.process_key_event(IBus.KEY_Escape, 0, 0):
     raise RuntimeError("Escape did not cancel the helpcode smoke composition.")
 
+committed_text.clear()
+for keyval in (IBus.KEY_n, IBus.KEY_i, IBus.KEY_h, IBus.KEY_a, IBus.KEY_o):
+    if not context.process_key_event(keyval, 0, 0):
+        raise RuntimeError("The frequency-learning composition was not handled.")
+if not context.process_key_event(IBus.KEY_2, 0, 0):
+    raise RuntimeError("The second candidate was not handled for frequency learning.")
+wait_for_commit("拟好")
+
+lookup_updates.clear()
+for keyval in (IBus.KEY_n, IBus.KEY_i, IBus.KEY_h, IBus.KEY_a, IBus.KEY_o):
+    if not context.process_key_event(keyval, 0, 0):
+        raise RuntimeError("The learned candidate composition was not handled.")
+
+
+def learned_order_observed():
+    if any(first_candidate == "拟好" and visible for first_candidate, visible in lookup_updates):
+        learned_order_loop.quit()
+        return GLib.SOURCE_REMOVE
+    return GLib.SOURCE_CONTINUE
+
+
+learned_order_loop = GLib.MainLoop()
+GLib.timeout_add(20, learned_order_observed)
+GLib.timeout_add_seconds(5, learned_order_loop.quit)
+learned_order_loop.run()
+if not any(first_candidate == "拟好" and visible for first_candidate, visible in lookup_updates):
+    raise RuntimeError(f"The persisted frequency adjustment did not change candidate order: {lookup_updates}")
+user_database = Path(os.environ["METASEQUOIA_IME_DATA_DIR"]) / "msime_user.db"
+with sqlite3.connect(user_database) as user_connection:
+    learned_rows = user_connection.execute(
+        "SELECT COUNT(*) FROM user_dictionary_operations "
+        "WHERE dictionary='pinyin' AND key=? AND value=? AND operation='upsert'",
+        ("ni'hao", "拟好"),
+    ).fetchone()[0]
+if learned_rows != 1:
+    raise RuntimeError("The learned frequency was not journaled in XDG user data.")
+if not context.process_key_event(IBus.KEY_Escape, 0, 0):
+    raise RuntimeError("Escape did not cancel the learned-order smoke composition.")
+
 
 for keyval in (IBus.KEY_n, IBus.KEY_i, IBus.KEY_h, IBus.KEY_a, IBus.KEY_o):
     if not context.process_key_event(keyval, 0, 0):
         raise RuntimeError("The Quanpin composition was not handled before first-Han selection.")
 if not context.process_key_event(IBus.KEY_bracketleft, 0, 0):
     raise RuntimeError("Left bracket was not handled for first-Han selection.")
-wait_for_commit("你")
+wait_for_commit("拟")
 
 committed_text.clear()
 for keyval in (IBus.KEY_n, IBus.KEY_i, IBus.KEY_h, IBus.KEY_a, IBus.KEY_o):

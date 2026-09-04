@@ -21,6 +21,7 @@ using metasequoia::linux_ime::InputMode;
 using metasequoia::linux_ime::InputOptions;
 using metasequoia::linux_ime::PunctuationMode;
 using metasequoia::linux_ime::PreeditStyle;
+using metasequoia::FrequencyAdjustmentMode;
 
 class Database
 {
@@ -125,6 +126,13 @@ int main()
         }
         database.execute("INSERT INTO tbl_2_n VALUES('ni''men', 'nm', '你们', 200)");
         database.execute("INSERT INTO tbl_2_n VALUES('ni''men', 'nm', '君好', 100)");
+        database.execute("CREATE TABLE tbl_1_x(key TEXT, jp TEXT, value TEXT, weight INTEGER)");
+        database.execute("INSERT INTO tbl_1_x VALUES('xi', 'x', '甲频', 100)");
+        database.execute("INSERT INTO tbl_1_x VALUES('xi', 'x', '乙频', 90)");
+        database.execute("INSERT INTO tbl_1_x VALUES('xi', 'x', '丙频', 80)");
+        database.execute("INSERT INTO tbl_1_x VALUES('xi', 'x', '丁频', 70)");
+        database.execute("INSERT INTO tbl_1_x VALUES('xi', 'x', '戊频', 60)");
+        database.execute("INSERT INTO tbl_1_x VALUES('xi', 'x', '己频', 50)");
 
         InputController controller(SchemeType::Quanpin, 3);
         require(controller.mode() == InputMode::Ime, "The controller did not start in IME mode.");
@@ -460,6 +468,25 @@ int main()
             rejected_invalid_schema = true;
         }
         require(rejected_invalid_schema, "The controller accepted an unsupported helpcode schema.");
+
+        InputOptions frequency_options;
+        frequency_options.frequency_adjustment_mode = FrequencyAdjustmentMode::Pin;
+        frequency_options.frequency_trigger_count = 1;
+        frequency_options.frequency_linear_step = 2;
+        InputController frequency_controller(SchemeType::Quanpin, frequency_options);
+        require(frequency_controller.frequency_adjustment_mode() == FrequencyAdjustmentMode::Pin &&
+                    frequency_controller.frequency_trigger_count() == 1 &&
+                    frequency_controller.frequency_linear_step() == 2,
+                "The controller did not retain frequency adjustment settings.");
+        type(frequency_controller, "xi");
+        const auto learned_frequency = frequency_controller.select_candidate(5);
+        require(learned_frequency.handled && learned_frequency.commit == "己频" &&
+                    !learned_frequency.diagnostic.has_value(),
+                "Frequency learning changed a successful controller commit.");
+        type(frequency_controller, "xi");
+        require(!frequency_controller.candidates().empty() &&
+                    frequency_controller.candidates().front().word == "己频",
+                "The controller did not expose the shared Engine's learned candidate order.");
 
         InputOptions full_width_options;
         full_width_options.character_width = CharacterWidth::Full;

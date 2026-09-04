@@ -19,6 +19,8 @@ namespace
 constexpr const char *kGroup = "input";
 constexpr std::size_t kMinimumPageSize = 3;
 constexpr std::size_t kMaximumPageSize = 9;
+constexpr int kMinimumFrequencyValue = 1;
+constexpr int kMaximumFrequencyValue = 10;
 
 void set_message(std::string *destination, const char *message)
 {
@@ -78,6 +80,24 @@ const char *preedit_style_name(PreeditStyle style)
         return "pinyin";
     case PreeditStyle::Hidden:
         return "hidden";
+    }
+    return nullptr;
+}
+
+const char *frequency_adjustment_name(FrequencyAdjustmentMode mode)
+{
+    switch (mode)
+    {
+    case FrequencyAdjustmentMode::Disabled:
+        return "disabled";
+    case FrequencyAdjustmentMode::Pin:
+        return "pin";
+    case FrequencyAdjustmentMode::Halve:
+        return "halve";
+    case FrequencyAdjustmentMode::Linear:
+        return "linear";
+    case FrequencyAdjustmentMode::Promote:
+        return "promote";
     }
     return nullptr;
 }
@@ -402,6 +422,63 @@ InputSettings SettingsStore::load(std::string *warning) const
         g_free(value);
     }
 
+    if (g_key_file_has_key(key_file, kGroup, "frequency-adjustment", nullptr))
+    {
+        gchar *value = g_key_file_get_string(key_file, kGroup, "frequency-adjustment", nullptr);
+        const std::string_view name = value == nullptr ? std::string_view{} : std::string_view(value);
+        if (name == "disabled")
+        {
+            settings.frequency_adjustment_mode = FrequencyAdjustmentMode::Disabled;
+        }
+        else if (name == "pin")
+        {
+            settings.frequency_adjustment_mode = FrequencyAdjustmentMode::Pin;
+        }
+        else if (name == "halve")
+        {
+            settings.frequency_adjustment_mode = FrequencyAdjustmentMode::Halve;
+        }
+        else if (name == "linear")
+        {
+            settings.frequency_adjustment_mode = FrequencyAdjustmentMode::Linear;
+        }
+        else if (name != "promote")
+        {
+            invalid = true;
+        }
+        g_free(value);
+    }
+
+    if (g_key_file_has_key(key_file, kGroup, "frequency-trigger-count", nullptr))
+    {
+        GError *value_error = nullptr;
+        const gint value = g_key_file_get_integer(key_file, kGroup, "frequency-trigger-count", &value_error);
+        if (value_error == nullptr && value >= kMinimumFrequencyValue && value <= kMaximumFrequencyValue)
+        {
+            settings.frequency_trigger_count = value;
+        }
+        else
+        {
+            invalid = true;
+        }
+        g_clear_error(&value_error);
+    }
+
+    if (g_key_file_has_key(key_file, kGroup, "frequency-linear-step", nullptr))
+    {
+        GError *value_error = nullptr;
+        const gint value = g_key_file_get_integer(key_file, kGroup, "frequency-linear-step", &value_error);
+        if (value_error == nullptr && value >= kMinimumFrequencyValue && value <= kMaximumFrequencyValue)
+        {
+            settings.frequency_linear_step = value;
+        }
+        else
+        {
+            invalid = true;
+        }
+        g_clear_error(&value_error);
+    }
+
     g_key_file_unref(key_file);
     if (invalid)
     {
@@ -417,11 +494,17 @@ bool SettingsStore::save(const InputSettings &settings, std::string *error) cons
     const char *scheme = scheme_name(settings.scheme);
     const char *punctuation = punctuation_name(settings.punctuation_mode);
     const char *preedit_style = preedit_style_name(settings.preedit_style);
+    const char *frequency_adjustment = frequency_adjustment_name(settings.frequency_adjustment_mode);
     if (mode == nullptr || scheme == nullptr || punctuation == nullptr || preedit_style == nullptr ||
+        frequency_adjustment == nullptr ||
         !valid_character_width(settings.character_width) || settings.page_size < kMinimumPageSize ||
         settings.page_size > kMaximumPageSize ||
         !InputSession::is_supported_helpcode_schema(settings.quanpin_helpcode_schema) ||
-        !InputSession::is_supported_helpcode_schema(settings.shuangpin_helpcode_schema))
+        !InputSession::is_supported_helpcode_schema(settings.shuangpin_helpcode_schema) ||
+        settings.frequency_trigger_count < kMinimumFrequencyValue ||
+        settings.frequency_trigger_count > kMaximumFrequencyValue ||
+        settings.frequency_linear_step < kMinimumFrequencyValue ||
+        settings.frequency_linear_step > kMaximumFrequencyValue)
     {
         set_message(error, "Input settings were outside the supported range.");
         return false;
@@ -467,6 +550,9 @@ bool SettingsStore::save(const InputSettings &settings, std::string *error) cons
     g_key_file_set_boolean(key_file, kGroup, "shuangpin-helpcode", settings.shuangpin_helpcode_enabled);
     g_key_file_set_string(key_file, kGroup, "shuangpin-helpcode-schema",
                           settings.shuangpin_helpcode_schema.c_str());
+    g_key_file_set_string(key_file, kGroup, "frequency-adjustment", frequency_adjustment);
+    g_key_file_set_integer(key_file, kGroup, "frequency-trigger-count", settings.frequency_trigger_count);
+    g_key_file_set_integer(key_file, kGroup, "frequency-linear-step", settings.frequency_linear_step);
 
     gsize data_size = 0;
     GError *data_error = nullptr;

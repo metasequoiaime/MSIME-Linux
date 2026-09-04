@@ -204,6 +204,9 @@ void save_settings(MetasequoiaEngine *engine)
     settings.quanpin_helpcode_schema = engine->controller->quanpin_helpcode_schema();
     settings.shuangpin_helpcode_enabled = engine->controller->shuangpin_helpcode_enabled();
     settings.shuangpin_helpcode_schema = engine->controller->shuangpin_helpcode_schema();
+    settings.frequency_adjustment_mode = engine->controller->frequency_adjustment_mode();
+    settings.frequency_trigger_count = engine->controller->frequency_trigger_count();
+    settings.frequency_linear_step = engine->controller->frequency_linear_step();
     if (engine->settings_store->save(settings, engine->settings_warning))
     {
         engine->settings_warning->clear();
@@ -239,6 +242,10 @@ void update_lookup_table(MetasequoiaEngine *engine)
 
 void apply_result(MetasequoiaEngine *engine, const ControllerResult &result)
 {
+    if (result.diagnostic.has_value())
+    {
+        g_warning("%s", result.diagnostic->c_str());
+    }
     if (result.delete_before > 0)
     {
         const auto count = static_cast<guint>(std::min<std::size_t>(
@@ -531,6 +538,9 @@ void metasequoia_engine_init(MetasequoiaEngine *engine)
     options.quanpin_helpcode_schema = settings.quanpin_helpcode_schema;
     options.shuangpin_helpcode_enabled = settings.shuangpin_helpcode_enabled;
     options.shuangpin_helpcode_schema = settings.shuangpin_helpcode_schema;
+    options.frequency_adjustment_mode = settings.frequency_adjustment_mode;
+    options.frequency_trigger_count = settings.frequency_trigger_count;
+    options.frequency_linear_step = settings.frequency_linear_step;
     engine->controller = new InputController(settings.scheme, options);
     (void)engine->controller->set_mode(settings.mode);
     engine->mode_toggle = new IBusModeToggleTracker();

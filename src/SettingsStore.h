@@ -26,6 +26,9 @@ struct InputSettings
     std::string quanpin_helpcode_schema = "lantian";
     bool shuangpin_helpcode_enabled = true;
     std::string shuangpin_helpcode_schema = "lantian";
+    FrequencyAdjustmentMode frequency_adjustment_mode = FrequencyAdjustmentMode::Promote;
+    int frequency_trigger_count = 1;
+    int frequency_linear_step = 1;
 };
 
 class SettingsStore

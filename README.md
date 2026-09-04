@@ -29,6 +29,8 @@ To build the tested core without IBus headers, use `-DMETASEQUOIA_IME_BUILD_IBUS
 
 ## Install for the current user
 
+Stop any running Metasequoia IME engine before installing so its latest learned frequencies can be replayed safely. The installer refuses to continue while the current user's engine is running.
+
 ```sh
 ./scripts/install.sh
 ```
@@ -57,8 +59,9 @@ rm -r "$data_home/metasequoiaime/helpcodes"
 - With `paired-punctuation=true`, opening quotes, brackets, braces, book-title marks and parentheses insert both halves and leave the cursor between them.
 - Set `preedit-style=raw`, `pinyin`, or `hidden` to show the typed keys, segmented pinyin, or no inline preedit. Hidden inline preedit does not hide the candidate lookup table.
 - Quanpin and Shuangpin helpcodes are independently controlled by `quanpin-helpcode` and `shuangpin-helpcode`. Their schema keys accept `lantian`, `ziranma`, `shouyou2_0`, `shouyouplus`, or `xiaohe`; helpcodes activate only after a complete base spelling.
+- Local candidate learning uses `frequency-adjustment=disabled|pin|halve|linear|promote`. `pin` moves a selected non-leading candidate to the top, `halve` halves its rank, `linear` advances by `frequency-linear-step`, and `promote` advances one slot or to slot five when it is farther back. `frequency-trigger-count` controls how many selections trigger an adjustment; both numeric settings accept 1–10.
 
-Settings are stored in `$XDG_CONFIG_HOME/metasequoiaime/config.ini`, falling back to `~/.config/metasequoiaime/config.ini`. The `[input]` group stores `mode`, `scheme`, `page-size`, `punctuation`, `full-width`, `comma-period-paging`, `word-to-character`, `bracket-paging`, `smart-punctuation`, `smart-punctuation-repeat-to-chinese`, `paired-punctuation`, `preedit-style`, `quanpin-helpcode`, `quanpin-helpcode-schema`, `shuangpin-helpcode`, and `shuangpin-helpcode-schema`. Defaults are Chinese input, Quanpin, page size 9, Chinese punctuation, half width, raw preedit, all three paging/selection switches disabled, and all smart/paired punctuation and helpcode switches enabled with the `lantian` schema. Edit or remove the file while the engine is not active; it will be written atomically after the next property or hotkey change.
+Settings are stored in `$XDG_CONFIG_HOME/metasequoiaime/config.ini`, falling back to `~/.config/metasequoiaime/config.ini`. The `[input]` group stores `mode`, `scheme`, `page-size`, `punctuation`, `full-width`, `comma-period-paging`, `word-to-character`, `bracket-paging`, `smart-punctuation`, `smart-punctuation-repeat-to-chinese`, `paired-punctuation`, `preedit-style`, `quanpin-helpcode`, `quanpin-helpcode-schema`, `shuangpin-helpcode`, `shuangpin-helpcode-schema`, `frequency-adjustment`, `frequency-trigger-count`, and `frequency-linear-step`. Defaults are Chinese input, Quanpin, page size 9, Chinese punctuation, half width, raw preedit, all three paging/selection switches disabled, all smart/paired punctuation and helpcode switches enabled with the `lantian` schema, and `promote` learning after every non-leading selection. Edit or remove the file while the engine is not active; it will be written atomically after the next property or hotkey change. Learned weights are journaled in `${XDG_DATA_HOME:-$HOME/.local/share}/metasequoiaime/msime_user.db`; rerunning `scripts/install.sh` replays that journal into a staged packaged dictionary before atomically replacing the live dictionary.
 
 ## Desktop-core parity
 
@@ -73,7 +76,7 @@ Settings are stored in `$XDG_CONFIG_HOME/metasequoiaime/config.ini`, falling bac
 | Smart and paired punctuation | Supported | Surrounding-text, replacement deletion and cursor-forwarding D-Bus smoke |
 | Highlighted-candidate first/last Han selection | Supported | Engine Unicode tests, controller tests and real D-Bus commit smoke |
 | Raw/segmented/hidden preedit and helpcodes | Supported | Engine, controller, settings, installed-data and real D-Bus lookup smoke |
-| User-frequency UX | Planned | Desktop experience phase |
+| Local candidate frequency learning | Supported | Five-mode Engine persistence tests plus controller, settings and real D-Bus/XDG journal smoke |
 | Emoji, kaomoji, phrases and extended input modes | Planned | Local extensions phase |
 | Cloud, AI, translation, voice and settings UI | Planned | Online and desktop-tools phases |
 

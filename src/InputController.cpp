@@ -22,14 +22,15 @@ bool valid_preedit_style(PreeditStyle style)
 } // namespace
 
 ControllerResult::ControllerResult(bool handled_value, std::optional<std::string> commit_value,
-                                   std::size_t delete_before_value, std::size_t cursor_left_value)
-    : handled(handled_value), commit(std::move(commit_value)), delete_before(delete_before_value),
-      cursor_left(cursor_left_value)
+                                   std::size_t delete_before_value, std::size_t cursor_left_value,
+                                   std::optional<std::string> diagnostic_value)
+    : handled(handled_value), commit(std::move(commit_value)), diagnostic(std::move(diagnostic_value)),
+      delete_before(delete_before_value), cursor_left(cursor_left_value)
 {
 }
 
 ControllerResult::ControllerResult(KeyResult result)
-    : handled(result.handled), commit(std::move(result.commit))
+    : handled(result.handled), commit(std::move(result.commit)), diagnostic(std::move(result.diagnostic))
 {
 }
 
@@ -44,6 +45,9 @@ InputController::InputController(SchemeType scheme_type, InputOptions options)
       quanpin_helpcode_schema_(std::move(options.quanpin_helpcode_schema)),
       shuangpin_helpcode_enabled_(options.shuangpin_helpcode_enabled),
       shuangpin_helpcode_schema_(std::move(options.shuangpin_helpcode_schema)),
+      frequency_adjustment_mode_(options.frequency_adjustment_mode),
+      frequency_trigger_count_(options.frequency_trigger_count),
+      frequency_linear_step_(options.frequency_linear_step),
       now_(options.now ? std::move(options.now) : [] { return std::chrono::steady_clock::now(); })
 {
     if (page_size_ == 0)
@@ -58,6 +62,11 @@ InputController::InputController(SchemeType scheme_type, InputOptions options)
     }
     session_.set_quanpin_helpcode_enabled(quanpin_helpcode_enabled_);
     session_.set_shuangpin_helpcode_enabled(shuangpin_helpcode_enabled_);
+    if (!session_.set_frequency_adjustment(
+            {frequency_adjustment_mode_, frequency_trigger_count_, frequency_linear_step_}))
+    {
+        throw std::invalid_argument("Frequency adjustment options were outside the supported range.");
+    }
     select_active_helpcode_schema();
 }
 
@@ -402,6 +411,21 @@ bool InputController::shuangpin_helpcode_enabled() const
 const std::string &InputController::shuangpin_helpcode_schema() const
 {
     return shuangpin_helpcode_schema_;
+}
+
+FrequencyAdjustmentMode InputController::frequency_adjustment_mode() const
+{
+    return frequency_adjustment_mode_;
+}
+
+int InputController::frequency_trigger_count() const
+{
+    return frequency_trigger_count_;
+}
+
+int InputController::frequency_linear_step() const
+{
+    return frequency_linear_step_;
 }
 
 SchemeType InputController::scheme() const
