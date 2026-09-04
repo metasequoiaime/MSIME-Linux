@@ -25,6 +25,14 @@ void require_key(guint keyval, guint state, FrontendKey expected, const char *me
     const auto translation = translate_ibus_key(keyval, state);
     require(translation.disposition == IBusKeyDisposition::Dispatch && translation.event.key == expected, message);
 }
+
+void require_punctuation(guint keyval, guint state, char expected, const char *message)
+{
+    const auto translation = translate_ibus_key(keyval, state);
+    require(translation.disposition == IBusKeyDisposition::Dispatch &&
+                translation.event.key == FrontendKey::Punctuation && translation.event.character == expected,
+            message);
+}
 } // namespace
 
 int main()
@@ -64,6 +72,18 @@ int main()
     require(unknown.disposition == IBusKeyDisposition::Forward && unknown.event.host_shortcut,
             "An unknown key was not forwarded.");
 
+    require_key(IBUS_period, IBUS_CONTROL_MASK, FrontendKey::TogglePunctuation,
+                "Ctrl+period did not toggle punctuation.");
+    require_key(IBUS_space, IBUS_CONTROL_MASK | IBUS_SHIFT_MASK, FrontendKey::ToggleWidth,
+                "Ctrl+Shift+Space did not toggle character width.");
+    const auto extra_modifier_toggle = translate_ibus_key(IBUS_period, IBUS_CONTROL_MASK | IBUS_MOD1_MASK);
+    require(extra_modifier_toggle.disposition == IBusKeyDisposition::Forward,
+            "Ctrl+Alt+period was mistaken for the punctuation hotkey.");
+    const auto extra_width_modifier =
+        translate_ibus_key(IBUS_space, IBUS_CONTROL_MASK | IBUS_SHIFT_MASK | IBUS_SUPER_MASK);
+    require(extra_width_modifier.disposition == IBusKeyDisposition::Forward,
+            "Ctrl+Shift+Super+Space was mistaken for the width hotkey.");
+
     require_key(IBUS_BackSpace, 0, FrontendKey::Backspace, "Backspace mapped incorrectly.");
     require_key(IBUS_Return, 0, FrontendKey::Enter, "Return mapped incorrectly.");
     require_key(IBUS_KP_Enter, 0, FrontendKey::Enter, "Keypad Enter mapped incorrectly.");
@@ -72,12 +92,12 @@ int main()
     require_key(IBUS_Up, 0, FrontendKey::Up, "Up mapped incorrectly.");
     require_key(IBUS_Down, 0, FrontendKey::Down, "Down mapped incorrectly.");
 
-    for (const guint keyval : {IBUS_Page_Up, IBUS_KP_Page_Up, IBUS_minus, IBUS_comma, IBUS_ISO_Left_Tab})
+    for (const guint keyval : {IBUS_Page_Up, IBUS_KP_Page_Up, IBUS_ISO_Left_Tab})
     {
         require_key(keyval, keyval == IBUS_ISO_Left_Tab ? IBUS_SHIFT_MASK : 0, FrontendKey::PageUp,
                     "A PageUp alias mapped incorrectly.");
     }
-    for (const guint keyval : {IBUS_Page_Down, IBUS_KP_Page_Down, IBUS_equal, IBUS_period, IBUS_Tab})
+    for (const guint keyval : {IBUS_Page_Down, IBUS_KP_Page_Down, IBUS_Tab})
     {
         require_key(keyval, 0, FrontendKey::PageDown, "A PageDown alias mapped incorrectly.");
     }
@@ -90,9 +110,16 @@ int main()
     require(upper.disposition == IBusKeyDisposition::Dispatch && upper.event.key == FrontendKey::Character &&
                 upper.event.character == 'Z',
             "An uppercase composition character mapped incorrectly.");
-    const auto apostrophe = translate_ibus_key(IBUS_apostrophe, 0);
-    require(apostrophe.disposition == IBusKeyDisposition::Dispatch && apostrophe.event.character == '\'',
-            "Apostrophe mapped incorrectly.");
+    require_punctuation(IBUS_apostrophe, 0, '\'', "Apostrophe did not reach punctuation arbitration.");
+    require_punctuation(IBUS_comma, 0, ',', "Comma did not reach punctuation arbitration.");
+    require_punctuation(IBUS_period, 0, '.', "Period did not reach punctuation arbitration.");
+    require_punctuation(IBUS_minus, 0, '-', "Minus did not reach punctuation arbitration.");
+    require_punctuation(IBUS_equal, 0, '=', "Equals did not reach punctuation arbitration.");
+    require_punctuation(IBUS_exclam, IBUS_SHIFT_MASK, '!', "Shifted punctuation mapped incorrectly.");
+
+    const auto keypad_decimal = translate_ibus_key(IBUS_KP_Decimal, 0);
+    require(keypad_decimal.disposition == IBusKeyDisposition::Forward && keypad_decimal.event.host_shortcut,
+            "Keypad decimal stopped preserving its ASCII application behavior.");
 
     const auto digit = translate_ibus_key(IBUS_9, 0);
     require(digit.disposition == IBusKeyDisposition::Dispatch && digit.event.key == FrontendKey::Digit &&
@@ -102,5 +129,9 @@ int main()
     require(keypad_digit.disposition == IBusKeyDisposition::Dispatch &&
                 keypad_digit.event.key == FrontendKey::Digit && keypad_digit.event.digit == 1,
             "A keypad digit mapped incorrectly.");
+    const auto zero = translate_ibus_key(IBUS_0, 0);
+    require(zero.disposition == IBusKeyDisposition::Dispatch && zero.event.key == FrontendKey::Digit &&
+                zero.event.digit == 0,
+            "Zero was not dispatched for direct full-width conversion.");
     return 0;
 }
