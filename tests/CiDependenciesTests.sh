@@ -55,15 +55,23 @@ test -f "$checkout_root/vendor/MetasequoiaImeDict/cn/BaseDictV1.txt"
 test -f "$checkout_root/vendor/MetasequoiaImeHelpCode/helpcodes/helpcode.txt"
 
 engine_revision=$(git -C "$checkout_root" ls-tree HEAD -- vendor/MetasequoiaImeEngine | awk '{print $3}')
+engine_url=$(git -C "$checkout_root" config -f .gitmodules \
+    --get 'submodule.vendor/MetasequoiaImeEngine.url')
+engine_repository=${engine_url#https://github.com/}
+engine_repository=${engine_repository%.git}
+if [[ "$engine_repository" == "$engine_url" || "$engine_repository" != */* ]]; then
+    echo "Unsupported Engine submodule URL: $engine_url" >&2
+    exit 1
+fi
 curl --fail --location --silent --show-error \
     --retry 3 --retry-all-errors \
-    "https://raw.githubusercontent.com/houko/MetasequoiaImeEngine/$engine_revision/core/input_session.cpp" \
+    "https://raw.githubusercontent.com/$engine_repository/$engine_revision/core/input_session.cpp" \
     | cmp - "$checkout_root/vendor/MetasequoiaImeEngine/core/input_session.cpp"
 
 engine_tree="$test_root/engine-tree.json"
 curl --fail --location --silent --show-error \
     --retry 3 --retry-all-errors \
-    "https://api.github.com/repos/houko/MetasequoiaImeEngine/git/trees/$engine_revision?recursive=1" \
+    "https://api.github.com/repos/$engine_repository/git/trees/$engine_revision?recursive=1" \
     --output "$engine_tree"
 googlepinyin_revision=$(python3 - "$engine_tree" <<'PYTHON'
 import json

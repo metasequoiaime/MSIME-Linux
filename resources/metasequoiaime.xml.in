@@ -6,7 +6,7 @@
   <version>@PROJECT_VERSION@</version>
   <author>Metasequoia IME contributors</author>
   <license>MIT</license>
-  <homepage>https://github.com/houko/MetasequoiaImeLinux</homepage>
+  <homepage>https://github.com/metasequoiaime/MSIME-Linux</homepage>
   <textdomain>metasequoiaime</textdomain>
   <engines>
     <engine>

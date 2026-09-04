@@ -1,8 +1,8 @@
 # Metasequoia IME for Linux
 
-Linux frontend for Metasequoia IME. The first frontend targets IBus and reuses the shared C++ engine from [`MetasequoiaImeEngine`](https://github.com/houko/MetasequoiaImeEngine).
+Linux frontend for Metasequoia IME. The first frontend targets IBus and reuses the shared C++ engine from [`MSIME-Engine`](https://github.com/metasequoiaime/MSIME-Engine).
 
-The engine submodule is currently pinned to the `houko` fork's `feat/linux-desktop-core` branch while the required native frontend API is being integrated upstream. Once the Engine pull request lands, the gitlink can move back to the upstream default branch.
+The engine submodule is pinned to the tested upstream revision that provides the native desktop frontend API.
 
 The current desktop experience supports runtime switching among Quanpin, Shuangpin, Wubi and Japanese Romaji, a Chinese/direct-input toggle, mixed English/Emoji/kaomoji candidates, dedicated English candidates, live candidates from local SQLite dictionaries, keyboard and mouse candidate selection, paging, Chinese/English punctuation, half/full-width input, configurable inline preedit, Quanpin/Shuangpin helpcodes, and persistent per-user settings.
 
@@ -17,8 +17,8 @@ sudo apt install build-essential cmake pkg-config libibus-1.0-dev libboost-dev l
 ## Build and test
 
 ```sh
-git clone --recursive https://github.com/houko/MetasequoiaImeLinux.git
-cd MetasequoiaImeLinux
+git clone --recursive https://github.com/metasequoiaime/MSIME-Linux.git
+cd MSIME-Linux
 python3 scripts/build_dictionary.py
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
 cmake --build build --parallel
@@ -99,4 +99,4 @@ Settings are stored in `$XDG_CONFIG_HOME/metasequoiaime/config.ini`, falling bac
 
 ## Scope
 
-This repository owns the Linux/IBus adapter, Linux installation, packaging, and CI. The macOS frontend remains in [`MetasequoiaImeMac`](https://github.com/houko/MetasequoiaImeMac), while the input engine and dictionary remain shared dependencies.
+This repository owns the Linux/IBus adapter, Linux installation, packaging, and CI. The Apple frontend remains in [`MSIME-Apple`](https://github.com/metasequoiaime/MSIME-Apple), while the input engine and dictionary remain shared dependencies.
