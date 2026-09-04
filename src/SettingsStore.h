@@ -30,6 +30,8 @@ struct InputSettings
     int frequency_trigger_count = 1;
     int frequency_linear_step = 1;
     bool unicode_mode_enabled = true;
+    bool mixed_english_candidates_enabled = false;
+    std::size_t mixed_english_minimum_prefix = 2;
 };
 
 class SettingsStore

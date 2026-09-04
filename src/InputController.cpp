@@ -70,6 +70,10 @@ InputController::InputController(SchemeType scheme_type, InputOptions options)
     session_.set_quanpin_helpcode_enabled(quanpin_helpcode_enabled_);
     session_.set_shuangpin_helpcode_enabled(shuangpin_helpcode_enabled_);
     session_.set_local_mode_options(options.local_modes);
+    if (!session_.set_english_input_options(options.english_input))
+    {
+        throw std::invalid_argument("English input options were outside the supported range.");
+    }
     if (!session_.set_frequency_adjustment(
             {frequency_adjustment_mode_, frequency_trigger_count_, frequency_linear_step_}))
     {
@@ -105,6 +109,10 @@ ControllerResult InputController::handle_key(const FrontendKeyEvent &event)
     if (event.key == FrontendKey::ToggleWidth)
     {
         return toggle_character_width();
+    }
+    if (event.key == FrontendKey::ToggleEnglish)
+    {
+        return toggle_dedicated_english_mode();
     }
 
     if (mode_ == InputMode::Ime)
@@ -243,6 +251,7 @@ ControllerResult InputController::handle_key(const FrontendKeyEvent &event)
             return move_page(true);
         case FrontendKey::TogglePunctuation:
         case FrontendKey::ToggleWidth:
+        case FrontendKey::ToggleEnglish:
             break;
         }
     }
@@ -266,6 +275,7 @@ ControllerResult InputController::handle_key(const FrontendKeyEvent &event)
     case FrontendKey::PageDown:
     case FrontendKey::TogglePunctuation:
     case FrontendKey::ToggleWidth:
+    case FrontendKey::ToggleEnglish:
         return {};
     }
     return {};
@@ -302,6 +312,7 @@ ControllerResult InputController::set_mode(InputMode mode)
     if (mode == InputMode::Direct)
     {
         result = commit_highlighted();
+        session_.set_dedicated_english_mode(false);
     }
     mode_ = mode;
     result.handled = true;
@@ -346,6 +357,14 @@ ControllerResult InputController::toggle_character_width()
 {
     return set_character_width(character_width_ == CharacterWidth::Half ? CharacterWidth::Full
                                                                          : CharacterWidth::Half);
+}
+
+ControllerResult InputController::toggle_dedicated_english_mode()
+{
+    clear_smart_punctuation_history();
+    session_.set_dedicated_english_mode(!session_.dedicated_english_mode());
+    reset_highlight();
+    return {true, std::nullopt};
 }
 
 ControllerResult InputController::switch_scheme(SchemeType scheme_type)
@@ -470,6 +489,21 @@ LocalInputMode InputController::local_input_mode() const
 bool InputController::unicode_mode_enabled() const
 {
     return session_.local_mode_options().unicode;
+}
+
+bool InputController::mixed_english_candidates_enabled() const
+{
+    return session_.english_input_options().mixed_candidates;
+}
+
+std::size_t InputController::mixed_english_minimum_prefix() const
+{
+    return session_.english_input_options().minimum_prefix;
+}
+
+bool InputController::dedicated_english_mode() const
+{
+    return session_.dedicated_english_mode();
 }
 
 SchemeType InputController::scheme() const

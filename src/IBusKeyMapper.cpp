@@ -75,6 +75,10 @@ IBusKeyTranslation translate_ibus_key(guint keyval, guint state)
     {
         return dispatch(FrontendKey::ToggleWidth, shift_only);
     }
+    if (keyval == IBUS_E && hotkey_modifiers == (IBUS_CONTROL_MASK | IBUS_SHIFT_MASK))
+    {
+        return dispatch(FrontendKey::ToggleEnglish);
+    }
     if ((state & kHostModifierMask) != 0)
     {
         return forward();

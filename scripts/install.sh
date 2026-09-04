@@ -18,12 +18,15 @@ helpcode_files=(
 )
 staged_main_database=""
 staged_others_database=""
+staged_english_database=""
 backup_main_database=""
 backup_others_database=""
+backup_english_database=""
 database_swap_started=false
 database_swap_complete=false
 had_live_main_database=false
 had_live_others_database=false
+had_live_english_database=false
 cleanup() {
     if [[ "$database_swap_started" == true && "$database_swap_complete" != true ]]; then
         if [[ "$had_live_main_database" == true && -e "$backup_main_database" ]]; then
@@ -38,6 +41,12 @@ cleanup() {
         else
             rm -f -- "$data_dir/others.db"
         fi
+        if [[ "$had_live_english_database" == true && -e "$backup_english_database" ]]; then
+            mv -f -- "$backup_english_database" "$data_dir/english.db" || true
+            backup_english_database=""
+        else
+            rm -f -- "$data_dir/english.db"
+        fi
     fi
     if [[ -n "$staged_main_database" && -e "$staged_main_database" ]]; then
         rm -f -- "$staged_main_database"
@@ -45,11 +54,17 @@ cleanup() {
     if [[ -n "$staged_others_database" && -e "$staged_others_database" ]]; then
         rm -f -- "$staged_others_database"
     fi
+    if [[ -n "$staged_english_database" && -e "$staged_english_database" ]]; then
+        rm -f -- "$staged_english_database"
+    fi
     if [[ -n "$backup_main_database" && -e "$backup_main_database" ]]; then
         rm -f -- "$backup_main_database"
     fi
     if [[ -n "$backup_others_database" && -e "$backup_others_database" ]]; then
         rm -f -- "$backup_others_database"
+    fi
+    if [[ -n "$backup_english_database" && -e "$backup_english_database" ]]; then
+        rm -f -- "$backup_english_database"
     fi
 }
 trap cleanup EXIT
@@ -91,6 +106,10 @@ if [[ ! -f "$project_root/vendor/MetasequoiaImeDict/out/others.db" ]]; then
     echo "Expressive dictionary is missing. Run scripts/build_dictionary.py first." >&2
     exit 1
 fi
+if [[ ! -f "$project_root/vendor/MetasequoiaImeDict/out/english.db" ]]; then
+    echo "English dictionary is missing. Run scripts/build_dictionary.py first." >&2
+    exit 1
+fi
 for helpcode_file in "${helpcode_files[@]}"; do
     if [[ ! -f "$helpcode_source_dir/$helpcode_file" ]]; then
         echo "Helpcode data is missing. Run git submodule update --init --recursive first." >&2
@@ -104,13 +123,16 @@ install -m 0755 "$replay_executable" "$libexec_dir/metasequoia-ime-dictionary-re
 install -m 0644 "$build_root/metasequoiaime.xml" "$component_dir/metasequoiaime.xml"
 staged_main_database=$(mktemp "$data_dir/.msime.db.install.XXXXXX")
 staged_others_database=$(mktemp "$data_dir/.others.db.install.XXXXXX")
+staged_english_database=$(mktemp "$data_dir/.english.db.install.XXXXXX")
 install -m 0644 "$project_root/vendor/MetasequoiaImeDict/out/msime.db" "$staged_main_database"
 install -m 0644 "$project_root/vendor/MetasequoiaImeDict/out/others.db" "$staged_others_database"
+install -m 0644 "$project_root/vendor/MetasequoiaImeDict/out/english.db" "$staged_english_database"
 for helpcode_file in "${helpcode_files[@]}"; do
     install -m 0644 "$helpcode_source_dir/$helpcode_file" "$data_dir/helpcodes/$helpcode_file"
 done
 if [[ -f "$data_dir/msime_user.db" ]]; then
-    "$replay_executable" --data-dir "$data_dir" --main-db "$staged_main_database"
+    "$replay_executable" --data-dir "$data_dir" --main-db "$staged_main_database" \
+        --english-db "$staged_english_database"
 fi
 
 if [[ -e "$data_dir/msime.db" ]]; then
@@ -125,9 +147,17 @@ if [[ -e "$data_dir/others.db" ]]; then
     rm -f -- "$backup_others_database"
     ln "$data_dir/others.db" "$backup_others_database"
 fi
+if [[ -e "$data_dir/english.db" ]]; then
+    had_live_english_database=true
+    backup_english_database=$(mktemp "$data_dir/.english.db.backup.XXXXXX")
+    rm -f -- "$backup_english_database"
+    ln "$data_dir/english.db" "$backup_english_database"
+fi
 database_swap_started=true
 mv -f -- "$staged_others_database" "$data_dir/others.db"
 staged_others_database=""
+mv -f -- "$staged_english_database" "$data_dir/english.db"
+staged_english_database=""
 mv -f -- "$staged_main_database" "$data_dir/msime.db"
 staged_main_database=""
 database_swap_complete=true
@@ -138,6 +168,10 @@ fi
 if [[ -n "$backup_others_database" ]]; then
     rm -f -- "$backup_others_database"
     backup_others_database=""
+fi
+if [[ -n "$backup_english_database" ]]; then
+    rm -f -- "$backup_english_database"
+    backup_english_database=""
 fi
 
 echo "Installed Metasequoia IME to $user_prefix"

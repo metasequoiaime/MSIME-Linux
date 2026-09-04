@@ -41,6 +41,7 @@ mkdir -p "$HOME" "$XDG_CACHE_HOME" "$XDG_CONFIG_HOME" "$XDG_RUNTIME_DIR" "$IBUS_
 chmod 700 "$XDG_RUNTIME_DIR"
 cp --reflink=auto "$source_data_dir/msime.db" "$METASEQUOIA_IME_DATA_DIR/msime.db"
 cp --reflink=auto "$source_data_dir/others.db" "$METASEQUOIA_IME_DATA_DIR/others.db"
+cp --reflink=auto "$source_data_dir/english.db" "$METASEQUOIA_IME_DATA_DIR/english.db"
 ln -s "$source_helpcode_dir" "$METASEQUOIA_IME_DATA_DIR/helpcodes"
 sed "s|<exec>.*</exec>|<exec>$engine --ibus</exec>|" "$component" >"$IBUS_COMPONENT_PATH/metasequoiaime.xml"
 mkdir -p "$XDG_CONFIG_HOME/metasequoiaime"
@@ -66,6 +67,8 @@ printf '%s\n' \
     'frequency-trigger-count=1' \
     'frequency-linear-step=2' \
     'unicode-mode=true' \
+    'mixed-english-candidates=true' \
+    'mixed-english-minimum-prefix=2' \
     'future-option=preserve-me' \
     >"$XDG_CONFIG_HOME/metasequoiaime/config.ini"
 
@@ -292,6 +295,8 @@ def settings_saved():
             "frequency-trigger-count=1",
             "frequency-linear-step=2",
             "unicode-mode=true",
+            "mixed-english-candidates=true",
+            "mixed-english-minimum-prefix=2",
             "future-option=preserve-me",
         )
     )
@@ -333,6 +338,8 @@ if not all(
         "frequency-trigger-count=1",
         "frequency-linear-step=2",
         "unicode-mode=true",
+        "mixed-english-candidates=true",
+        "mixed-english-minimum-prefix=2",
         "future-option=preserve-me",
     )
 ):
@@ -557,6 +564,75 @@ if not any(first_candidate == "(*/ω＼*)" and visible for first_candidate, visi
 if not context.process_key_event(IBus.KEY_space, 0, 0):
     raise RuntimeError("Space did not select the kaomoji candidate.")
 wait_for_commit("(*/ω＼*)")
+
+
+lookup_updates.clear()
+committed_text.clear()
+if not context.process_key_event(
+    IBus.KEY_E,
+    0,
+    IBus.ModifierType.CONTROL_MASK | IBus.ModifierType.SHIFT_MASK,
+):
+    raise RuntimeError("Ctrl+Shift+E did not enter dedicated English mode.")
+for keyval in (IBus.KEY_h, IBus.KEY_e, IBus.KEY_l, IBus.KEY_l, IBus.KEY_o):
+    if not context.process_key_event(keyval, 0, 0):
+        raise RuntimeError("Dedicated English input was not handled.")
+
+
+def english_candidate_observed():
+    if any(first_candidate and first_candidate.lower() == "hello" and visible
+           for first_candidate, visible in lookup_updates):
+        english_loop.quit()
+        return GLib.SOURCE_REMOVE
+    return GLib.SOURCE_CONTINUE
+
+
+english_loop = GLib.MainLoop()
+GLib.timeout_add(20, english_candidate_observed)
+GLib.timeout_add_seconds(5, english_loop.quit)
+english_loop.run()
+if not any(first_candidate and first_candidate.lower() == "hello" and visible
+           for first_candidate, visible in lookup_updates):
+    raise RuntimeError(f"Dedicated English mode did not publish the hello candidate: {lookup_updates}")
+expected_english = [first_candidate for first_candidate, visible in lookup_updates
+                    if first_candidate and first_candidate.lower() == "hello" and visible][-1]
+if not context.process_key_event(IBus.KEY_space, 0, 0):
+    raise RuntimeError("Space did not select the dedicated English candidate.")
+wait_for_commit(expected_english)
+
+
+committed_text.clear()
+learned_english = "Metasequoialinux"
+for character in learned_english:
+    keyval = getattr(IBus, "KEY_" + character)
+    state = IBus.ModifierType.SHIFT_MASK if character.isupper() else 0
+    if not context.process_key_event(keyval, 0, state):
+        raise RuntimeError("Raw dedicated English input was not handled.")
+if not context.process_key_event(IBus.KEY_Return, 0, 0):
+    raise RuntimeError("Enter did not commit raw dedicated English input.")
+wait_for_commit(learned_english)
+data_directory = Path(os.environ["METASEQUOIA_IME_DATA_DIR"])
+with sqlite3.connect(data_directory / "english.db") as english_connection:
+    learned_rows = english_connection.execute(
+        "SELECT COUNT(*) FROM english_words WHERE word=? AND display=?",
+        (learned_english.lower(), learned_english),
+    ).fetchone()[0]
+with sqlite3.connect(data_directory / "msime_user.db") as user_connection:
+    journaled_rows = user_connection.execute(
+        "SELECT COUNT(*) FROM user_dictionary_operations "
+        "WHERE dictionary='english' AND key=? AND value=? AND operation='upsert'",
+        (learned_english.lower(), learned_english),
+    ).fetchone()[0]
+if learned_rows != 1 or journaled_rows != 1:
+    raise RuntimeError(
+        f"Raw dedicated English learning was not persisted: db={learned_rows}, journal={journaled_rows}"
+    )
+if not context.process_key_event(
+    IBus.KEY_E,
+    0,
+    IBus.ModifierType.CONTROL_MASK | IBus.ModifierType.SHIFT_MASK,
+):
+    raise RuntimeError("Ctrl+Shift+E did not leave dedicated English mode.")
 
 
 preedit_updates.clear()

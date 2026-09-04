@@ -21,6 +21,8 @@ constexpr std::size_t kMinimumPageSize = 3;
 constexpr std::size_t kMaximumPageSize = 9;
 constexpr int kMinimumFrequencyValue = 1;
 constexpr int kMaximumFrequencyValue = 10;
+constexpr gint kMinimumEnglishPrefix = 1;
+constexpr gint kMaximumEnglishPrefix = 8;
 
 void set_message(std::string *destination, const char *message)
 {
@@ -494,6 +496,36 @@ InputSettings SettingsStore::load(std::string *warning) const
         g_clear_error(&value_error);
     }
 
+    if (g_key_file_has_key(key_file, kGroup, "mixed-english-candidates", nullptr))
+    {
+        GError *value_error = nullptr;
+        const gboolean value = g_key_file_get_boolean(key_file, kGroup, "mixed-english-candidates", &value_error);
+        if (value_error == nullptr)
+        {
+            settings.mixed_english_candidates_enabled = value;
+        }
+        else
+        {
+            invalid = true;
+        }
+        g_clear_error(&value_error);
+    }
+
+    if (g_key_file_has_key(key_file, kGroup, "mixed-english-minimum-prefix", nullptr))
+    {
+        GError *value_error = nullptr;
+        const gint value = g_key_file_get_integer(key_file, kGroup, "mixed-english-minimum-prefix", &value_error);
+        if (value_error == nullptr && value >= kMinimumEnglishPrefix && value <= kMaximumEnglishPrefix)
+        {
+            settings.mixed_english_minimum_prefix = static_cast<std::size_t>(value);
+        }
+        else
+        {
+            invalid = true;
+        }
+        g_clear_error(&value_error);
+    }
+
     g_key_file_unref(key_file);
     if (invalid)
     {
@@ -519,7 +551,9 @@ bool SettingsStore::save(const InputSettings &settings, std::string *error) cons
         settings.frequency_trigger_count < kMinimumFrequencyValue ||
         settings.frequency_trigger_count > kMaximumFrequencyValue ||
         settings.frequency_linear_step < kMinimumFrequencyValue ||
-        settings.frequency_linear_step > kMaximumFrequencyValue)
+        settings.frequency_linear_step > kMaximumFrequencyValue ||
+        settings.mixed_english_minimum_prefix < static_cast<std::size_t>(kMinimumEnglishPrefix) ||
+        settings.mixed_english_minimum_prefix > static_cast<std::size_t>(kMaximumEnglishPrefix))
     {
         set_message(error, "Input settings were outside the supported range.");
         return false;
@@ -569,6 +603,10 @@ bool SettingsStore::save(const InputSettings &settings, std::string *error) cons
     g_key_file_set_integer(key_file, kGroup, "frequency-trigger-count", settings.frequency_trigger_count);
     g_key_file_set_integer(key_file, kGroup, "frequency-linear-step", settings.frequency_linear_step);
     g_key_file_set_boolean(key_file, kGroup, "unicode-mode", settings.unicode_mode_enabled);
+    g_key_file_set_boolean(key_file, kGroup, "mixed-english-candidates",
+                           settings.mixed_english_candidates_enabled);
+    g_key_file_set_integer(key_file, kGroup, "mixed-english-minimum-prefix",
+                           static_cast<gint>(settings.mixed_english_minimum_prefix));
 
     gsize data_size = 0;
     GError *data_error = nullptr;

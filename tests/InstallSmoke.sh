@@ -27,6 +27,7 @@ test -x "$HOME/.local/libexec/metasequoia-ime-dictionary-replay"
 test -f "$XDG_DATA_HOME/ibus/component/metasequoiaime.xml"
 test -f "$data_dir/msime.db"
 test -f "$data_dir/others.db"
+test -f "$data_dir/english.db"
 test -f "$data_dir/helpcodes/helpcode.txt"
 test -f "$data_dir/helpcodes/zrm_helpcode_big_unique.txt"
 test -f "$data_dir/helpcodes/shouyou2_0_helpcode.txt"
@@ -69,6 +70,12 @@ if emoji != ("😀",) or kaomoji != ("(*/ω＼*)",):
     raise SystemExit(
         f"installed expressive dictionary was incomplete: emoji={emoji}, kaomoji={kaomoji}"
     )
+with sqlite3.connect(data_dir / "english.db") as english_database:
+    english = english_database.execute(
+        "SELECT display FROM english_words WHERE word='hello' ORDER BY weight DESC LIMIT 1"
+    ).fetchone()
+if english is None or english[0].lower() != "hello":
+    raise SystemExit(f"installed English dictionary was incomplete: {english}")
 
 user_database = sqlite3.connect(data_dir / "msime_user.db")
 user_database.execute(
@@ -98,6 +105,10 @@ user_database.execute(
     "INSERT INTO user_dictionary_operations(dictionary,key,value,operation,weight) "
     "VALUES('quick','yyds','永远滴神','delete',0)"
 )
+user_database.execute(
+    "INSERT INTO user_dictionary_operations(dictionary,key,value,operation,weight,display) "
+    "VALUES('english','codexlinux','CodexLinux','upsert',25,'CodexLinux')"
+)
 user_database.commit()
 user_database.close()
 PYTHON
@@ -125,6 +136,10 @@ with sqlite3.connect(data_dir / "msime.db") as database:
     deleted_shipped_phrase = database.execute(
         "SELECT COUNT(*) FROM quick_parases WHERE key='yyds' AND value='永远滴神'"
     ).fetchone()[0]
+with sqlite3.connect(data_dir / "english.db") as english_database:
+    replayed_english = english_database.execute(
+        "SELECT weight FROM english_words WHERE word='codexlinux' AND display='CodexLinux'"
+    ).fetchone()
 if actual_weight != expected_weight:
     raise SystemExit(
         f"journal replay lost learned weight: expected {expected_weight}, got {actual_weight}"
@@ -134,6 +149,8 @@ if replayed_quick_phrase != (20,) or deleted_shipped_phrase != 0:
         "quick-phrase journal replay did not preserve user upserts and deletions: "
         f"upsert={replayed_quick_phrase}, deleted_count={deleted_shipped_phrase}"
     )
+if replayed_english != (25,):
+    raise SystemExit(f"English journal replay did not survive staged upgrade: {replayed_english}")
 PYTHON
 
 bash -c 'exec -a metasequoia-ime-ibus sleep 30' &
@@ -177,6 +194,9 @@ with sqlite3.connect(data_dir / "msime_user.db") as user_database:
 with sqlite3.connect(data_dir / "others.db") as others_database:
     others_database.execute("CREATE TABLE failed_upgrade_marker(value TEXT)")
     others_database.execute("INSERT INTO failed_upgrade_marker VALUES('preserve-live-others')")
+with sqlite3.connect(data_dir / "english.db") as english_database:
+    english_database.execute("CREATE TABLE failed_upgrade_marker(value TEXT)")
+    english_database.execute("INSERT INTO failed_upgrade_marker VALUES('preserve-live-english')")
 PYTHON
 )
 
@@ -216,4 +236,8 @@ with sqlite3.connect(data_dir / "others.db") as others_database:
     marker = others_database.execute("SELECT value FROM failed_upgrade_marker").fetchone()
 if marker != ("preserve-live-others",):
     raise SystemExit(f"failed dictionary replay replaced live others.db: {marker}")
+with sqlite3.connect(data_dir / "english.db") as english_database:
+    marker = english_database.execute("SELECT value FROM failed_upgrade_marker").fetchone()
+if marker != ("preserve-live-english",):
+    raise SystemExit(f"failed dictionary replay replaced live english.db: {marker}")
 PYTHON

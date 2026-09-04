@@ -40,6 +40,7 @@ enum class FrontendKey
     PageDown,
     TogglePunctuation,
     ToggleWidth,
+    ToggleEnglish,
 };
 
 struct FrontendKeyEvent
@@ -97,6 +98,7 @@ struct InputOptions
     int frequency_trigger_count = 1;
     int frequency_linear_step = 1;
     LocalModeOptions local_modes;
+    EnglishInputOptions english_input;
     std::function<std::chrono::steady_clock::time_point()> now;
 };
 
@@ -115,6 +117,7 @@ class InputController
     ControllerResult toggle_punctuation_mode();
     ControllerResult set_character_width(CharacterWidth width);
     ControllerResult toggle_character_width();
+    ControllerResult toggle_dedicated_english_mode();
     ControllerResult switch_scheme(SchemeType scheme_type);
     void reset();
     void invalidate_context();
@@ -138,6 +141,9 @@ class InputController
     int frequency_linear_step() const;
     LocalInputMode local_input_mode() const;
     bool unicode_mode_enabled() const;
+    bool mixed_english_candidates_enabled() const;
+    std::size_t mixed_english_minimum_prefix() const;
+    bool dedicated_english_mode() const;
     SchemeType scheme() const;
     bool has_composition() const;
     const std::string &preedit() const;

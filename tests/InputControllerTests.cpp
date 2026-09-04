@@ -3,7 +3,9 @@
 
 #include <sqlite3.h>
 
+#include <algorithm>
 #include <chrono>
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -46,6 +48,20 @@ class Database
             sqlite3_free(error);
             throw std::runtime_error(message);
         }
+    }
+
+    std::int64_t query_integer(const std::string &sql)
+    {
+        sqlite3_stmt *statement = nullptr;
+        if (sqlite3_prepare_v2(database_, sql.c_str(), -1, &statement, nullptr) != SQLITE_OK ||
+            sqlite3_step(statement) != SQLITE_ROW)
+        {
+            sqlite3_finalize(statement);
+            throw std::runtime_error("Failed to query the input-controller test dictionary.");
+        }
+        const std::int64_t value = sqlite3_column_int64(statement, 0);
+        sqlite3_finalize(statement);
+        return value;
     }
 
   private:
@@ -144,6 +160,16 @@ int main()
         others_database.execute(
             "CREATE TABLE kaomoji(pinyin TEXT,jianpin TEXT,kaomoji TEXT,sort_order INTEGER)");
         others_database.execute("INSERT INTO kaomoji VALUES('haixiu','hx','(*/ω＼*)',10)");
+        Database english_database(data_directory / "english.db");
+        english_database.execute(
+            "CREATE TABLE english_words(word TEXT COLLATE BINARY NOT NULL,display TEXT NOT NULL,"
+            "weight INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(word,display)) WITHOUT ROWID");
+        english_database.execute("CREATE TABLE en_zh_glosses(english TEXT PRIMARY KEY,chinese_gloss TEXT NOT NULL)");
+        english_database.execute("CREATE TABLE zh_en_glosses(chinese TEXT PRIMARY KEY,english_gloss TEXT NOT NULL)");
+        english_database.execute("INSERT INTO english_words VALUES('xi','Xi',100)");
+        english_database.execute("INSERT INTO english_words VALUES('xigua','Xigua',90)");
+        english_database.execute("INSERT INTO english_words VALUES('hello','Hello',100)");
+        english_database.execute("INSERT INTO english_words VALUES('help','Help',90)");
 
         InputController controller(SchemeType::Quanpin, 3);
         require(controller.mode() == InputMode::Ime, "The controller did not start in IME mode.");
@@ -656,6 +682,58 @@ int main()
         require(disabled_expressive_controller.handle_key(kaomoji_prefix).handled &&
                     disabled_expressive_controller.local_input_mode() == LocalInputMode::None,
                 "A disabled kaomoji mode intercepted Shift+M.");
+
+        InputOptions mixed_english_options;
+        mixed_english_options.english_input.mixed_candidates = true;
+        mixed_english_options.english_input.minimum_prefix = 2;
+        InputController mixed_english_controller(SchemeType::Quanpin, mixed_english_options);
+        type(mixed_english_controller, "xi");
+        if (!mixed_english_controller.mixed_english_candidates_enabled() ||
+            mixed_english_controller.mixed_english_minimum_prefix() != 2 ||
+            mixed_english_controller.candidates().size() != 8 ||
+            !std::all_of(mixed_english_controller.candidates().begin(),
+                         mixed_english_controller.candidates().begin() + 6,
+                         [](const WordItem &candidate) {
+                             return candidate.source == CandidateSource::Database ||
+                                    candidate.source == CandidateSource::UserDatabase;
+                         }) ||
+            mixed_english_controller.candidates()[6].word != "Xi" ||
+            mixed_english_controller.candidates()[7].word != "Xigua")
+        {
+            std::string actual = "The controller did not append configured mixed English candidates:";
+            for (const auto &candidate : mixed_english_controller.candidates())
+            {
+                actual += " [" + candidate.word + "]";
+            }
+            throw std::runtime_error(actual);
+        }
+
+        InputController dedicated_english_controller(SchemeType::Quanpin, 3);
+        const auto enter_english = dedicated_english_controller.handle_key(key(FrontendKey::ToggleEnglish));
+        require(enter_english.handled && dedicated_english_controller.dedicated_english_mode() &&
+                    !dedicated_english_controller.has_composition(),
+                "The controller did not enter dedicated English mode.");
+        type(dedicated_english_controller, "he");
+        require(dedicated_english_controller.candidates().size() == 2 &&
+                    dedicated_english_controller.candidates()[0].word == "Hello" &&
+                    dedicated_english_controller.candidates()[1].word == "Help",
+                "Dedicated English mode did not expose English-only candidates.");
+        const auto select_english = dedicated_english_controller.handle_key(digit(2));
+        require(select_english.handled && select_english.commit == "Help" &&
+                    dedicated_english_controller.dedicated_english_mode(),
+                "Dedicated English candidate selection committed the wrong candidate or left the mode.");
+        type(dedicated_english_controller, "Linuxword");
+        const auto enter_raw_english = dedicated_english_controller.handle_key(key(FrontendKey::Enter));
+        require(enter_raw_english.handled && enter_raw_english.commit == "Linuxword" &&
+                    dedicated_english_controller.dedicated_english_mode(),
+                "Enter did not commit and learn raw dedicated English.");
+        require(english_database.query_integer(
+                    "SELECT COUNT(*) FROM english_words WHERE word='linuxword' AND display='Linuxword'") == 1,
+                "The controller did not persist a learned dedicated English word.");
+        const auto leave_english = dedicated_english_controller.handle_key(key(FrontendKey::ToggleEnglish));
+        require(leave_english.handled && !dedicated_english_controller.dedicated_english_mode() &&
+                    !dedicated_english_controller.has_composition(),
+                "The controller did not exit dedicated English mode.");
 
         InputOptions full_width_options;
         full_width_options.character_width = CharacterWidth::Full;

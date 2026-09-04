@@ -208,6 +208,8 @@ void save_settings(MetasequoiaEngine *engine)
     settings.frequency_trigger_count = engine->controller->frequency_trigger_count();
     settings.frequency_linear_step = engine->controller->frequency_linear_step();
     settings.unicode_mode_enabled = engine->controller->unicode_mode_enabled();
+    settings.mixed_english_candidates_enabled = engine->controller->mixed_english_candidates_enabled();
+    settings.mixed_english_minimum_prefix = engine->controller->mixed_english_minimum_prefix();
     if (engine->settings_store->save(settings, engine->settings_warning))
     {
         engine->settings_warning->clear();
@@ -543,6 +545,8 @@ void metasequoia_engine_init(MetasequoiaEngine *engine)
     options.frequency_trigger_count = settings.frequency_trigger_count;
     options.frequency_linear_step = settings.frequency_linear_step;
     options.local_modes.unicode = settings.unicode_mode_enabled;
+    options.english_input.mixed_candidates = settings.mixed_english_candidates_enabled;
+    options.english_input.minimum_prefix = settings.mixed_english_minimum_prefix;
     engine->controller = new InputController(settings.scheme, options);
     (void)engine->controller->set_mode(settings.mode);
     engine->mode_toggle = new IBusModeToggleTracker();

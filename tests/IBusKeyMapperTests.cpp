@@ -76,6 +76,8 @@ int main()
                 "Ctrl+period did not toggle punctuation.");
     require_key(IBUS_space, IBUS_CONTROL_MASK | IBUS_SHIFT_MASK, FrontendKey::ToggleWidth,
                 "Ctrl+Shift+Space did not toggle character width.");
+    require_key(IBUS_E, IBUS_CONTROL_MASK | IBUS_SHIFT_MASK, FrontendKey::ToggleEnglish,
+                "Ctrl+Shift+E did not toggle dedicated English mode.");
     const auto extra_modifier_toggle = translate_ibus_key(IBUS_period, IBUS_CONTROL_MASK | IBUS_MOD1_MASK);
     require(extra_modifier_toggle.disposition == IBusKeyDisposition::Forward,
             "Ctrl+Alt+period was mistaken for the punctuation hotkey.");
@@ -83,6 +85,10 @@ int main()
         translate_ibus_key(IBUS_space, IBUS_CONTROL_MASK | IBUS_SHIFT_MASK | IBUS_SUPER_MASK);
     require(extra_width_modifier.disposition == IBusKeyDisposition::Forward,
             "Ctrl+Shift+Super+Space was mistaken for the width hotkey.");
+    const auto extra_english_modifier =
+        translate_ibus_key(IBUS_E, IBUS_CONTROL_MASK | IBUS_SHIFT_MASK | IBUS_MOD1_MASK);
+    require(extra_english_modifier.disposition == IBusKeyDisposition::Forward,
+            "Ctrl+Shift+Alt+E was mistaken for the English-mode hotkey.");
 
     require_key(IBUS_BackSpace, 0, FrontendKey::Backspace, "Backspace mapped incorrectly.");
     require_key(IBUS_Return, 0, FrontendKey::Enter, "Return mapped incorrectly.");
