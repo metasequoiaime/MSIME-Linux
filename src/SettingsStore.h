@@ -1,13 +1,36 @@
 #pragma once
 
 #include "InputController.h"
+#include "SecretStore.h"
+#include "VoiceInput.h"
+#include "online/AiSuggestionProvider.h"
 
+#include <chrono>
 #include <cstddef>
 #include <filesystem>
 #include <string>
 
 namespace metasequoia::linux_ime
 {
+enum class TranslationProvider
+{
+    Local,
+    DeepLX,
+};
+
+struct OnlineSettings
+{
+    bool cloud_candidates_enabled = true;
+    online::AiSuggestionConfig ai;
+    bool candidate_translations_enabled = true;
+    TranslationProvider translation_provider = TranslationProvider::Local;
+    std::string translation_target_language = "en";
+    std::string translation_endpoint;
+    std::string translation_token;
+    std::chrono::milliseconds connect_timeout{2500};
+    std::chrono::milliseconds total_timeout{8000};
+};
+
 struct InputSettings
 {
     InputMode mode = InputMode::Ime;
@@ -37,6 +60,10 @@ struct InputSettings
     std::size_t mixed_english_minimum_prefix = 2;
     bool mixed_emoji_candidates_enabled = false;
     bool mixed_kaomoji_candidates_enabled = false;
+    bool clipboard_history_enabled = false;
+    bool floating_toolbar_enabled = true;
+    VoiceInputConfig voice;
+    OnlineSettings online;
 };
 
 class SettingsStore
@@ -46,7 +73,10 @@ class SettingsStore
     explicit SettingsStore(std::filesystem::path config_home);
 
     InputSettings load(std::string *warning = nullptr) const;
+    // Credential overloads may block on Secret Service and are not main-loop APIs.
+    InputSettings load(const SecretStore &secret_store, std::string *warning = nullptr) const;
     bool save(const InputSettings &settings, std::string *error = nullptr) const;
+    bool save(const InputSettings &settings, SecretStore &secret_store, std::string *error = nullptr) const;
     const std::filesystem::path &config_path() const;
 
   private:

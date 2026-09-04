@@ -1,4 +1,5 @@
 #include "../src/SettingsStore.h"
+#include "../src/SecretStore.h"
 #include "../vendor/MetasequoiaImeEngine/core/data_path.h"
 
 #include <sys/stat.h>
@@ -8,8 +9,11 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <map>
+#include <optional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 
 namespace
 {
@@ -19,7 +23,74 @@ using metasequoia::linux_ime::CharacterWidth;
 using metasequoia::linux_ime::PunctuationMode;
 using metasequoia::linux_ime::PreeditStyle;
 using metasequoia::linux_ime::SettingsStore;
+using metasequoia::linux_ime::OnlineSettings;
+using metasequoia::linux_ime::SecretKind;
+using metasequoia::linux_ime::SecretLookupResult;
+using metasequoia::linux_ime::SecretStatus;
+using metasequoia::linux_ime::SecretStore;
+using metasequoia::linux_ime::TranslationProvider;
+using metasequoia::linux_ime::online::AiProvider;
 using metasequoia::FrequencyAdjustmentMode;
+
+class MemorySecretStore final : public SecretStore
+{
+  public:
+    SecretLookupResult lookup(SecretKind kind, std::string_view provider) const override
+    {
+        if (!available)
+        {
+            return {SecretStatus::Unavailable, {}, "Credential service unavailable."};
+        }
+        const auto found = values.find({kind, std::string(provider)});
+        if (found == values.end())
+        {
+            return {SecretStatus::NotFound, {}, {}};
+        }
+        return {SecretStatus::Found, found->second, {}};
+    }
+
+    bool store(SecretKind kind, std::string_view provider, std::string_view secret,
+               std::string *diagnostic) override
+    {
+        if (diagnostic != nullptr)
+        {
+            *diagnostic = available ? "" : "Credential service unavailable.";
+        }
+        if (!available)
+        {
+            return false;
+        }
+        if (fail_store_kind == kind)
+        {
+            if (become_unavailable_on_store_failure)
+            {
+                available = false;
+            }
+            return false;
+        }
+        values[{kind, std::string(provider)}] = std::string(secret);
+        return true;
+    }
+
+    bool erase(SecretKind kind, std::string_view provider, std::string *diagnostic) override
+    {
+        if (diagnostic != nullptr)
+        {
+            *diagnostic = available ? "" : "Credential service unavailable.";
+        }
+        if (!available)
+        {
+            return false;
+        }
+        values.erase({kind, std::string(provider)});
+        return true;
+    }
+
+    bool available = true;
+    bool become_unavailable_on_store_failure = false;
+    std::optional<SecretKind> fail_store_kind;
+    std::map<std::pair<SecretKind, std::string>, std::string> values;
+};
 
 void require(bool condition, const char *message)
 {
@@ -92,6 +163,16 @@ int main()
                 !defaults.mixed_emoji_candidates_enabled && !defaults.mixed_kaomoji_candidates_enabled,
             "Missing settings did not use defaults.");
     require(warning.empty(), "A missing optional settings file produced a warning.");
+    require(defaults.online.cloud_candidates_enabled && !defaults.online.ai.enabled &&
+                defaults.online.ai.provider == AiProvider::DeepSeek && defaults.online.ai.token.empty() &&
+                defaults.online.ai.endpoint.empty() && defaults.online.ai.model.empty() &&
+                defaults.online.ai.prompt.empty() && defaults.online.ai.candidate_limit == 3 &&
+                defaults.online.candidate_translations_enabled &&
+                defaults.online.translation_provider == TranslationProvider::Local &&
+                defaults.online.translation_target_language == "en" &&
+                defaults.online.translation_endpoint.empty() && defaults.online.translation_token.empty() &&
+                defaults.online.connect_timeout.count() == 2500 && defaults.online.total_timeout.count() == 8000,
+            "Missing online settings did not use safe defaults.");
 
     InputSettings saved;
     saved.mode = InputMode::Direct;
@@ -121,6 +202,33 @@ int main()
     saved.mixed_english_minimum_prefix = 4;
     saved.mixed_emoji_candidates_enabled = true;
     saved.mixed_kaomoji_candidates_enabled = true;
+    saved.clipboard_history_enabled = true;
+    saved.floating_toolbar_enabled = false;
+    saved.voice.enabled = true;
+    saved.voice.provider = "openai";
+    saved.voice.endpoint = "https://voice.example.test/v1/audio/transcriptions";
+    saved.voice.model = "whisper-1";
+    saved.voice.language = "zh";
+    saved.voice.token = "voice-settings-round-trip-secret";
+    saved.voice.polish_enabled = true;
+    saved.voice.polish_endpoint = "https://voice.example.test/v1/chat/completions";
+    saved.voice.polish_model = "polish-model";
+    saved.voice.polish_prompt = "请整理文本。";
+    saved.online.cloud_candidates_enabled = false;
+    saved.online.ai.enabled = true;
+    saved.online.ai.provider = AiProvider::OpenAI;
+    saved.online.ai.token = "sk-settings-round-trip-secret";
+    saved.online.ai.endpoint = "https://example.test/v1/chat/completions";
+    saved.online.ai.model = "example-model";
+    saved.online.ai.prompt = "Only return the requested candidate.";
+    saved.online.ai.candidate_limit = 5;
+    saved.online.candidate_translations_enabled = true;
+    saved.online.translation_provider = TranslationProvider::DeepLX;
+    saved.online.translation_target_language = "ja";
+    saved.online.translation_endpoint = "https://translate.example.test/translate";
+    saved.online.translation_token = "translation-settings-round-trip-secret";
+    saved.online.connect_timeout = std::chrono::milliseconds(1500);
+    saved.online.total_timeout = std::chrono::milliseconds(6000);
     std::string error;
     require(store.save(saved, &error) && error.empty(), "Valid settings could not be saved.");
     const InputSettings round_trip = store.load(&warning);
@@ -149,8 +257,36 @@ int main()
                 round_trip.mixed_english_candidates_enabled == saved.mixed_english_candidates_enabled &&
                 round_trip.mixed_english_minimum_prefix == saved.mixed_english_minimum_prefix &&
                 round_trip.mixed_emoji_candidates_enabled == saved.mixed_emoji_candidates_enabled &&
-                round_trip.mixed_kaomoji_candidates_enabled == saved.mixed_kaomoji_candidates_enabled,
+                round_trip.mixed_kaomoji_candidates_enabled == saved.mixed_kaomoji_candidates_enabled &&
+                round_trip.clipboard_history_enabled == saved.clipboard_history_enabled &&
+                round_trip.floating_toolbar_enabled == saved.floating_toolbar_enabled &&
+                round_trip.voice.enabled == saved.voice.enabled && round_trip.voice.provider == saved.voice.provider &&
+                round_trip.voice.endpoint == saved.voice.endpoint && round_trip.voice.model == saved.voice.model &&
+                round_trip.voice.language == saved.voice.language && round_trip.voice.polish_enabled == saved.voice.polish_enabled &&
+                round_trip.voice.polish_endpoint == saved.voice.polish_endpoint &&
+                round_trip.voice.polish_model == saved.voice.polish_model && round_trip.voice.polish_prompt == saved.voice.polish_prompt &&
+                round_trip.voice.token.empty(),
             "Settings did not survive a round trip.");
+    require(round_trip.online.cloud_candidates_enabled == saved.online.cloud_candidates_enabled &&
+                round_trip.online.ai.enabled == saved.online.ai.enabled &&
+                round_trip.online.ai.provider == saved.online.ai.provider && round_trip.online.ai.token.empty() &&
+                round_trip.online.ai.endpoint == saved.online.ai.endpoint &&
+                round_trip.online.ai.model == saved.online.ai.model &&
+                round_trip.online.ai.prompt == saved.online.ai.prompt &&
+                round_trip.online.ai.candidate_limit == saved.online.ai.candidate_limit &&
+                round_trip.online.candidate_translations_enabled == saved.online.candidate_translations_enabled &&
+                round_trip.online.translation_provider == saved.online.translation_provider &&
+                round_trip.online.translation_target_language == saved.online.translation_target_language &&
+                round_trip.online.translation_endpoint == saved.online.translation_endpoint &&
+                round_trip.online.translation_token.empty() &&
+                round_trip.online.connect_timeout == saved.online.connect_timeout &&
+                round_trip.online.total_timeout == saved.online.total_timeout,
+            "Non-secret online settings did not survive a round trip or a token leaked through the key file.");
+    const std::string saved_contents = read_file(store.config_path());
+    require(saved_contents.find(saved.online.ai.token) == std::string::npos &&
+                saved_contents.find(saved.online.translation_token) == std::string::npos &&
+                saved_contents.find(saved.voice.token) == std::string::npos,
+            "An API token was written to config.ini.");
 
     const auto config_path = store.config_path();
     write_file(config_path,
@@ -184,6 +320,27 @@ int main()
                "mixed-kaomoji-candidates=true\n"
                "future-option=keep-me\n"
                "\n"
+               "[online]\n"
+               "cloud-enabled=false\n"
+               "connect-timeout-ms=1800\n"
+               "total-timeout-ms=7000\n"
+               "\n"
+               "[ai]\n"
+               "enabled=true\n"
+               "provider=groq\n"
+               "endpoint=https://api.groq.com/openai/v1/chat/completions\n"
+               "model=openai/gpt-oss-120b\n"
+               "prompt=Return one candidate.\n"
+               "candidate-limit=4\n"
+               "token=legacy-ai-plaintext-secret\n"
+               "\n"
+               "[translation]\n"
+               "enabled=true\n"
+               "provider=deeplx\n"
+               "target-language=fr\n"
+               "endpoint=https://translate.example.test/translate\n"
+               "api-key=legacy-translation-plaintext-secret\n"
+               "\n"
                "[future]\n"
                "value=preserve-me\n");
     const ino_t original_inode = inode(config_path);
@@ -216,6 +373,19 @@ int main()
     updated.mixed_english_minimum_prefix = 5;
     updated.mixed_emoji_candidates_enabled = false;
     updated.mixed_kaomoji_candidates_enabled = false;
+    updated.online.cloud_candidates_enabled = true;
+    updated.online.ai.enabled = false;
+    updated.online.ai.provider = AiProvider::SiliconFlow;
+    updated.online.ai.endpoint = "https://api.siliconflow.cn/v1/chat/completions";
+    updated.online.ai.model = "Qwen/Qwen3-8B";
+    updated.online.ai.prompt = "Return concise candidates.";
+    updated.online.ai.candidate_limit = 2;
+    updated.online.candidate_translations_enabled = false;
+    updated.online.translation_provider = TranslationProvider::Local;
+    updated.online.translation_target_language = "de";
+    updated.online.translation_endpoint.clear();
+    updated.online.connect_timeout = std::chrono::milliseconds(2200);
+    updated.online.total_timeout = std::chrono::milliseconds(7500);
     require(store.save(updated, &error), "Existing settings could not be replaced.");
     require(inode(config_path) != original_inode, "The settings file was modified in place instead of atomically replaced.");
     const std::string preserved = read_file(config_path);
@@ -223,6 +393,9 @@ int main()
                 preserved.find("[future]") != std::string::npos &&
                 preserved.find("value=preserve-me") != std::string::npos,
             "Saving known settings discarded unknown keys.");
+    require(preserved.find("legacy-ai-plaintext-secret") == std::string::npos &&
+                preserved.find("legacy-translation-plaintext-secret") == std::string::npos,
+            "Saving settings preserved a legacy plaintext credential.");
     for (const auto &entry : std::filesystem::directory_iterator(config_path.parent_path()))
     {
         require(entry.path() == config_path, "An atomic settings temporary file was left behind.");
@@ -256,7 +429,26 @@ int main()
                "mixed-english-candidates=unexpected\n"
                "mixed-english-minimum-prefix=9\n"
                "mixed-emoji-candidates=unexpected\n"
-               "mixed-kaomoji-candidates=unexpected\n");
+               "mixed-kaomoji-candidates=unexpected\n"
+               "\n"
+               "[online]\n"
+               "cloud-enabled=unexpected\n"
+               "connect-timeout-ms=99\n"
+               "total-timeout-ms=30001\n"
+               "\n"
+               "[ai]\n"
+               "enabled=true\n"
+               "provider=unsupported\n"
+               "endpoint=http://insecure.example.test/chat\n"
+               "model=valid-model\n"
+               "prompt=valid prompt\n"
+               "candidate-limit=11\n"
+               "\n"
+               "[translation]\n"
+               "enabled=true\n"
+               "provider=unsupported\n"
+               "target-language=unsupported\n"
+               "endpoint=http://insecure.example.test/translate\n");
     const InputSettings invalid = store.load(&warning);
     require(invalid.mode == InputMode::Ime && invalid.scheme == SchemeType::Quanpin && invalid.page_size == 9 &&
                 invalid.punctuation_mode == PunctuationMode::Chinese &&
@@ -274,6 +466,15 @@ int main()
                 invalid.mixed_english_minimum_prefix == 2 &&
                 !invalid.mixed_emoji_candidates_enabled && !invalid.mixed_kaomoji_candidates_enabled,
             "Invalid settings did not fall back field by field.");
+    require(invalid.online.cloud_candidates_enabled && invalid.online.ai.enabled &&
+                invalid.online.ai.provider == AiProvider::DeepSeek && invalid.online.ai.endpoint.empty() &&
+                invalid.online.ai.model == "valid-model" && invalid.online.ai.prompt == "valid prompt" &&
+                invalid.online.ai.candidate_limit == 3 && invalid.online.candidate_translations_enabled &&
+                invalid.online.translation_provider == TranslationProvider::Local &&
+                invalid.online.translation_target_language == "en" &&
+                invalid.online.translation_endpoint.empty() && invalid.online.connect_timeout.count() == 2500 &&
+                invalid.online.total_timeout.count() == 8000,
+            "Invalid online settings did not fall back field by field.");
     require(!warning.empty(), "Invalid settings did not produce a diagnostic warning.");
 
     InputSettings unsupported = saved;
@@ -292,9 +493,104 @@ int main()
     unsupported.mixed_english_minimum_prefix = 9;
     require(!store.save(unsupported, &error) && !error.empty(),
             "An out-of-range mixed-English minimum prefix was written to disk.");
+    unsupported = saved;
+    unsupported.online.ai.provider = static_cast<AiProvider>(99);
+    require(!store.save(unsupported, &error) && !error.empty(), "An unsupported AI provider was written to disk.");
+    unsupported = saved;
+    unsupported.online.ai.endpoint = "http://insecure.example.test/chat";
+    require(!store.save(unsupported, &error) && !error.empty(), "An insecure AI endpoint was written to disk.");
+    unsupported = saved;
+    unsupported.online.ai.candidate_limit = 11;
+    require(!store.save(unsupported, &error) && !error.empty(),
+            "An out-of-range AI candidate limit was written to disk.");
+    unsupported = saved;
+    unsupported.online.translation_target_language = "unsupported";
+    require(!store.save(unsupported, &error) && !error.empty(),
+            "An unsupported translation target language was written to disk.");
+    unsupported = saved;
+    unsupported.online.connect_timeout = std::chrono::milliseconds(99);
+    require(!store.save(unsupported, &error) && !error.empty(), "An invalid connect timeout was written to disk.");
+    unsupported = saved;
+    unsupported.online.total_timeout = std::chrono::milliseconds(30001);
+    require(!store.save(unsupported, &error) && !error.empty(), "An invalid total timeout was written to disk.");
+
+    MemorySecretStore secrets;
+    std::string secret_diagnostic;
+    require(store.save(saved, secrets, &secret_diagnostic) && secret_diagnostic.empty(),
+            "Settings and credentials could not be saved together.");
+    const InputSettings hydrated = store.load(secrets, &secret_diagnostic);
+    require(hydrated.online.ai.enabled && hydrated.online.ai.token == saved.online.ai.token &&
+                hydrated.online.translation_token == saved.online.translation_token && hydrated.voice.enabled &&
+                hydrated.voice.token == saved.voice.token && secret_diagnostic.empty(),
+            "Credentials were not restored from the secret store.");
+    const std::string hydrated_contents = read_file(config_path);
+    require(hydrated_contents.find(saved.online.ai.token) == std::string::npos &&
+                hydrated_contents.find(saved.online.translation_token) == std::string::npos &&
+                hydrated_contents.find(saved.voice.token) == std::string::npos &&
+                secret_diagnostic.find(saved.online.ai.token) == std::string::npos &&
+                secret_diagnostic.find(saved.online.translation_token) == std::string::npos,
+            "A credential appeared in config.ini or a diagnostic.");
+
+    MemorySecretStore missing_secrets;
+    missing_secrets.values[{SecretKind::TranslationApiToken, "deeplx"}] = saved.online.translation_token;
+    const InputSettings missing_ai = store.load(missing_secrets, &secret_diagnostic);
+    require(!missing_ai.online.ai.enabled && missing_ai.online.translation_token == saved.online.translation_token &&
+                !secret_diagnostic.empty() && secret_diagnostic.find(saved.online.ai.token) == std::string::npos,
+            "A missing AI credential did not disable only AI or leaked secret material.");
+
+    MemorySecretStore missing_translation_secrets;
+    missing_translation_secrets.values[{SecretKind::AiApiToken, "openai"}] = saved.online.ai.token;
+    const InputSettings missing_translation = store.load(missing_translation_secrets, &secret_diagnostic);
+    require(missing_translation.online.ai.enabled &&
+                !missing_translation.online.candidate_translations_enabled && !secret_diagnostic.empty() &&
+                secret_diagnostic.find(saved.online.ai.token) == std::string::npos &&
+                secret_diagnostic.find(saved.online.translation_token) == std::string::npos,
+            "A missing translation credential did not disable only translation or leaked secret material.");
+
+    MemorySecretStore unavailable_secrets;
+    unavailable_secrets.available = false;
+    const InputSettings unavailable = store.load(unavailable_secrets, &secret_diagnostic);
+    require(!unavailable.online.ai.enabled && !unavailable.online.candidate_translations_enabled &&
+                !secret_diagnostic.empty() && secret_diagnostic.find(saved.online.ai.token) == std::string::npos &&
+                secret_diagnostic.find(saved.online.translation_token) == std::string::npos,
+            "An unavailable secret service did not isolate online providers or exposed a credential.");
+
+    MemorySecretStore rollback_secrets;
+    rollback_secrets.values[{SecretKind::AiApiToken, "openai"}] = "old-ai-secret";
+    rollback_secrets.values[{SecretKind::TranslationApiToken, "deeplx"}] = "old-translation-secret";
+    rollback_secrets.fail_store_kind = SecretKind::TranslationApiToken;
+    require(!store.save(saved, rollback_secrets, &secret_diagnostic) &&
+                rollback_secrets.values.at({SecretKind::AiApiToken, "openai"}) == "old-ai-secret" &&
+                rollback_secrets.values.at({SecretKind::TranslationApiToken, "deeplx"}) ==
+                    "old-translation-secret" &&
+                secret_diagnostic.find(saved.online.ai.token) == std::string::npos &&
+                secret_diagnostic.find(saved.online.translation_token) == std::string::npos,
+            "A second credential failure did not roll back the first credential update.");
+    rollback_secrets.fail_store_kind.reset();
+
+    rollback_secrets.fail_store_kind = SecretKind::TranslationApiToken;
+    rollback_secrets.become_unavailable_on_store_failure = true;
+    require(!store.save(saved, rollback_secrets, &secret_diagnostic) && !rollback_secrets.available &&
+                rollback_secrets.values.at({SecretKind::AiApiToken, "openai"}) == saved.online.ai.token &&
+                secret_diagnostic.find("roll back") != std::string::npos &&
+                secret_diagnostic.find(saved.online.ai.token) == std::string::npos &&
+                secret_diagnostic.find(saved.online.translation_token) == std::string::npos,
+            "An unavailable credential service hid a failed credential rollback.");
+    rollback_secrets.available = true;
+    rollback_secrets.become_unavailable_on_store_failure = false;
+    rollback_secrets.fail_store_kind.reset();
+    rollback_secrets.values[{SecretKind::AiApiToken, "openai"}] = "old-ai-secret";
+    rollback_secrets.values[{SecretKind::TranslationApiToken, "deeplx"}] = "old-translation-secret";
 
     std::filesystem::remove(config_path);
     std::filesystem::create_directory(config_path);
+    require(!store.save(saved, rollback_secrets, &secret_diagnostic) &&
+                rollback_secrets.values.at({SecretKind::AiApiToken, "openai"}) == "old-ai-secret" &&
+                rollback_secrets.values.at({SecretKind::TranslationApiToken, "deeplx"}) ==
+                    "old-translation-secret" &&
+                secret_diagnostic.find(saved.online.ai.token) == std::string::npos &&
+                secret_diagnostic.find(saved.online.translation_token) == std::string::npos,
+            "A config-file failure did not roll back credential updates.");
     require(!store.save(saved, &error) && !error.empty(), "A settings replacement failure was not reported.");
 
     std::filesystem::remove_all(config_home);

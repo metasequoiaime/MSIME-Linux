@@ -5,9 +5,15 @@ project_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 build_root=${METASEQUOIA_IME_BUILD_DIR:-"$project_root/build"}
 user_prefix="$HOME/.local"
 libexec_dir="$user_prefix/libexec"
+bin_dir="$user_prefix/bin"
+applications_dir="${XDG_DATA_HOME:-$user_prefix/share}/applications"
 component_dir="${XDG_DATA_HOME:-$user_prefix/share}/ibus/component"
 data_dir="${XDG_DATA_HOME:-$user_prefix/share}/metasequoiaime"
 replay_executable="$build_root/metasequoia-ime-dictionary-replay"
+settings_executable="$build_root/metasequoia-ime-settings"
+tools_executable="$build_root/metasequoia-ime-tools"
+voice_executable="$build_root/metasequoia-ime-voice"
+toolbar_executable="$build_root/metasequoia-ime-toolbar"
 helpcode_source_dir="$project_root/vendor/MetasequoiaImeHelpCode/helpcodes"
 helpcode_files=(
     helpcode.txt
@@ -69,6 +75,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
+if ! pkg-config --exists libsecret-1; then
+    echo "libsecret-1 is required for secure online-provider credentials." >&2
+    exit 1
+fi
+
 engine_is_running() {
     local process_directory
     local process_argv0
@@ -98,6 +109,12 @@ if [[ ! -x "$replay_executable" ]]; then
     echo "Dictionary replay output is missing. Run scripts/build.sh first." >&2
     exit 1
 fi
+for utility_executable in "$settings_executable" "$tools_executable" "$voice_executable" "$toolbar_executable"; do
+    if [[ ! -x "$utility_executable" ]]; then
+        echo "Build output is missing: $utility_executable. Configure with METASEQUOIA_IME_BUILD_SETTINGS_UI=ON." >&2
+        exit 1
+    fi
+done
 if [[ ! -f "$project_root/vendor/MetasequoiaImeDict/out/msime.db" ]]; then
     echo "Dictionary is missing. Run scripts/build_dictionary.py first." >&2
     exit 1
@@ -117,10 +134,18 @@ for helpcode_file in "${helpcode_files[@]}"; do
     fi
 done
 
-mkdir -p "$libexec_dir" "$component_dir" "$data_dir/helpcodes"
+mkdir -p "$libexec_dir" "$bin_dir" "$component_dir" "$applications_dir" "$data_dir/helpcodes"
 install -m 0755 "$build_root/metasequoia-ime-ibus" "$libexec_dir/metasequoia-ime-ibus"
 install -m 0755 "$replay_executable" "$libexec_dir/metasequoia-ime-dictionary-replay"
+install -m 0755 "$settings_executable" "$bin_dir/metasequoia-ime-settings"
+install -m 0755 "$tools_executable" "$bin_dir/metasequoia-ime-tools"
+install -m 0755 "$voice_executable" "$bin_dir/metasequoia-ime-voice"
+install -m 0755 "$toolbar_executable" "$bin_dir/metasequoia-ime-toolbar"
 install -m 0644 "$build_root/metasequoiaime.xml" "$component_dir/metasequoiaime.xml"
+install -m 0644 "$build_root/metasequoia-ime-settings.desktop" "$applications_dir/metasequoia-ime-settings.desktop"
+install -m 0644 "$build_root/metasequoia-ime-tools.desktop" "$applications_dir/metasequoia-ime-tools.desktop"
+install -m 0644 "$build_root/metasequoia-ime-voice.desktop" "$applications_dir/metasequoia-ime-voice.desktop"
+install -m 0644 "$build_root/metasequoia-ime-toolbar.desktop" "$applications_dir/metasequoia-ime-toolbar.desktop"
 staged_main_database=$(mktemp "$data_dir/.msime.db.install.XXXXXX")
 staged_others_database=$(mktemp "$data_dir/.others.db.install.XXXXXX")
 staged_english_database=$(mktemp "$data_dir/.english.db.install.XXXXXX")

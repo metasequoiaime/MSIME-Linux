@@ -6,13 +6,17 @@ The engine submodule is pinned to the tested upstream revision that provides the
 
 The current desktop experience supports runtime switching among Quanpin, Shuangpin, Wubi and Japanese Romaji, a Chinese/direct-input toggle, mixed English/Emoji/kaomoji candidates, dedicated English candidates, live candidates from local SQLite dictionaries, keyboard and mouse candidate selection, paging, Chinese/English punctuation, half/full-width input, configurable inline preedit, Quanpin/Shuangpin helpcodes, and persistent per-user settings.
 
+The Linux desktop tools include a GTK settings application, a clipboard-history store and panel, and a small screen-keyboard/handwriting workspace. Voice transcription is available through the standalone `metasequoia-ime-voice` command using the configured HTTPS provider; it accepts an existing WAV file or records from Linux audio with `--record SECONDS` when `arecord` or `pw-record` is installed.
+
 ## Dependencies
 
 On Debian/Ubuntu:
 
 ```sh
-sudo apt install build-essential cmake pkg-config libibus-1.0-dev libboost-dev libfmt-dev libspdlog-dev libsqlite3-dev python3 python3-gi python3-pypinyin gir1.2-ibus-1.0 ibus dbus-x11 iso-codes
+sudo apt install build-essential cmake pkg-config libibus-1.0-dev libboost-dev libfmt-dev libspdlog-dev libsqlite3-dev libcurl4-openssl-dev libsecret-1-dev libgtk-3-dev gnome-keyring python3 python3-gi python3-pypinyin gir1.2-ibus-1.0 ibus dbus-x11 iso-codes
 ```
+
+For local Chinese handwriting recognition, also install `tesseract-ocr` and `tesseract-ocr-chi-sim`. The desktop tool remains usable without them and reports the missing backend in its status line.
 
 ## Build and test
 
@@ -64,14 +68,19 @@ rm -r "$data_home/metasequoiaime/helpcodes"
 - In Quanpin or Shuangpin with no active composition, press `Shift+Y` for one temporary English composition (raw text first, followed by completions), or `Shift+R` for one temporary Japanese Romaji composition. Committing, cancelling, or deleting the bare prefix returns to the original Chinese scheme. Set `temporary-english-mode=false` or `temporary-japanese-mode=false` to disable either shortcut.
 - Press `Ctrl+Shift+E` to enter or leave dedicated English mode. Type letters to query English-only prefix candidates; Space selects the highlighted candidate, while Return commits and learns raw alphabetic input without leaving the mode.
 - Set `mixed-english-candidates=true`, `mixed-emoji-candidates=true`, or `mixed-kaomoji-candidates=true` to merge those local sources into normal Quanpin and Shuangpin candidates. The Windows-compatible priority is the leading Chinese candidate, then the first English, Emoji, and kaomoji matches, followed by the remaining local and source-group candidates with stable deduplication. Emoji and kaomoji start at two typed characters; `mixed-english-minimum-prefix` controls the English threshold and accepts 1–8. All three mixed sources are disabled by default, and the default English threshold is 2.
+- Online candidates are enabled by default and are fetched asynchronously after a 500 ms idle period. Google cloud suggestions occupy the second candidate slot. Network failures, timeouts, reset, focus-out, and stale generations never block or alter local input. Set `cloud-enabled=false` in `[online]` to disable them.
+- AI suggestions use an OpenAI-compatible provider (`deepseek`, `openai`, `siliconflow`, `groq`, or `custom`) and occupy the third slot. Configure non-secret values in `[ai]` (`enabled`, `provider`, `endpoint`, `model`, `prompt`, and `candidate-limit`); the API token is stored in the desktop Secret Service, never in `config.ini` or diagnostics. Only HTTPS endpoints are accepted at runtime.
+- Candidate translations are shown as display metadata (`候选 · gloss`) and never change the committed candidate text. Local English/Chinese glosses are preferred; set `provider=deeplx` in `[translation]` to enable an HTTPS DeepLX-compatible fallback. Configure `target-language` and `endpoint` in `[translation]`; its Bearer token is stored in Secret Service. Translation errors clear only the gloss and leave candidate selection functional.
 - Set `word-to-character=true` to make `[` commit the first Han character and `]` the last Han character of the highlighted candidate. If `bracket-paging=true`, bracket paging takes precedence and word-to-character selection is disabled for those keys.
 - With `smart-punctuation=true`, comma, period and colon remain ASCII after an ASCII letter or digit. Repeating the same mark within two seconds replaces it with its Chinese form when `smart-punctuation-repeat-to-chinese=true`; unavailable surrounding text safely falls back to Chinese punctuation.
 - With `paired-punctuation=true`, opening quotes, brackets, braces, book-title marks and parentheses insert both halves and leave the cursor between them.
 - Set `preedit-style=raw`, `pinyin`, or `hidden` to show the typed keys, segmented pinyin, or no inline preedit. Hidden inline preedit does not hide the candidate lookup table.
 - Quanpin and Shuangpin helpcodes are independently controlled by `quanpin-helpcode` and `shuangpin-helpcode`. Their schema keys accept `lantian`, `ziranma`, `shouyou2_0`, `shouyouplus`, or `xiaohe`; helpcodes activate only after a complete base spelling.
 - Local candidate learning uses `frequency-adjustment=disabled|pin|halve|linear|promote`. `pin` moves a selected non-leading candidate to the top, `halve` halves its rank, `linear` advances by `frequency-linear-step`, and `promote` advances one slot or to slot five when it is farther back. `frequency-trigger-count` controls how many selections trigger an adjustment; both numeric settings accept 1–10.
+- Launch `metasequoia-ime-settings` (also available from the desktop applications menu) to edit the same XDG settings without hand-editing `config.ini`. Secret Service credentials are intentionally omitted from the form. Launch `metasequoia-ime-tools` for clipboard history, a screen keyboard that builds text for the clipboard, and the handwriting workspace. Launch `metasequoia-ime-toolbar` for an always-on-top shortcut bar to these desktop tools.
+- Set `voice.enabled=true` and configure the `[voice]` endpoint/model in the settings application, then run `metasequoia-ime-voice --file recording.wav` or `metasequoia-ime-voice --record 5`. Set `voice.polish-enabled=true` to send the transcript through the configured Chat Completions endpoint before printing it. The API token is stored in Secret Service under the voice provider and is never written to `config.ini`; failed transcription or optional polishing leaves the local input engine unaffected.
 
-Settings are stored in `$XDG_CONFIG_HOME/metasequoiaime/config.ini`, falling back to `~/.config/metasequoiaime/config.ini`. The `[input]` group stores `mode`, `scheme`, `page-size`, `punctuation`, `full-width`, `comma-period-paging`, `word-to-character`, `bracket-paging`, `smart-punctuation`, `smart-punctuation-repeat-to-chinese`, `paired-punctuation`, `preedit-style`, `quanpin-helpcode`, `quanpin-helpcode-schema`, `shuangpin-helpcode`, `shuangpin-helpcode-schema`, `frequency-adjustment`, `frequency-trigger-count`, `frequency-linear-step`, `unicode-mode`, `super-jianpin-mode`, `temporary-english-mode`, `temporary-japanese-mode`, `mixed-english-candidates`, `mixed-english-minimum-prefix`, `mixed-emoji-candidates`, and `mixed-kaomoji-candidates`. Defaults are Chinese input, Quanpin, page size 9, Chinese punctuation, half width, raw preedit, all three paging/selection switches and all mixed candidate sources disabled, all smart/paired punctuation, helpcode, Unicode-mode, super-jianpin, and temporary-mode switches enabled with the `lantian` helpcode schema, a mixed-English prefix threshold of 2, and `promote` learning after every non-leading selection. Edit or remove the file while the engine is not active; it will be written atomically after the next property or hotkey change. Learned weights and English raw entries are journaled in `${XDG_DATA_HOME:-$HOME/.local/share}/metasequoiaime/msime_user.db`; rerunning `scripts/install.sh` replays that journal into staged `msime.db`, `others.db`, and `english.db` files before replacing the live dictionary set as one unit.
+Settings are stored in `$XDG_CONFIG_HOME/metasequoiaime/config.ini`, falling back to `~/.config/metasequoiaime/config.ini`. The `[input]` group stores the local input settings listed above. Online non-secret values are stored in `[online]` (`cloud-enabled`, `connect-timeout-ms`, `total-timeout-ms`), `[ai]` (`enabled`, `provider`, `endpoint`, `model`, `prompt`, `candidate-limit`), and `[translation]` (`enabled`, `provider`, `target-language`, `endpoint`). Utility visibility is stored in `[utility]` (`clipboard-history`, `floating-toolbar`), and voice options are stored in `[voice]` (`enabled`, `provider`, `endpoint`, `model`, `language`, `polish-enabled`, `polish-endpoint`, `polish-model`, `polish-prompt`). AI, translation and voice tokens are stored in the desktop Secret Service under provider-isolated attributes and are never written to this file. Edit or remove the file while the engine is not active; it will be written atomically after the next property or hotkey change. Learned weights and English raw entries are journaled in `${XDG_DATA_HOME:-$HOME/.local/share}/metasequoiaime/msime_user.db`; rerunning `scripts/install.sh` replays that journal into staged `msime.db`, `others.db`, and `english.db` files before replacing the live dictionary set as one unit.
 
 ## Desktop-core parity
 
@@ -95,7 +104,16 @@ Settings are stored in `$XDG_CONFIG_HOME/metasequoiaime/config.ini`, falling bac
 | Super-jianpin mode | Supported | Engine Quanpin/Shuangpin query and frequency tests plus controller/settings and real D-Bus paging/selection smoke |
 | Dedicated English input | Supported | Engine failure/learning tests, controller/mapper/settings tests, generated `english.db`, transactional install and real D-Bus commit smoke |
 | Temporary English and Japanese input modes | Supported | Engine lifecycle tests plus controller/settings and real D-Bus commit/restore smoke |
-| Cloud, AI, translation, voice and settings UI | Planned | Online and desktop-tools phases |
+| Cloud candidate suggestions | Supported | Async provider/service tests, Controller generation tests, real IBus smoke, Ubuntu CI |
+| OpenAI-compatible AI suggestions | Supported | Provider contract/cache tests, Controller generation tests, real IBus smoke, Ubuntu CI |
+| Candidate translation display | Supported | Local/DeepLX parser, debounce/cancellation and UTF-8 tests, real IBus smoke, Ubuntu CI |
+| GTK settings application | Supported | Settings model tests, headless `--check`, install smoke |
+| Clipboard history | Supported | UTF-8/size/deduplication/atomic-store tests and GTK tools panel |
+| Screen keyboard workspace | Supported | GTK desktop-tools executable and headless check |
+| Voice transcription from recorded WAV | Supported | HTTPS multipart provider contract tests and standalone CLI |
+| Microphone voice capture | Supported | Standalone CLI capture through `arecord` or `pw-record`; provider transcription remains optional |
+| Handwriting recognition | Supported | GTK stroke canvas and Tesseract `chi_sim+eng` backend; clear install guidance when unavailable |
+| Floating toolbar | Supported | Always-on-top GTK utility with desktop-tool launchers and install smoke |
 
 ## Scope
 

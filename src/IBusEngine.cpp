@@ -1,12 +1,18 @@
 #include "InputController.h"
 #include "IBusKeyMapper.h"
 #include "SettingsStore.h"
+#include "core/data_path.h"
+#include "online/HttpTransport.h"
+#include "online/OnlineCandidateService.h"
+#include "online/TranslationProvider.h"
 
 #include <ibus.h>
 
 #include <algorithm>
 #include <cstring>
 #include <limits>
+#include <map>
+#include <memory>
 #include <optional>
 #include <string>
 
@@ -24,6 +30,13 @@ using metasequoia::linux_ime::InputSettings;
 using metasequoia::linux_ime::PunctuationMode;
 using metasequoia::linux_ime::SettingsStore;
 using metasequoia::linux_ime::translate_ibus_key;
+using metasequoia::linux_ime::online::AiSuggestionProvider;
+using metasequoia::linux_ime::online::CurlHttpTransport;
+using metasequoia::linux_ime::online::GoogleCloudProvider;
+using metasequoia::linux_ime::online::OnlineCandidateService;
+using metasequoia::linux_ime::online::TranslationProvider;
+using metasequoia::linux_ime::online::TranslationBackend;
+using metasequoia::linux_ime::online::TranslationService;
 
 struct _MetasequoiaEngine
 {
@@ -31,6 +44,11 @@ struct _MetasequoiaEngine
     InputController *controller = nullptr;
     IBusModeToggleTracker *mode_toggle = nullptr;
     SettingsStore *settings_store = nullptr;
+    metasequoia::linux_ime::LibsecretSecretStore *secret_store = nullptr;
+    OnlineCandidateService *online_service = nullptr;
+    TranslationService *translation_service = nullptr;
+    metasequoia::linux_ime::OnlineSettings *online_settings = nullptr;
+    std::map<std::string, std::string> *translation_glosses = nullptr;
     std::string *settings_warning = nullptr;
     IBusPropList *properties = nullptr;
     IBusProperty *mode_property = nullptr;
@@ -184,6 +202,106 @@ void show_settings_warning(MetasequoiaEngine *engine)
     ibus_engine_update_auxiliary_text(IBUS_ENGINE(engine), text(engine->settings_warning->c_str()), TRUE);
 }
 
+void update_lookup_table(MetasequoiaEngine *engine);
+void refresh_translation(MetasequoiaEngine *engine);
+
+void refresh_online(MetasequoiaEngine *engine)
+{
+    if (!engine->online_service)
+    {
+        return;
+    }
+    const auto request = engine->controller->online_request();
+    if (!request.has_value())
+    {
+        engine->online_service->clear();
+        return;
+    }
+    auto online_request = *request;
+    online_request.query.cloud_eligible =
+        online_request.query.cloud_eligible && engine->online_settings->cloud_candidates_enabled;
+    online_request.query.ai_eligible = online_request.query.ai_eligible && engine->online_settings->ai.enabled;
+    if (!online_request.query.cloud_eligible && !online_request.query.ai_eligible)
+    {
+        engine->online_service->clear();
+        return;
+    }
+    engine->online_service->submit(std::move(online_request), {}, engine->online_settings->ai);
+}
+
+struct OnlineDelivery
+{
+    MetasequoiaEngine *engine = nullptr;
+    metasequoia::linux_ime::OnlineRequest request;
+    std::string candidate;
+    CandidateSource source = CandidateSource::CloudSuggestion;
+};
+
+gboolean deliver_online(gpointer user_data)
+{
+    std::unique_ptr<OnlineDelivery> delivery(static_cast<OnlineDelivery *>(user_data));
+    auto *engine = delivery->engine;
+    if (engine->controller->apply_online_candidate(delivery->request.generation, delivery->request.query,
+                                                   std::move(delivery->candidate), delivery->source))
+    {
+        update_lookup_table(engine);
+        refresh_translation(engine);
+    }
+    g_object_unref(engine);
+    return G_SOURCE_REMOVE;
+}
+
+void queue_online_result(MetasequoiaEngine *engine, const metasequoia::linux_ime::OnlineRequest &request,
+                         std::string candidate, CandidateSource source)
+{
+    auto delivery = std::make_unique<OnlineDelivery>();
+    delivery->engine = static_cast<MetasequoiaEngine *>(g_object_ref(engine));
+    delivery->request = request;
+    delivery->candidate = std::move(candidate);
+    delivery->source = source;
+    g_main_context_invoke_full(nullptr, G_PRIORITY_DEFAULT, deliver_online, delivery.release(), nullptr);
+}
+
+struct TranslationDelivery
+{
+    MetasequoiaEngine *engine = nullptr;
+    std::uint64_t generation = 0;
+    std::vector<std::pair<std::string, std::string>> results;
+};
+
+gboolean deliver_translation(gpointer user_data)
+{
+    std::unique_ptr<TranslationDelivery> delivery(static_cast<TranslationDelivery *>(user_data));
+    auto *engine = delivery->engine;
+    if (delivery->generation == engine->controller->online_generation())
+    {
+        engine->translation_glosses->clear();
+        for (const auto &entry : delivery->results)
+        {
+            const auto found = std::find_if(engine->controller->candidates().begin(),
+                                            engine->controller->candidates().end(),
+                                            [&](const WordItem &candidate) { return candidate.word == entry.first; });
+            if (found != engine->controller->candidates().end())
+            {
+                (*engine->translation_glosses)[entry.first] = entry.second;
+            }
+        }
+        update_lookup_table(engine);
+    }
+    g_object_unref(engine);
+    return G_SOURCE_REMOVE;
+}
+
+void queue_translation_result(MetasequoiaEngine *engine, std::uint64_t generation,
+                              std::vector<std::pair<std::string, std::string>> results)
+{
+    auto delivery = std::make_unique<TranslationDelivery>();
+    delivery->engine = static_cast<MetasequoiaEngine *>(g_object_ref(engine));
+    delivery->generation = generation;
+    delivery->results = std::move(results);
+    g_main_context_invoke_full(nullptr, G_PRIORITY_DEFAULT, deliver_translation, delivery.release(), nullptr);
+}
+
 void save_settings(MetasequoiaEngine *engine)
 {
     InputSettings settings;
@@ -215,7 +333,8 @@ void save_settings(MetasequoiaEngine *engine)
     settings.mixed_english_minimum_prefix = engine->controller->mixed_english_minimum_prefix();
     settings.mixed_emoji_candidates_enabled = engine->controller->mixed_emoji_candidates_enabled();
     settings.mixed_kaomoji_candidates_enabled = engine->controller->mixed_kaomoji_candidates_enabled();
-    if (engine->settings_store->save(settings, engine->settings_warning))
+    settings.online = *engine->online_settings;
+    if (engine->secret_store && engine->settings_store->save(settings, *engine->secret_store, engine->settings_warning))
     {
         engine->settings_warning->clear();
     }
@@ -234,7 +353,14 @@ void update_lookup_table(MetasequoiaEngine *engine)
     IBusLookupTable *table = ibus_lookup_table_new(static_cast<guint>(engine->controller->page_size()), 0, TRUE, FALSE);
     for (const WordItem &candidate : engine->controller->candidates())
     {
-        IBusText *text = ibus_text_new_from_string(candidate.word.c_str());
+        std::string display = candidate.word;
+        if (const auto found = engine->translation_glosses->find(candidate.word);
+            found != engine->translation_glosses->end())
+        {
+            display += " · ";
+            display += found->second;
+        }
+        IBusText *text = ibus_text_new_from_string(display.c_str());
         ibus_lookup_table_append_candidate(table, text);
     }
 
@@ -246,6 +372,45 @@ void update_lookup_table(MetasequoiaEngine *engine)
 
     const gboolean visible = engine->controller->has_composition() && !engine->controller->candidates().empty();
     ibus_engine_update_lookup_table(IBUS_ENGINE(engine), table, visible);
+}
+
+void refresh_translation(MetasequoiaEngine *engine)
+{
+    if (!engine->translation_service || !engine->online_settings->candidate_translations_enabled ||
+        !engine->controller->has_composition() || engine->controller->candidates().empty())
+    {
+        if (!engine->translation_glosses->empty())
+        {
+            engine->translation_glosses->clear();
+            update_lookup_table(engine);
+        }
+        if (engine->translation_service)
+        {
+            engine->translation_service->clear();
+        }
+        return;
+    }
+
+    metasequoia::linux_ime::online::TranslationRequest request;
+    request.generation = engine->controller->online_generation();
+    request.config.enabled = true;
+    request.config.backend = engine->online_settings->translation_provider ==
+                                     metasequoia::linux_ime::TranslationProvider::DeepLX
+                                 ? TranslationBackend::DeepLX
+                                 : TranslationBackend::Local;
+    request.config.endpoint = engine->online_settings->translation_endpoint;
+    request.config.token = engine->online_settings->translation_token;
+    request.config.target_language = engine->online_settings->translation_target_language;
+    for (const auto &candidate : engine->controller->candidates())
+    {
+        request.candidates.push_back(candidate.word);
+    }
+    if (!engine->translation_glosses->empty())
+    {
+        engine->translation_glosses->clear();
+        update_lookup_table(engine);
+    }
+    engine->translation_service->submit(std::move(request));
 }
 
 void apply_result(MetasequoiaEngine *engine, const ControllerResult &result)
@@ -272,6 +437,8 @@ void apply_result(MetasequoiaEngine *engine, const ControllerResult &result)
 
     update_preedit(engine);
     update_lookup_table(engine);
+    refresh_online(engine);
+    refresh_translation(engine);
 }
 
 std::optional<char32_t> preceding_character(IBusEngine *engine)
@@ -376,6 +543,8 @@ void focus_in(IBusEngine *ibus_engine)
     update_preedit(engine);
     update_lookup_table(engine);
     show_settings_warning(engine);
+    refresh_online(engine);
+    refresh_translation(engine);
 }
 
 void focus_out(IBusEngine *ibus_engine)
@@ -385,6 +554,8 @@ void focus_out(IBusEngine *ibus_engine)
     engine->controller->invalidate_context();
     ibus_engine_hide_preedit_text(ibus_engine);
     update_lookup_table(engine);
+    refresh_online(engine);
+    refresh_translation(engine);
 }
 
 void reset(IBusEngine *ibus_engine)
@@ -393,6 +564,8 @@ void reset(IBusEngine *ibus_engine)
     engine->controller->reset();
     update_preedit(engine);
     update_lookup_table(engine);
+    refresh_online(engine);
+    refresh_translation(engine);
 }
 
 void enable(IBusEngine *ibus_engine)
@@ -497,6 +670,16 @@ void property_activate(IBusEngine *ibus_engine, const gchar *property_name, guin
 void finalize(GObject *object)
 {
     auto *engine = METASEQUOIA_ENGINE(object);
+    delete engine->online_service;
+    engine->online_service = nullptr;
+    delete engine->translation_service;
+    engine->translation_service = nullptr;
+    delete engine->online_settings;
+    engine->online_settings = nullptr;
+    delete engine->translation_glosses;
+    engine->translation_glosses = nullptr;
+    delete engine->secret_store;
+    engine->secret_store = nullptr;
     delete engine->controller;
     engine->controller = nullptr;
     delete engine->mode_toggle;
@@ -530,7 +713,18 @@ void metasequoia_engine_init(MetasequoiaEngine *engine)
 {
     engine->settings_store = new SettingsStore();
     engine->settings_warning = new std::string();
-    const InputSettings settings = engine->settings_store->load(engine->settings_warning);
+    engine->secret_store = new metasequoia::linux_ime::LibsecretSecretStore();
+    InputSettings settings = engine->settings_store->load(engine->settings_warning);
+    // Avoid synchronously waking Secret Service for the common offline configuration. If an
+    // online provider is explicitly enabled, hydrate its credentials before starting workers.
+    if (settings.online.ai.enabled ||
+        (settings.online.candidate_translations_enabled &&
+         settings.online.translation_provider == metasequoia::linux_ime::TranslationProvider::DeepLX))
+    {
+        settings = engine->settings_store->load(*engine->secret_store, engine->settings_warning);
+    }
+    engine->online_settings = new metasequoia::linux_ime::OnlineSettings(settings.online);
+    engine->translation_glosses = new std::map<std::string, std::string>();
     InputOptions options;
     options.page_size = settings.page_size;
     options.punctuation_mode = settings.punctuation_mode;
@@ -562,6 +756,29 @@ void metasequoia_engine_init(MetasequoiaEngine *engine)
     engine->mode_toggle = new IBusModeToggleTracker();
     initialize_properties(engine);
     update_property_values(engine);
+
+    const auto transport = std::make_shared<CurlHttpTransport>();
+    const auto cloud_provider = std::make_shared<GoogleCloudProvider>(transport);
+    std::shared_ptr<AiSuggestionProvider> ai_provider;
+    if (engine->online_settings->ai.enabled)
+    {
+        ai_provider = std::make_shared<AiSuggestionProvider>(transport);
+    }
+    engine->online_service = new OnlineCandidateService(
+        cloud_provider,
+        [engine](const metasequoia::linux_ime::OnlineRequest &request, std::string candidate,
+                 CandidateSource source) {
+            queue_online_result(engine, request, std::move(candidate), source);
+        },
+        std::chrono::milliseconds(500), ai_provider);
+
+    const auto translation_provider = std::make_shared<TranslationProvider>(
+        metasequoia::path_to_utf8(metasequoia::data_file_path("english.db")), transport);
+    engine->translation_service = new TranslationService(
+        translation_provider,
+        [engine](std::uint64_t generation, std::vector<std::pair<std::string, std::string>> results) {
+            queue_translation_result(engine, generation, std::move(results));
+        });
 }
 
 void bus_disconnected(IBusBus *bus, gpointer user_data)

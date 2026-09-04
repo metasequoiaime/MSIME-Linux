@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Metasequoia IME Desktop Tools
+Name[zh_CN]=水杉输入法桌面工具
+Comment=Clipboard history, screen keyboard and handwriting workspace
+Comment[zh_CN]=剪贴板历史、屏幕键盘和手写工作区
+Exec=@CMAKE_INSTALL_FULL_BINDIR@/metasequoia-ime-tools
+Terminal=false
+Categories=Utility;Accessibility;
