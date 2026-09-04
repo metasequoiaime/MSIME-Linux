@@ -124,11 +124,7 @@ ControllerResult InputController::handle_key(const FrontendKeyEvent &event)
         {
         case FrontendKey::Character:
             result = session_.handle_character(event.character, event.shift_only);
-            if (result.handled)
-            {
-                reset_highlight();
-            }
-            return result;
+            return finish_composition_mutation(std::move(result));
         case FrontendKey::Punctuation:
             if (local_input_mode() != LocalInputMode::None)
             {
@@ -164,19 +160,14 @@ ControllerResult InputController::handle_key(const FrontendKeyEvent &event)
                 result = session_.handle_character(event.character, event.shift_only);
                 if (result.handled)
                 {
-                    reset_highlight();
-                    return result;
+                    return finish_composition_mutation(std::move(result));
                 }
                 return commit_punctuation(event.character, event.preceding_character);
             }
             if (event.character == '\'' && has_composition())
             {
                 result = session_.handle_character(event.character);
-                if (result.handled)
-                {
-                    reset_highlight();
-                }
-                return result;
+                return finish_composition_mutation(std::move(result));
             }
             if (has_composition())
             {
@@ -191,8 +182,7 @@ ControllerResult InputController::handle_key(const FrontendKeyEvent &event)
                         highlighted_candidate_, event.character == '[' ? CandidateEdge::FirstHan : CandidateEdge::LastHan);
                     if (result.handled)
                     {
-                        reset_highlight();
-                        return result;
+                        return finish_composition_mutation(std::move(result));
                     }
                 }
                 if (event.character == '-' || event.character == '_')
@@ -211,25 +201,13 @@ ControllerResult InputController::handle_key(const FrontendKeyEvent &event)
             return commit_punctuation(event.character, event.preceding_character);
         case FrontendKey::Backspace:
             result = session_.handle_command(Command::Backspace);
-            if (result.handled)
-            {
-                reset_highlight();
-            }
-            return result;
+            return finish_composition_mutation(std::move(result));
         case FrontendKey::Enter:
             result = session_.handle_command(Command::CommitRaw);
-            if (result.handled)
-            {
-                reset_highlight();
-            }
-            return result;
+            return finish_composition_mutation(std::move(result));
         case FrontendKey::Escape:
             result = session_.handle_command(Command::Cancel);
-            if (result.handled)
-            {
-                reset_highlight();
-            }
-            return result;
+            return finish_composition_mutation(std::move(result));
         case FrontendKey::Space:
             if (has_composition())
             {
@@ -240,11 +218,7 @@ ControllerResult InputController::handle_key(const FrontendKeyEvent &event)
             if (local_input_mode() == LocalInputMode::Unicode && !event.shift_only)
             {
                 result = session_.handle_character(static_cast<char>('0' + event.digit));
-                if (result.handled)
-                {
-                    reset_highlight();
-                }
-                return result;
+                return finish_composition_mutation(std::move(result));
             }
             if (!has_composition())
             {
@@ -306,12 +280,7 @@ ControllerResult InputController::handle_key(const FrontendKeyEvent &event)
 
 ControllerResult InputController::select_candidate(std::size_t absolute_index)
 {
-    ControllerResult result = session_.select_candidate(absolute_index);
-    if (result.handled)
-    {
-        reset_highlight();
-    }
-    return result;
+    return finish_composition_mutation(session_.select_candidate(absolute_index));
 }
 
 ControllerResult InputController::select_page_candidate(std::size_t page_index)
@@ -340,6 +309,7 @@ ControllerResult InputController::set_mode(InputMode mode)
     mode_ = mode;
     result.handled = true;
     reset_highlight();
+    ++online_generation_;
     return result;
 }
 
@@ -356,6 +326,7 @@ ControllerResult InputController::set_punctuation_mode(PunctuationMode mode)
         return {};
     }
     punctuation_mode_ = mode;
+    ++online_generation_;
     return {true, std::nullopt};
 }
 
@@ -373,6 +344,7 @@ ControllerResult InputController::set_character_width(CharacterWidth width)
         return {};
     }
     character_width_ = width;
+    ++online_generation_;
     return {true, std::nullopt};
 }
 
@@ -387,6 +359,7 @@ ControllerResult InputController::toggle_dedicated_english_mode()
     clear_smart_punctuation_history();
     session_.set_dedicated_english_mode(!session_.dedicated_english_mode());
     reset_highlight();
+    ++online_generation_;
     return {true, std::nullopt};
 }
 
@@ -403,13 +376,13 @@ ControllerResult InputController::switch_scheme(SchemeType scheme_type)
     select_active_helpcode_schema();
     result.handled = true;
     reset_highlight();
+    ++online_generation_;
     return result;
 }
 
 void InputController::reset()
 {
-    session_.handle_command(Command::Cancel);
-    reset_highlight();
+    (void)finish_composition_mutation(session_.handle_command(Command::Cancel));
     invalidate_context();
 }
 
@@ -417,6 +390,42 @@ void InputController::invalidate_context()
 {
     clear_smart_punctuation_history();
     punctuation_formatter_.reset();
+    ++online_generation_;
+}
+
+std::optional<OnlineRequest> InputController::online_request() const
+{
+    const auto query = session_.online_query();
+    if (!query.has_value())
+    {
+        return std::nullopt;
+    }
+    return OnlineRequest{online_generation_, *query};
+}
+
+bool InputController::apply_online_candidate(std::uint64_t generation, const OnlineQuery &query,
+                                             std::string candidate, CandidateSource source)
+{
+    if (generation != online_generation_)
+    {
+        return false;
+    }
+
+    const std::size_t previous_count = candidates().size();
+    if (!session_.apply_online_candidate(query, std::move(candidate), source))
+    {
+        return false;
+    }
+    if (candidates().size() != previous_count && !candidates().empty())
+    {
+        highlighted_candidate_ = std::min(highlighted_candidate_, candidates().size() - 1);
+    }
+    return true;
+}
+
+std::uint64_t InputController::online_generation() const
+{
+    return online_generation_;
 }
 
 InputMode InputController::mode() const
@@ -614,7 +623,7 @@ ControllerResult InputController::commit_highlighted()
 
     if (candidates().empty())
     {
-        return session_.handle_command(Command::CommitCandidate);
+        return finish_composition_mutation(session_.handle_command(Command::CommitCandidate));
     }
     return select_candidate(highlighted_candidate_);
 }
@@ -766,6 +775,16 @@ ControllerResult InputController::move_page(bool forward)
         highlighted_candidate_ = highlighted_candidate_ > page_size_ ? highlighted_candidate_ - page_size_ : 0;
     }
     return {true, std::nullopt};
+}
+
+ControllerResult InputController::finish_composition_mutation(ControllerResult result)
+{
+    if (result.handled)
+    {
+        ++online_generation_;
+        reset_highlight();
+    }
+    return result;
 }
 
 void InputController::reset_highlight()

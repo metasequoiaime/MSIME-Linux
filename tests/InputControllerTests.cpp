@@ -176,6 +176,113 @@ int main()
         english_database.execute("INSERT INTO english_words VALUES('hello','Hello',100)");
         english_database.execute("INSERT INTO english_words VALUES('help','Help',90)");
 
+        InputController online_controller(SchemeType::Quanpin, 3);
+        const std::uint64_t initial_generation = online_controller.online_generation();
+        for (const char character : std::string("nihao"))
+        {
+            const std::uint64_t before_character = online_controller.online_generation();
+            require(online_controller.handle_key({FrontendKey::Character, character}).handled &&
+                        online_controller.online_generation() > before_character,
+                    "An accepted composition character did not advance the online generation.");
+        }
+        const auto online_request = online_controller.online_request();
+        require(online_request.has_value() && online_request->generation == online_controller.online_generation() &&
+                    online_request->generation > initial_generation && online_request->query.cloud_eligible &&
+                    online_request->query.ai_eligible,
+                "The controller did not expose a current online request generation.");
+
+        const std::uint64_t before_navigation = online_controller.online_generation();
+        online_controller.handle_key(key(FrontendKey::Down));
+        online_controller.handle_key(key(FrontendKey::Down));
+        require(online_controller.online_generation() == before_navigation,
+                "Candidate navigation invalidated an otherwise current online request.");
+        const std::size_t highlighted_before_online = online_controller.highlighted_candidate();
+        const std::size_t candidate_count_before_online = online_controller.candidates().size();
+        require(online_controller.apply_online_candidate(online_request->generation, online_request->query,
+                                                         "云候选", CandidateSource::CloudSuggestion),
+                "The controller rejected a current cloud result.");
+        require(online_controller.candidates().size() == candidate_count_before_online + 1 &&
+                    online_controller.candidates()[1].word == "云候选" &&
+                    online_controller.highlighted_candidate() == highlighted_before_online &&
+                    online_controller.online_generation() == online_request->generation,
+                "Applying a new cloud row reset the cursor or advanced the composition generation.");
+
+        const std::size_t candidate_count_before_replacement = online_controller.candidates().size();
+        require(online_controller.apply_online_candidate(online_request->generation, online_request->query,
+                                                         "新云候选", CandidateSource::CloudSuggestion),
+                "The controller rejected a replacement cloud result.");
+        require(online_controller.candidates().size() == candidate_count_before_replacement &&
+                    online_controller.highlighted_candidate() == highlighted_before_online,
+                "Replacing an online row reset the highlighted candidate.");
+
+        const auto stale_request = online_controller.online_request();
+        require(stale_request.has_value(), "The stale-result fixture did not expose an online request.");
+        const std::uint64_t before_backspace = online_controller.online_generation();
+        require(online_controller.handle_key(key(FrontendKey::Backspace)).handled &&
+                    online_controller.online_generation() > before_backspace,
+                "Backspace did not advance the online generation.");
+        require(!online_controller.apply_online_candidate(stale_request->generation, stale_request->query,
+                                                          "过期候选", CandidateSource::CloudSuggestion),
+                "A cloud result survived a composition edit.");
+
+        const std::uint64_t before_cancel = online_controller.online_generation();
+        require(online_controller.handle_key(key(FrontendKey::Escape)).handled &&
+                    online_controller.online_generation() > before_cancel,
+                "Cancel did not advance the online generation.");
+        const std::uint64_t before_reset = online_controller.online_generation();
+        online_controller.reset();
+        require(online_controller.online_generation() > before_reset,
+                "Reset did not advance the online generation.");
+
+        const std::uint64_t before_direct = online_controller.online_generation();
+        require(online_controller.set_mode(InputMode::Direct).handled &&
+                    online_controller.online_generation() > before_direct,
+                "Entering direct mode did not advance the online generation.");
+        const std::uint64_t before_ime = online_controller.online_generation();
+        require(online_controller.set_mode(InputMode::Ime).handled &&
+                    online_controller.online_generation() > before_ime,
+                "Returning to IME mode did not advance the online generation.");
+
+        const std::uint64_t before_scheme = online_controller.online_generation();
+        require(online_controller.switch_scheme(SchemeType::Wubi).handled &&
+                    online_controller.online_generation() > before_scheme,
+                "Scheme switching did not advance the online generation.");
+        online_controller.switch_scheme(SchemeType::Quanpin);
+
+        const std::uint64_t before_punctuation_mode = online_controller.online_generation();
+        require(online_controller.toggle_punctuation_mode().handled &&
+                    online_controller.online_generation() > before_punctuation_mode,
+                "Punctuation mode switching did not advance the online generation.");
+        const std::uint64_t before_width_mode = online_controller.online_generation();
+        require(online_controller.toggle_character_width().handled &&
+                    online_controller.online_generation() > before_width_mode,
+                "Character-width switching did not advance the online generation.");
+        const std::uint64_t before_english_mode = online_controller.online_generation();
+        require(online_controller.toggle_dedicated_english_mode().handled &&
+                    online_controller.online_generation() > before_english_mode,
+                "Dedicated English mode switching did not advance the online generation.");
+        online_controller.toggle_dedicated_english_mode();
+
+        type(online_controller, "nihao");
+        const auto focus_request = online_controller.online_request();
+        require(focus_request.has_value(), "The context-invalidation fixture did not expose an online request.");
+        const std::uint64_t before_invalidation = online_controller.online_generation();
+        online_controller.invalidate_context();
+        require(online_controller.online_generation() > before_invalidation &&
+                    !online_controller.apply_online_candidate(focus_request->generation, focus_request->query,
+                                                              "失焦候选", CandidateSource::CloudSuggestion),
+                "Context invalidation did not reject an in-flight online result.");
+
+        const std::uint64_t before_commit = online_controller.online_generation();
+        require(online_controller.handle_key(key(FrontendKey::Enter)).handled &&
+                    online_controller.online_generation() > before_commit,
+                "Commit did not advance the online generation.");
+        type(online_controller, "nihao");
+        const std::uint64_t before_candidate_commit = online_controller.online_generation();
+        require(online_controller.handle_key(key(FrontendKey::Space)).handled &&
+                    online_controller.online_generation() > before_candidate_commit,
+                "Candidate commit did not advance the online generation.");
+
         InputController controller(SchemeType::Quanpin, 3);
         require(controller.mode() == InputMode::Ime, "The controller did not start in IME mode.");
         require(controller.scheme() == SchemeType::Quanpin, "The controller did not keep the requested scheme.");

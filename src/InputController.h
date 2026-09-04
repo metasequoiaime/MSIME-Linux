@@ -5,6 +5,7 @@
 
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <string>
@@ -103,6 +104,12 @@ struct InputOptions
     std::function<std::chrono::steady_clock::time_point()> now;
 };
 
+struct OnlineRequest
+{
+    std::uint64_t generation = 0;
+    OnlineQuery query;
+};
+
 class InputController
 {
   public:
@@ -122,6 +129,10 @@ class InputController
     ControllerResult switch_scheme(SchemeType scheme_type);
     void reset();
     void invalidate_context();
+    std::optional<OnlineRequest> online_request() const;
+    bool apply_online_candidate(std::uint64_t generation, const OnlineQuery &query, std::string candidate,
+                                CandidateSource source);
+    std::uint64_t online_generation() const;
 
     InputMode mode() const;
     PunctuationMode punctuation_mode() const;
@@ -164,6 +175,7 @@ class InputController
     ControllerResult commit_full_width(char ascii);
     ControllerResult move_cursor(bool forward);
     ControllerResult move_page(bool forward);
+    ControllerResult finish_composition_mutation(ControllerResult result);
     void reset_highlight();
     void clear_smart_punctuation_history();
     void select_active_helpcode_schema();
@@ -193,5 +205,6 @@ class InputController
     char smart_punctuation_history_key_ = 0;
     std::chrono::steady_clock::time_point smart_punctuation_history_time_{};
     PunctuationFormatter punctuation_formatter_;
+    std::uint64_t online_generation_ = 0;
 };
 } // namespace metasequoia::linux_ime
