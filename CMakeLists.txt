@@ -16,6 +16,14 @@ if(BUILD_TESTING)
     target_link_libraries(MetasequoiaImeLinuxTests PRIVATE MetasequoiaIme::Engine)
     target_compile_options(MetasequoiaImeLinuxTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
     add_test(NAME input_session COMMAND MetasequoiaImeLinuxTests)
+
+    add_executable(MetasequoiaImeLinuxControllerTests
+        src/InputController.cpp
+        tests/InputControllerTests.cpp
+    )
+    target_link_libraries(MetasequoiaImeLinuxControllerTests PRIVATE MetasequoiaIme::Engine)
+    target_compile_options(MetasequoiaImeLinuxControllerTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    add_test(NAME input_controller COMMAND MetasequoiaImeLinuxControllerTests)
 endif()
 
 option(METASEQUOIA_IME_BUILD_IBUS "Build the IBus engine" ON)
