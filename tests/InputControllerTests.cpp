@@ -144,6 +144,9 @@ int main()
         }
         database.execute("INSERT INTO tbl_2_n VALUES('ni''men', 'nm', '你们', 200)");
         database.execute("INSERT INTO tbl_2_n VALUES('ni''men', 'nm', '君好', 100)");
+        database.execute("INSERT INTO tbl_2_n VALUES('na''han', 'nh', '呐喊', 99)");
+        database.execute("INSERT INTO tbl_2_n VALUES('ni''shuo', 'ns', '你说', 98)");
+        database.execute("INSERT INTO tbl_2_n VALUES('ni''si', 'ns', '你思', 97)");
         database.execute("CREATE TABLE tbl_1_x(key TEXT, jp TEXT, value TEXT, weight INTEGER)");
         database.execute("INSERT INTO tbl_1_x VALUES('xi', 'x', '甲频', 100)");
         database.execute("INSERT INTO tbl_1_x VALUES('xi', 'x', '乙频', 90)");
@@ -684,6 +687,62 @@ int main()
         require(disabled_expressive_controller.handle_key(kaomoji_prefix).handled &&
                     disabled_expressive_controller.local_input_mode() == LocalInputMode::None,
                 "A disabled kaomoji mode intercepted Shift+M.");
+
+        FrontendKeyEvent jianpin_prefix{FrontendKey::Character, 'J'};
+        jianpin_prefix.shift_only = true;
+        InputController jianpin_controller(SchemeType::Quanpin, 3);
+        require(jianpin_controller.super_jianpin_mode_enabled() &&
+                    jianpin_controller.handle_key(jianpin_prefix).handled &&
+                    jianpin_controller.local_input_mode() == LocalInputMode::SuperJianpin &&
+                    jianpin_controller.preedit() == "J",
+                "The controller did not enter enabled super-jianpin mode from Shift+J.");
+        type(jianpin_controller, "nh");
+        require(jianpin_controller.preedit() == "Jnh" &&
+                    std::any_of(jianpin_controller.candidates().begin(), jianpin_controller.candidates().end(),
+                                [](const WordItem &candidate) { return candidate.word == "呐喊"; }),
+                "Quanpin super-jianpin did not expose all matching initials.");
+        require(jianpin_controller.handle_key(key(FrontendKey::PageDown)).handled &&
+                    jianpin_controller.page_start() == 3,
+                "Super-jianpin candidates did not page through the controller.");
+        const auto jianpin_page_digit = jianpin_controller.handle_key(digit(2));
+        if (!jianpin_page_digit.handled || jianpin_page_digit.commit != "candidate-4" ||
+            jianpin_controller.local_input_mode() != LocalInputMode::None || jianpin_controller.has_composition())
+        {
+            throw std::runtime_error(
+                "Page-relative super-jianpin selection did not commit and reset the mode; commit=" +
+                jianpin_page_digit.commit.value_or("<none>"));
+        }
+
+        InputController shuangpin_jianpin_controller(SchemeType::Shuangpin, 3);
+        require(shuangpin_jianpin_controller.handle_key(jianpin_prefix).handled,
+                "Shift+J did not enter Shuangpin super-jianpin mode.");
+        type(shuangpin_jianpin_controller, "nu");
+        require(std::any_of(shuangpin_jianpin_controller.candidates().begin(),
+                            shuangpin_jianpin_controller.candidates().end(),
+                            [](const WordItem &candidate) { return candidate.word == "你说"; }) &&
+                    std::none_of(shuangpin_jianpin_controller.candidates().begin(),
+                                 shuangpin_jianpin_controller.candidates().end(),
+                                 [](const WordItem &candidate) { return candidate.word == "你思"; }),
+                "Xiaohe nu did not decode to n-sh initials in super-jianpin mode.");
+        shuangpin_jianpin_controller.handle_key(key(FrontendKey::Escape));
+        require(shuangpin_jianpin_controller.handle_key(jianpin_prefix).handled,
+                "Shuangpin super-jianpin mode could not be re-entered after cancellation.");
+        type(shuangpin_jianpin_controller, "ns");
+        require(std::any_of(shuangpin_jianpin_controller.candidates().begin(),
+                            shuangpin_jianpin_controller.candidates().end(),
+                            [](const WordItem &candidate) { return candidate.word == "你思"; }) &&
+                    std::none_of(shuangpin_jianpin_controller.candidates().begin(),
+                                 shuangpin_jianpin_controller.candidates().end(),
+                                 [](const WordItem &candidate) { return candidate.word == "你说"; }),
+                "Xiaohe ns did not remain distinct from n-sh in super-jianpin mode.");
+
+        InputOptions disabled_jianpin_options;
+        disabled_jianpin_options.local_modes.super_jianpin = false;
+        InputController disabled_jianpin_controller(SchemeType::Quanpin, disabled_jianpin_options);
+        require(!disabled_jianpin_controller.super_jianpin_mode_enabled() &&
+                    disabled_jianpin_controller.handle_key(jianpin_prefix).handled &&
+                    disabled_jianpin_controller.local_input_mode() == LocalInputMode::None,
+                "A disabled super-jianpin mode intercepted Shift+J.");
 
         InputOptions mixed_english_options;
         mixed_english_options.english_input.mixed_candidates = true;

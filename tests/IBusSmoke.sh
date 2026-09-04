@@ -67,6 +67,7 @@ printf '%s\n' \
     'frequency-trigger-count=1' \
     'frequency-linear-step=2' \
     'unicode-mode=true' \
+    'super-jianpin-mode=true' \
     'mixed-english-candidates=true' \
     'mixed-english-minimum-prefix=2' \
     'mixed-emoji-candidates=true' \
@@ -301,6 +302,7 @@ def settings_saved():
             "frequency-trigger-count=1",
             "frequency-linear-step=2",
             "unicode-mode=true",
+            "super-jianpin-mode=true",
             "mixed-english-candidates=true",
             "mixed-english-minimum-prefix=2",
             "mixed-emoji-candidates=true",
@@ -346,6 +348,7 @@ if not all(
         "frequency-trigger-count=1",
         "frequency-linear-step=2",
         "unicode-mode=true",
+        "super-jianpin-mode=true",
         "mixed-english-candidates=true",
         "mixed-english-minimum-prefix=2",
         "mixed-emoji-candidates=true",
@@ -620,6 +623,87 @@ if not any(first_candidate == "(*/ω＼*)" and visible for first_candidate, visi
 if not context.process_key_event(IBus.KEY_space, 0, 0):
     raise RuntimeError("Space did not select the kaomoji candidate.")
 wait_for_commit("(*/ω＼*)")
+
+
+lookup_candidate_updates.clear()
+committed_text.clear()
+if not context.process_key_event(IBus.KEY_J, 0, IBus.ModifierType.SHIFT_MASK):
+    raise RuntimeError("Shift+J did not enter super-jianpin mode.")
+for keyval in (IBus.KEY_n, IBus.KEY_h):
+    if not context.process_key_event(keyval, 0, 0):
+        raise RuntimeError("Super-jianpin initials were not handled.")
+
+
+def jianpin_candidates_observed():
+    if any(visible and "你好" in candidates
+           for candidates, visible in lookup_candidate_updates):
+        jianpin_candidate_loop.quit()
+        return GLib.SOURCE_REMOVE
+    return GLib.SOURCE_CONTINUE
+
+
+jianpin_candidate_loop = GLib.MainLoop()
+GLib.timeout_add(20, jianpin_candidates_observed)
+GLib.timeout_add_seconds(5, jianpin_candidate_loop.quit)
+jianpin_candidate_loop.run()
+jianpin_candidates = next(
+    (candidates for candidates, visible in reversed(lookup_candidate_updates)
+     if visible and "你好" in candidates),
+    None,
+)
+if jianpin_candidates is None:
+    raise RuntimeError(f"Super-jianpin did not publish nh candidates: {lookup_candidate_updates}")
+data_directory = Path(os.environ["METASEQUOIA_IME_DATA_DIR"])
+canonical_groups = {}
+with sqlite3.connect(data_directory / "msime.db") as dictionary_connection:
+    for candidate in jianpin_candidates:
+        row = dictionary_connection.execute(
+            "SELECT key FROM tbl_2_n WHERE jp='nh' AND value=? ORDER BY weight DESC LIMIT 1",
+            (candidate,),
+        ).fetchone()
+        if row is not None:
+            canonical_groups.setdefault(row[0], []).append(candidate)
+jianpin_group = next((group for group in canonical_groups.values() if len(group) >= 2), None)
+if jianpin_group is None:
+    raise RuntimeError("Super-jianpin smoke data had no repeated canonical key for frequency learning.")
+jianpin_anchor, jianpin_learned = jianpin_group[:2]
+jianpin_target = jianpin_candidates.index(jianpin_learned)
+for _ in range(jianpin_target // 3):
+    if not context.process_key_event(IBus.KEY_Page_Down, 0, 0):
+        raise RuntimeError("PageDown did not page through super-jianpin candidates.")
+jianpin_digit = (IBus.KEY_1, IBus.KEY_2, IBus.KEY_3)[jianpin_target % 3]
+if not context.process_key_event(jianpin_digit, 0, 0):
+    raise RuntimeError("A page-relative digit did not select the super-jianpin candidate.")
+wait_for_commit(jianpin_learned)
+
+lookup_updates.clear()
+lookup_candidate_updates.clear()
+if not context.process_key_event(IBus.KEY_J, 0, IBus.ModifierType.SHIFT_MASK):
+    raise RuntimeError("Super-jianpin mode did not reopen after frequency learning.")
+for keyval in (IBus.KEY_n, IBus.KEY_h):
+    if not context.process_key_event(keyval, 0, 0):
+        raise RuntimeError("Reopened super-jianpin initials were not handled.")
+
+
+def learned_jianpin_order_observed():
+    if any(visible and jianpin_learned in candidates and jianpin_anchor in candidates and
+           candidates.index(jianpin_learned) < candidates.index(jianpin_anchor)
+           for candidates, visible in lookup_candidate_updates):
+        learned_jianpin_loop.quit()
+        return GLib.SOURCE_REMOVE
+    return GLib.SOURCE_CONTINUE
+
+
+learned_jianpin_loop = GLib.MainLoop()
+GLib.timeout_add(20, learned_jianpin_order_observed)
+GLib.timeout_add_seconds(5, learned_jianpin_loop.quit)
+learned_jianpin_loop.run()
+if not any(visible and jianpin_learned in candidates and jianpin_anchor in candidates and
+           candidates.index(jianpin_learned) < candidates.index(jianpin_anchor)
+           for candidates, visible in lookup_candidate_updates):
+    raise RuntimeError("Super-jianpin frequency learning did not persist within its canonical key.")
+if not context.process_key_event(IBus.KEY_Escape, 0, 0):
+    raise RuntimeError("Escape did not cancel the reopened super-jianpin composition.")
 
 
 lookup_updates.clear()

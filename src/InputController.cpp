@@ -215,7 +215,7 @@ ControllerResult InputController::handle_key(const FrontendKeyEvent &event)
             }
             break;
         case FrontendKey::Digit:
-            if (local_input_mode() != LocalInputMode::None && !event.shift_only)
+            if (local_input_mode() == LocalInputMode::Unicode && !event.shift_only)
             {
                 result = session_.handle_character(static_cast<char>('0' + event.digit));
                 if (result.handled)
@@ -490,6 +490,11 @@ LocalInputMode InputController::local_input_mode() const
 bool InputController::unicode_mode_enabled() const
 {
     return session_.local_mode_options().unicode;
+}
+
+bool InputController::super_jianpin_mode_enabled() const
+{
+    return session_.local_mode_options().super_jianpin;
 }
 
 bool InputController::mixed_english_candidates_enabled() const

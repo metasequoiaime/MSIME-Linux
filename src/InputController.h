@@ -142,6 +142,7 @@ class InputController
     int frequency_linear_step() const;
     LocalInputMode local_input_mode() const;
     bool unicode_mode_enabled() const;
+    bool super_jianpin_mode_enabled() const;
     bool mixed_english_candidates_enabled() const;
     std::size_t mixed_english_minimum_prefix() const;
     bool mixed_emoji_candidates_enabled() const;

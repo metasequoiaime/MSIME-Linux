@@ -85,7 +85,8 @@ int main()
                 defaults.shuangpin_helpcode_schema == "lantian" &&
                 defaults.frequency_adjustment_mode == FrequencyAdjustmentMode::Promote &&
                 defaults.frequency_trigger_count == 1 && defaults.frequency_linear_step == 1 &&
-                defaults.unicode_mode_enabled && !defaults.mixed_english_candidates_enabled &&
+                defaults.unicode_mode_enabled && defaults.super_jianpin_mode_enabled &&
+                !defaults.mixed_english_candidates_enabled &&
                 defaults.mixed_english_minimum_prefix == 2 &&
                 !defaults.mixed_emoji_candidates_enabled && !defaults.mixed_kaomoji_candidates_enabled,
             "Missing settings did not use defaults.");
@@ -112,6 +113,7 @@ int main()
     saved.frequency_trigger_count = 3;
     saved.frequency_linear_step = 4;
     saved.unicode_mode_enabled = false;
+    saved.super_jianpin_mode_enabled = false;
     saved.mixed_english_candidates_enabled = true;
     saved.mixed_english_minimum_prefix = 4;
     saved.mixed_emoji_candidates_enabled = true;
@@ -138,6 +140,7 @@ int main()
                 round_trip.frequency_trigger_count == saved.frequency_trigger_count &&
                 round_trip.frequency_linear_step == saved.frequency_linear_step &&
                 round_trip.unicode_mode_enabled == saved.unicode_mode_enabled &&
+                round_trip.super_jianpin_mode_enabled == saved.super_jianpin_mode_enabled &&
                 round_trip.mixed_english_candidates_enabled == saved.mixed_english_candidates_enabled &&
                 round_trip.mixed_english_minimum_prefix == saved.mixed_english_minimum_prefix &&
                 round_trip.mixed_emoji_candidates_enabled == saved.mixed_emoji_candidates_enabled &&
@@ -167,6 +170,7 @@ int main()
                "frequency-trigger-count=6\n"
                "frequency-linear-step=7\n"
                "unicode-mode=false\n"
+               "super-jianpin-mode=false\n"
                "mixed-english-candidates=true\n"
                "mixed-english-minimum-prefix=4\n"
                "mixed-emoji-candidates=true\n"
@@ -198,6 +202,7 @@ int main()
     updated.frequency_trigger_count = 8;
     updated.frequency_linear_step = 9;
     updated.unicode_mode_enabled = true;
+    updated.super_jianpin_mode_enabled = true;
     updated.mixed_english_candidates_enabled = false;
     updated.mixed_english_minimum_prefix = 5;
     updated.mixed_emoji_candidates_enabled = false;
@@ -236,6 +241,7 @@ int main()
                "frequency-trigger-count=0\n"
                "frequency-linear-step=11\n"
                "unicode-mode=unexpected\n"
+               "super-jianpin-mode=unexpected\n"
                "mixed-english-candidates=unexpected\n"
                "mixed-english-minimum-prefix=9\n"
                "mixed-emoji-candidates=unexpected\n"
@@ -251,7 +257,8 @@ int main()
                 invalid.shuangpin_helpcode_schema == "lantian" &&
                 invalid.frequency_adjustment_mode == FrequencyAdjustmentMode::Promote &&
                 invalid.frequency_trigger_count == 1 && invalid.frequency_linear_step == 1 &&
-                invalid.unicode_mode_enabled && !invalid.mixed_english_candidates_enabled &&
+                invalid.unicode_mode_enabled && invalid.super_jianpin_mode_enabled &&
+                !invalid.mixed_english_candidates_enabled &&
                 invalid.mixed_english_minimum_prefix == 2 &&
                 !invalid.mixed_emoji_candidates_enabled && !invalid.mixed_kaomoji_candidates_enabled,
             "Invalid settings did not fall back field by field.");
