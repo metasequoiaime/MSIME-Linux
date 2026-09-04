@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -19,6 +20,7 @@ using metasequoia::linux_ime::InputController;
 using metasequoia::linux_ime::InputMode;
 using metasequoia::linux_ime::InputOptions;
 using metasequoia::linux_ime::PunctuationMode;
+using metasequoia::linux_ime::PreeditStyle;
 
 class Database
 {
@@ -53,6 +55,17 @@ void require(bool condition, const char *message)
     if (!condition)
     {
         throw std::runtime_error(message);
+    }
+}
+
+void write_file(const std::filesystem::path &path, const std::string &contents)
+{
+    std::filesystem::create_directories(path.parent_path());
+    std::ofstream stream(path);
+    stream << contents;
+    if (!stream)
+    {
+        throw std::runtime_error("Failed to prepare an input-controller helpcode fixture.");
     }
 }
 
@@ -96,6 +109,13 @@ int main()
     }
 
     {
+        const std::filesystem::path helpcode_directory = data_directory / "helpcodes";
+        write_file(helpcode_directory / "helpcode.txt", "你=ab\n君=cd\n们=ef\n好=gh\n");
+        write_file(helpcode_directory / "zrm_helpcode_big_unique.txt", "你=cb\n君=ad\n们=ef\n好=gh\n");
+        write_file(helpcode_directory / "shouyou2_0_helpcode.txt", "你=ab\n君=cd\n们=ef\n好=gh\n");
+        write_file(helpcode_directory / "shouyouplus_helpcode.txt", "你=ab\n君=cd\n们=ef\n好=gh\n");
+        write_file(helpcode_directory / "xiaohe_helpcode.txt", "你=ab\n君=cd\n们=ef\n好=gh\n");
+
         Database database(data_directory / "msime.db");
         database.execute("CREATE TABLE tbl_2_n(key TEXT, jp TEXT, value TEXT, weight INTEGER)");
         for (int index = 0; index < 12; ++index)
@@ -379,6 +399,67 @@ int main()
         pair_controller.handle_key(document_navigation);
         require(pair_controller.handle_key(punctuation('<')).commit == "《》",
                 "Passthrough document navigation left stale book-title nesting.");
+
+        InputOptions quanpin_pinyin_options;
+        quanpin_pinyin_options.preedit_style = PreeditStyle::Pinyin;
+        InputController quanpin_pinyin_controller(SchemeType::Quanpin, quanpin_pinyin_options);
+        require(quanpin_pinyin_controller.quanpin_helpcode_enabled() &&
+                    quanpin_pinyin_controller.shuangpin_helpcode_enabled() &&
+                    quanpin_pinyin_controller.quanpin_helpcode_schema() == "lantian" &&
+                    quanpin_pinyin_controller.shuangpin_helpcode_schema() == "lantian",
+                "Windows-compatible helpcode defaults were not retained by the controller.");
+        type(quanpin_pinyin_controller, "nimenC");
+        require(quanpin_pinyin_controller.preedit() == "ni'men'C" &&
+                    !quanpin_pinyin_controller.candidates().empty() &&
+                    quanpin_pinyin_controller.candidates().front().word == "君好",
+                "Quanpin pinyin preedit or Lantian helpcode selection was not applied.");
+
+        InputOptions ziranma_options;
+        ziranma_options.quanpin_helpcode_schema = "ziranma";
+        InputController ziranma_controller(SchemeType::Quanpin, ziranma_options);
+        type(ziranma_controller, "nimenA");
+        require(!ziranma_controller.candidates().empty() &&
+                    ziranma_controller.candidates().front().word == "君好",
+                "The independent Quanpin helpcode schema was not selected before input.");
+        ziranma_controller.reset();
+        type(ziranma_controller, "nimenAG");
+        InputController competing_lantian_controller(SchemeType::Quanpin, quanpin_pinyin_options);
+        type(competing_lantian_controller, "nimen");
+        const auto ziranma_backspace = ziranma_controller.handle_key(key(FrontendKey::Backspace));
+        require(ziranma_backspace.handled && !ziranma_controller.candidates().empty() &&
+                    ziranma_controller.candidates().front().word == "君好",
+                "Backspace reused another input context's process-global helpcode schema.");
+
+        InputOptions shuangpin_pinyin_options;
+        shuangpin_pinyin_options.preedit_style = PreeditStyle::Pinyin;
+        shuangpin_pinyin_options.shuangpin_helpcode_schema = "lantian";
+        InputController shuangpin_pinyin_controller(SchemeType::Shuangpin, shuangpin_pinyin_options);
+        type(shuangpin_pinyin_controller, "nihcc");
+        require(shuangpin_pinyin_controller.preedit() == "ni'hao'c" &&
+                    shuangpin_pinyin_controller.has_composition(),
+                "Shuangpin pinyin preedit did not expose normalized segmentation.");
+
+        InputOptions hidden_options;
+        hidden_options.preedit_style = PreeditStyle::Hidden;
+        InputController hidden_controller(SchemeType::Quanpin, hidden_options);
+        type(hidden_controller, "nihao");
+        require(hidden_controller.preedit().empty() && hidden_controller.has_composition() &&
+                    !hidden_controller.candidates().empty(),
+                "Hidden inline preedit also hid the active composition or candidates.");
+
+        bool rejected_invalid_schema = false;
+        try
+        {
+            InputOptions invalid_helpcode_options;
+            invalid_helpcode_options.quanpin_helpcode_schema = "unknown";
+            InputController invalid_helpcode_controller(SchemeType::Quanpin, invalid_helpcode_options);
+            (void)invalid_helpcode_controller;
+        }
+        catch (const std::invalid_argument &)
+        {
+            rejected_invalid_schema = true;
+        }
+        require(rejected_invalid_schema, "The controller accepted an unsupported helpcode schema.");
 
         InputOptions full_width_options;
         full_width_options.character_width = CharacterWidth::Full;

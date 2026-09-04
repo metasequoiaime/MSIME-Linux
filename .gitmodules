@@ -5,3 +5,6 @@
 [submodule "vendor/MetasequoiaImeDict"]
 	path = vendor/MetasequoiaImeDict
 	url = https://github.com/metasequoiaime/MetasequoiaImeDict.git
+[submodule "vendor/MetasequoiaImeHelpCode"]
+	path = vendor/MetasequoiaImeHelpCode
+	url = https://github.com/metasequoiaime/MetasequoiaImeHelpCode.git

@@ -17,6 +17,7 @@ using metasequoia::linux_ime::InputMode;
 using metasequoia::linux_ime::InputSettings;
 using metasequoia::linux_ime::CharacterWidth;
 using metasequoia::linux_ime::PunctuationMode;
+using metasequoia::linux_ime::PreeditStyle;
 using metasequoia::linux_ime::SettingsStore;
 
 void require(bool condition, const char *message)
@@ -77,7 +78,10 @@ int main()
                 defaults.punctuation_mode == PunctuationMode::Chinese &&
                 defaults.character_width == CharacterWidth::Half && !defaults.comma_period_paging &&
                 !defaults.word_to_character && !defaults.bracket_paging && defaults.smart_punctuation &&
-                defaults.smart_punctuation_repeat_to_chinese && defaults.paired_punctuation,
+                defaults.smart_punctuation_repeat_to_chinese && defaults.paired_punctuation &&
+                defaults.preedit_style == PreeditStyle::Raw && defaults.quanpin_helpcode_enabled &&
+                defaults.quanpin_helpcode_schema == "lantian" && defaults.shuangpin_helpcode_enabled &&
+                defaults.shuangpin_helpcode_schema == "lantian",
             "Missing settings did not use defaults.");
     require(warning.empty(), "A missing optional settings file produced a warning.");
 
@@ -93,6 +97,11 @@ int main()
     saved.smart_punctuation = false;
     saved.smart_punctuation_repeat_to_chinese = false;
     saved.paired_punctuation = false;
+    saved.preedit_style = PreeditStyle::Pinyin;
+    saved.quanpin_helpcode_enabled = false;
+    saved.quanpin_helpcode_schema = "xiaohe";
+    saved.shuangpin_helpcode_enabled = false;
+    saved.shuangpin_helpcode_schema = "ziranma";
     std::string error;
     require(store.save(saved, &error) && error.empty(), "Valid settings could not be saved.");
     const InputSettings round_trip = store.load(&warning);
@@ -105,7 +114,12 @@ int main()
                 round_trip.bracket_paging == saved.bracket_paging &&
                 round_trip.smart_punctuation == saved.smart_punctuation &&
                 round_trip.smart_punctuation_repeat_to_chinese == saved.smart_punctuation_repeat_to_chinese &&
-                round_trip.paired_punctuation == saved.paired_punctuation,
+                round_trip.paired_punctuation == saved.paired_punctuation &&
+                round_trip.preedit_style == saved.preedit_style &&
+                round_trip.quanpin_helpcode_enabled == saved.quanpin_helpcode_enabled &&
+                round_trip.quanpin_helpcode_schema == saved.quanpin_helpcode_schema &&
+                round_trip.shuangpin_helpcode_enabled == saved.shuangpin_helpcode_enabled &&
+                round_trip.shuangpin_helpcode_schema == saved.shuangpin_helpcode_schema,
             "Settings did not survive a round trip.");
 
     const auto config_path = store.config_path();
@@ -122,6 +136,11 @@ int main()
                "smart-punctuation=false\n"
                "smart-punctuation-repeat-to-chinese=false\n"
                "paired-punctuation=false\n"
+               "preedit-style=pinyin\n"
+               "quanpin-helpcode=false\n"
+               "quanpin-helpcode-schema=xiaohe\n"
+               "shuangpin-helpcode=false\n"
+               "shuangpin-helpcode-schema=ziranma\n"
                "future-option=keep-me\n"
                "\n"
                "[future]\n"
@@ -140,6 +159,11 @@ int main()
     updated.smart_punctuation = true;
     updated.smart_punctuation_repeat_to_chinese = true;
     updated.paired_punctuation = true;
+    updated.preedit_style = PreeditStyle::Hidden;
+    updated.quanpin_helpcode_enabled = true;
+    updated.quanpin_helpcode_schema = "shouyouplus";
+    updated.shuangpin_helpcode_enabled = true;
+    updated.shuangpin_helpcode_schema = "shouyou2_0";
     require(store.save(updated, &error), "Existing settings could not be replaced.");
     require(inode(config_path) != original_inode, "The settings file was modified in place instead of atomically replaced.");
     const std::string preserved = read_file(config_path);
@@ -164,15 +188,28 @@ int main()
                "bracket-paging=unexpected\n"
                "smart-punctuation=unexpected\n"
                "smart-punctuation-repeat-to-chinese=unexpected\n"
-               "paired-punctuation=unexpected\n");
+               "paired-punctuation=unexpected\n"
+               "preedit-style=unexpected\n"
+               "quanpin-helpcode=unexpected\n"
+               "quanpin-helpcode-schema=unsupported\n"
+               "shuangpin-helpcode=unexpected\n"
+               "shuangpin-helpcode-schema=unsupported\n");
     const InputSettings invalid = store.load(&warning);
     require(invalid.mode == InputMode::Ime && invalid.scheme == SchemeType::Quanpin && invalid.page_size == 9 &&
                 invalid.punctuation_mode == PunctuationMode::Chinese &&
                 invalid.character_width == CharacterWidth::Half && !invalid.comma_period_paging &&
                 !invalid.word_to_character && !invalid.bracket_paging && invalid.smart_punctuation &&
-                invalid.smart_punctuation_repeat_to_chinese && invalid.paired_punctuation,
+                invalid.smart_punctuation_repeat_to_chinese && invalid.paired_punctuation &&
+                invalid.preedit_style == PreeditStyle::Raw && invalid.quanpin_helpcode_enabled &&
+                invalid.quanpin_helpcode_schema == "lantian" && invalid.shuangpin_helpcode_enabled &&
+                invalid.shuangpin_helpcode_schema == "lantian",
             "Invalid settings did not fall back field by field.");
     require(!warning.empty(), "Invalid settings did not produce a diagnostic warning.");
+
+    InputSettings unsupported = saved;
+    unsupported.quanpin_helpcode_schema = "unknown";
+    require(!store.save(unsupported, &error) && !error.empty(),
+            "An unsupported helpcode schema was written to disk.");
 
     std::filesystem::remove(config_path);
     std::filesystem::create_directory(config_path);

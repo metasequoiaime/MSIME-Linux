@@ -21,6 +21,11 @@ struct InputSettings
     bool smart_punctuation = true;
     bool smart_punctuation_repeat_to_chinese = true;
     bool paired_punctuation = true;
+    PreeditStyle preedit_style = PreeditStyle::Raw;
+    bool quanpin_helpcode_enabled = true;
+    std::string quanpin_helpcode_schema = "lantian";
+    bool shuangpin_helpcode_enabled = true;
+    std::string shuangpin_helpcode_schema = "lantian";
 };
 
 class SettingsStore

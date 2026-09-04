@@ -18,6 +18,13 @@ enum class InputMode
     Direct,
 };
 
+enum class PreeditStyle
+{
+    Raw,
+    Pinyin,
+    Hidden,
+};
+
 enum class FrontendKey
 {
     Character,
@@ -77,6 +84,11 @@ struct InputOptions
     bool smart_punctuation = true;
     bool smart_punctuation_repeat_to_chinese = true;
     bool paired_punctuation = true;
+    PreeditStyle preedit_style = PreeditStyle::Raw;
+    bool quanpin_helpcode_enabled = true;
+    std::string quanpin_helpcode_schema = "lantian";
+    bool shuangpin_helpcode_enabled = true;
+    std::string shuangpin_helpcode_schema = "lantian";
     std::function<std::chrono::steady_clock::time_point()> now;
 };
 
@@ -108,6 +120,11 @@ class InputController
     bool smart_punctuation() const;
     bool smart_punctuation_repeat_to_chinese() const;
     bool paired_punctuation() const;
+    PreeditStyle preedit_style() const;
+    bool quanpin_helpcode_enabled() const;
+    const std::string &quanpin_helpcode_schema() const;
+    bool shuangpin_helpcode_enabled() const;
+    const std::string &shuangpin_helpcode_schema() const;
     SchemeType scheme() const;
     bool has_composition() const;
     const std::string &preedit() const;
@@ -124,6 +141,7 @@ class InputController
     ControllerResult move_page(bool forward);
     void reset_highlight();
     void clear_smart_punctuation_history();
+    void select_active_helpcode_schema();
 
     InputSession session_;
     InputMode mode_ = InputMode::Ime;
@@ -137,6 +155,11 @@ class InputController
     bool smart_punctuation_ = true;
     bool smart_punctuation_repeat_to_chinese_ = true;
     bool paired_punctuation_ = true;
+    PreeditStyle preedit_style_ = PreeditStyle::Raw;
+    bool quanpin_helpcode_enabled_ = true;
+    std::string quanpin_helpcode_schema_ = "lantian";
+    bool shuangpin_helpcode_enabled_ = true;
+    std::string shuangpin_helpcode_schema_ = "lantian";
     std::function<std::chrono::steady_clock::time_point()> now_;
     bool smart_punctuation_history_active_ = false;
     char smart_punctuation_history_key_ = 0;

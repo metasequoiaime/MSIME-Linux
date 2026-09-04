@@ -14,6 +14,11 @@ InputOptions options_with_page_size(std::size_t page_size)
     options.page_size = page_size;
     return options;
 }
+
+bool valid_preedit_style(PreeditStyle style)
+{
+    return style == PreeditStyle::Raw || style == PreeditStyle::Pinyin || style == PreeditStyle::Hidden;
+}
 } // namespace
 
 ControllerResult::ControllerResult(bool handled_value, std::optional<std::string> commit_value,
@@ -35,12 +40,25 @@ InputController::InputController(SchemeType scheme_type, InputOptions options)
       smart_punctuation_(options.smart_punctuation),
       smart_punctuation_repeat_to_chinese_(options.smart_punctuation_repeat_to_chinese),
       paired_punctuation_(options.paired_punctuation),
+      preedit_style_(options.preedit_style), quanpin_helpcode_enabled_(options.quanpin_helpcode_enabled),
+      quanpin_helpcode_schema_(std::move(options.quanpin_helpcode_schema)),
+      shuangpin_helpcode_enabled_(options.shuangpin_helpcode_enabled),
+      shuangpin_helpcode_schema_(std::move(options.shuangpin_helpcode_schema)),
       now_(options.now ? std::move(options.now) : [] { return std::chrono::steady_clock::now(); })
 {
     if (page_size_ == 0)
     {
         throw std::invalid_argument("Candidate page size must be greater than zero.");
     }
+    if (!valid_preedit_style(preedit_style_) ||
+        !InputSession::is_supported_helpcode_schema(quanpin_helpcode_schema_) ||
+        !InputSession::is_supported_helpcode_schema(shuangpin_helpcode_schema_))
+    {
+        throw std::invalid_argument("Preedit or helpcode options were outside the supported range.");
+    }
+    session_.set_quanpin_helpcode_enabled(quanpin_helpcode_enabled_);
+    session_.set_shuangpin_helpcode_enabled(shuangpin_helpcode_enabled_);
+    select_active_helpcode_schema();
 }
 
 InputController::InputController(SchemeType scheme_type, std::size_t page_size)
@@ -74,6 +92,7 @@ ControllerResult InputController::handle_key(const FrontendKeyEvent &event)
 
     if (mode_ == InputMode::Ime)
     {
+        select_active_helpcode_schema();
         ControllerResult result;
         switch (event.key)
         {
@@ -296,6 +315,7 @@ ControllerResult InputController::switch_scheme(SchemeType scheme_type)
 
     ControllerResult result = commit_highlighted();
     session_.switch_scheme(scheme_type);
+    select_active_helpcode_schema();
     result.handled = true;
     reset_highlight();
     return result;
@@ -359,6 +379,31 @@ bool InputController::paired_punctuation() const
     return paired_punctuation_;
 }
 
+PreeditStyle InputController::preedit_style() const
+{
+    return preedit_style_;
+}
+
+bool InputController::quanpin_helpcode_enabled() const
+{
+    return quanpin_helpcode_enabled_;
+}
+
+const std::string &InputController::quanpin_helpcode_schema() const
+{
+    return quanpin_helpcode_schema_;
+}
+
+bool InputController::shuangpin_helpcode_enabled() const
+{
+    return shuangpin_helpcode_enabled_;
+}
+
+const std::string &InputController::shuangpin_helpcode_schema() const
+{
+    return shuangpin_helpcode_schema_;
+}
+
 SchemeType InputController::scheme() const
 {
     return session_.scheme();
@@ -371,6 +416,22 @@ bool InputController::has_composition() const
 
 const std::string &InputController::preedit() const
 {
+    static const std::string hidden;
+    if (preedit_style_ == PreeditStyle::Hidden)
+    {
+        return hidden;
+    }
+    if (preedit_style_ == PreeditStyle::Pinyin)
+    {
+        if (scheme() == SchemeType::Quanpin)
+        {
+            return session_.raw_segmentation();
+        }
+        if (scheme() == SchemeType::Shuangpin)
+        {
+            return session_.normalized_segmentation();
+        }
+    }
     return session_.preedit();
 }
 
@@ -567,5 +628,17 @@ void InputController::clear_smart_punctuation_history()
     smart_punctuation_history_active_ = false;
     smart_punctuation_history_key_ = 0;
     smart_punctuation_history_time_ = {};
+}
+
+void InputController::select_active_helpcode_schema()
+{
+    if (scheme() == SchemeType::Quanpin)
+    {
+        (void)InputSession::select_helpcode_schema(quanpin_helpcode_schema_);
+    }
+    else if (scheme() == SchemeType::Shuangpin)
+    {
+        (void)InputSession::select_helpcode_schema(shuangpin_helpcode_schema_);
+    }
 }
 } // namespace metasequoia::linux_ime

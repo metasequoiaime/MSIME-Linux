@@ -29,10 +29,18 @@ export XDG_RUNTIME_DIR="$smoke_root/run"
 export DISPLAY=:99
 export IBUS_USE_PORTAL=0
 export IBUS_COMPONENT_PATH="$smoke_root/components"
-export METASEQUOIA_IME_DATA_DIR=${METASEQUOIA_IME_DATA_DIR:-"$project_root/vendor/MetasequoiaImeDict/out"}
+source_data_dir=${METASEQUOIA_IME_DATA_DIR:-"$project_root/vendor/MetasequoiaImeDict/out"}
+source_helpcode_dir="$project_root/vendor/MetasequoiaImeHelpCode/helpcodes"
+if [[ -d "$source_data_dir/helpcodes" ]]; then
+    source_helpcode_dir="$source_data_dir/helpcodes"
+fi
+export METASEQUOIA_IME_DATA_DIR="$smoke_root/data"
 
-mkdir -p "$HOME" "$XDG_CACHE_HOME" "$XDG_CONFIG_HOME" "$XDG_RUNTIME_DIR" "$IBUS_COMPONENT_PATH"
+mkdir -p "$HOME" "$XDG_CACHE_HOME" "$XDG_CONFIG_HOME" "$XDG_RUNTIME_DIR" "$IBUS_COMPONENT_PATH" \
+    "$METASEQUOIA_IME_DATA_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"
+ln -s "$source_data_dir/msime.db" "$METASEQUOIA_IME_DATA_DIR/msime.db"
+ln -s "$source_helpcode_dir" "$METASEQUOIA_IME_DATA_DIR/helpcodes"
 sed "s|<exec>.*</exec>|<exec>$engine --ibus</exec>|" "$component" >"$IBUS_COMPONENT_PATH/metasequoiaime.xml"
 mkdir -p "$XDG_CONFIG_HOME/metasequoiaime"
 printf '%s\n' \
@@ -48,6 +56,11 @@ printf '%s\n' \
     'smart-punctuation=true' \
     'smart-punctuation-repeat-to-chinese=true' \
     'paired-punctuation=true' \
+    'preedit-style=hidden' \
+    'quanpin-helpcode=true' \
+    'quanpin-helpcode-schema=lantian' \
+    'shuangpin-helpcode=true' \
+    'shuangpin-helpcode-schema=xiaohe' \
     'future-option=preserve-me' \
     >"$XDG_CONFIG_HOME/metasequoiaime/config.ini"
 
@@ -100,6 +113,8 @@ expected = {
 payloads = []
 property_snapshots = []
 property_updates = []
+preedit_updates = []
+lookup_updates = []
 loop = GLib.MainLoop()
 
 
@@ -131,6 +146,23 @@ def updated_property(_connection, _sender, _path, _interface, _signal, parameter
     property_updates.append((prop.get_key(), prop.get_label().get_text(), prop.get_state()))
 
 
+def preedit_updated(_connection, _sender, _path, _interface, _signal, parameters):
+    serialized = parameters.get_child_value(0).get_variant()
+    inline_text = IBus.Serializable.deserialize_object(serialized).get_text()
+    visible = parameters.get_child_value(2).get_boolean()
+    preedit_updates.append((inline_text, visible))
+
+
+def lookup_updated(_connection, _sender, _path, _interface, _signal, parameters):
+    serialized = parameters.get_child_value(0).get_variant()
+    table = IBus.Serializable.deserialize_object(serialized)
+    first_candidate = None
+    if table.get_number_of_candidates() > 0:
+        first_candidate = table.get_candidate(0).get_text()
+    visible = parameters.get_child_value(1).get_boolean()
+    lookup_updates.append((first_candidate, visible))
+
+
 def latest_property(key):
     for updated_key, label, state in reversed(property_updates):
         if updated_key == key:
@@ -156,6 +188,24 @@ connection.signal_subscribe(
     None,
     Gio.DBusSignalFlags.NONE,
     updated_property,
+)
+connection.signal_subscribe(
+    None,
+    "org.freedesktop.IBus.InputContext",
+    "UpdatePreeditText",
+    context.get_object_path(),
+    None,
+    Gio.DBusSignalFlags.NONE,
+    preedit_updated,
+)
+connection.signal_subscribe(
+    None,
+    "org.freedesktop.IBus.InputContext",
+    "UpdateLookupTable",
+    context.get_object_path(),
+    None,
+    Gio.DBusSignalFlags.NONE,
+    lookup_updated,
 )
 context.set_capabilities(
     IBus.Capabilite.FOCUS
@@ -227,6 +277,11 @@ def settings_saved():
             "smart-punctuation=true",
             "smart-punctuation-repeat-to-chinese=true",
             "paired-punctuation=true",
+            "preedit-style=hidden",
+            "quanpin-helpcode=true",
+            "quanpin-helpcode-schema=lantian",
+            "shuangpin-helpcode=true",
+            "shuangpin-helpcode-schema=xiaohe",
             "future-option=preserve-me",
         )
     )
@@ -259,6 +314,11 @@ if not all(
         "smart-punctuation=true",
         "smart-punctuation-repeat-to-chinese=true",
         "paired-punctuation=true",
+        "preedit-style=hidden",
+        "quanpin-helpcode=true",
+        "quanpin-helpcode-schema=lantian",
+        "shuangpin-helpcode=true",
+        "shuangpin-helpcode-schema=xiaohe",
         "future-option=preserve-me",
     )
 ):
@@ -340,6 +400,36 @@ def wait_for_commit(expected_text):
     commit_loop.run()
     if expected_text not in committed_text:
         raise RuntimeError(f"Expected IBus commit {expected_text!r}, received: {committed_text}")
+
+
+preedit_updates.clear()
+lookup_updates.clear()
+for keyval in (IBus.KEY_n, IBus.KEY_i, IBus.KEY_h, IBus.KEY_a, IBus.KEY_o, IBus.KEY_F):
+    if not context.process_key_event(keyval, 0, 0):
+        raise RuntimeError("The Quanpin helpcode composition was not handled.")
+
+
+def hidden_helpcode_ui_observed():
+    hidden_inline = preedit_updates and all(
+        inline_text == "" and not visible for inline_text, visible in preedit_updates
+    )
+    helpcode_lookup = any(first_candidate == "拟好" and visible for first_candidate, visible in lookup_updates)
+    if hidden_inline and helpcode_lookup:
+        helpcode_loop.quit()
+        return GLib.SOURCE_REMOVE
+    return GLib.SOURCE_CONTINUE
+
+
+helpcode_loop = GLib.MainLoop()
+GLib.timeout_add(20, hidden_helpcode_ui_observed)
+GLib.timeout_add_seconds(5, helpcode_loop.quit)
+helpcode_loop.run()
+if not preedit_updates or any(inline_text != "" or visible for inline_text, visible in preedit_updates):
+    raise RuntimeError(f"Hidden preedit published visible inline text: {preedit_updates}")
+if not any(first_candidate == "拟好" and visible for first_candidate, visible in lookup_updates):
+    raise RuntimeError(f"Hidden preedit hid the helpcode lookup table or did not reorder candidates: {lookup_updates}")
+if not context.process_key_event(IBus.KEY_Escape, 0, 0):
+    raise RuntimeError("Escape did not cancel the helpcode smoke composition.")
 
 
 for keyval in (IBus.KEY_n, IBus.KEY_i, IBus.KEY_h, IBus.KEY_a, IBus.KEY_o):

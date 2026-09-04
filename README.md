@@ -4,7 +4,7 @@ Linux frontend for Metasequoia IME. The first frontend targets IBus and reuses t
 
 The engine submodule is currently pinned to the `houko` fork's `feat/linux-desktop-core` branch while the required native frontend API is being integrated upstream. Once the Engine pull request lands, the gitlink can move back to the upstream default branch.
 
-The current desktop experience supports runtime switching among Quanpin, Shuangpin, Wubi and Japanese Romaji, a Chinese/direct-input toggle, live candidates from `msime.db`, keyboard and mouse candidate selection, paging, Chinese/English punctuation, half/full-width input, and persistent per-user settings.
+The current desktop experience supports runtime switching among Quanpin, Shuangpin, Wubi and Japanese Romaji, a Chinese/direct-input toggle, live candidates from `msime.db`, keyboard and mouse candidate selection, paging, Chinese/English punctuation, half/full-width input, configurable inline preedit, Quanpin/Shuangpin helpcodes, and persistent per-user settings.
 
 ## Dependencies
 
@@ -33,7 +33,7 @@ To build the tested core without IBus headers, use `-DMETASEQUOIA_IME_BUILD_IBUS
 ./scripts/install.sh
 ```
 
-The installer puts the engine in `~/.local/libexec`, and installs the IBus component descriptor and dictionary under `${XDG_DATA_HOME:-$HOME/.local/share}`. Restart IBus, then select “Metasequoia IME” in the desktop input-source settings.
+The installer puts the engine in `~/.local/libexec`, and installs the IBus component descriptor, dictionary, and five helpcode data files under `${XDG_DATA_HOME:-$HOME/.local/share}`. Restart IBus, then select “Metasequoia IME” in the desktop input-source settings.
 
 To uninstall the current-user installation, remove the engine plus the component and dictionary under `${XDG_DATA_HOME:-$HOME/.local/share}`, then restart IBus:
 
@@ -42,6 +42,7 @@ rm ~/.local/libexec/metasequoia-ime-ibus
 data_home=${XDG_DATA_HOME:-$HOME/.local/share}
 rm "$data_home/ibus/component/metasequoiaime.xml"
 rm "$data_home/metasequoiaime/msime.db"
+rm -r "$data_home/metasequoiaime/helpcodes"
 ```
 
 ## Controls and settings
@@ -54,8 +55,10 @@ rm "$data_home/metasequoiaime/msime.db"
 - Set `word-to-character=true` to make `[` commit the first Han character and `]` the last Han character of the highlighted candidate. If `bracket-paging=true`, bracket paging takes precedence and word-to-character selection is disabled for those keys.
 - With `smart-punctuation=true`, comma, period and colon remain ASCII after an ASCII letter or digit. Repeating the same mark within two seconds replaces it with its Chinese form when `smart-punctuation-repeat-to-chinese=true`; unavailable surrounding text safely falls back to Chinese punctuation.
 - With `paired-punctuation=true`, opening quotes, brackets, braces, book-title marks and parentheses insert both halves and leave the cursor between them.
+- Set `preedit-style=raw`, `pinyin`, or `hidden` to show the typed keys, segmented pinyin, or no inline preedit. Hidden inline preedit does not hide the candidate lookup table.
+- Quanpin and Shuangpin helpcodes are independently controlled by `quanpin-helpcode` and `shuangpin-helpcode`. Their schema keys accept `lantian`, `ziranma`, `shouyou2_0`, `shouyouplus`, or `xiaohe`; helpcodes activate only after a complete base spelling.
 
-Settings are stored in `$XDG_CONFIG_HOME/metasequoiaime/config.ini`, falling back to `~/.config/metasequoiaime/config.ini`. The `[input]` group stores `mode`, `scheme`, `page-size`, `punctuation`, `full-width`, `comma-period-paging`, `word-to-character`, `bracket-paging`, `smart-punctuation`, `smart-punctuation-repeat-to-chinese`, and `paired-punctuation`. Defaults are Chinese input, Quanpin, page size 9, Chinese punctuation, half width, all three paging/selection switches disabled, and all three smart/paired punctuation switches enabled. Edit or remove the file while the engine is not active; it will be written atomically after the next property or hotkey change.
+Settings are stored in `$XDG_CONFIG_HOME/metasequoiaime/config.ini`, falling back to `~/.config/metasequoiaime/config.ini`. The `[input]` group stores `mode`, `scheme`, `page-size`, `punctuation`, `full-width`, `comma-period-paging`, `word-to-character`, `bracket-paging`, `smart-punctuation`, `smart-punctuation-repeat-to-chinese`, `paired-punctuation`, `preedit-style`, `quanpin-helpcode`, `quanpin-helpcode-schema`, `shuangpin-helpcode`, and `shuangpin-helpcode-schema`. Defaults are Chinese input, Quanpin, page size 9, Chinese punctuation, half width, raw preedit, all three paging/selection switches disabled, and all smart/paired punctuation and helpcode switches enabled with the `lantian` schema. Edit or remove the file while the engine is not active; it will be written atomically after the next property or hotkey change.
 
 ## Desktop-core parity
 
@@ -69,6 +72,7 @@ Settings are stored in `$XDG_CONFIG_HOME/metasequoiaime/config.ini`, falling bac
 | Chinese/English punctuation and full-width mode | Supported | Transform, controller, mapper, settings and real D-Bus tests |
 | Smart and paired punctuation | Supported | Surrounding-text, replacement deletion and cursor-forwarding D-Bus smoke |
 | Highlighted-candidate first/last Han selection | Supported | Engine Unicode tests, controller tests and real D-Bus commit smoke |
+| Raw/segmented/hidden preedit and helpcodes | Supported | Engine, controller, settings, installed-data and real D-Bus lookup smoke |
 | User-frequency UX | Planned | Desktop experience phase |
 | Emoji, kaomoji, phrases and extended input modes | Planned | Local extensions phase |
 | Cloud, AI, translation, voice and settings UI | Planned | Online and desktop-tools phases |

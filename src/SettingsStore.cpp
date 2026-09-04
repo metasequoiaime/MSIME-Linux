@@ -68,6 +68,20 @@ const char *punctuation_name(PunctuationMode mode)
     return nullptr;
 }
 
+const char *preedit_style_name(PreeditStyle style)
+{
+    switch (style)
+    {
+    case PreeditStyle::Raw:
+        return "raw";
+    case PreeditStyle::Pinyin:
+        return "pinyin";
+    case PreeditStyle::Hidden:
+        return "hidden";
+    }
+    return nullptr;
+}
+
 bool valid_character_width(CharacterWidth width)
 {
     return width == CharacterWidth::Half || width == CharacterWidth::Full;
@@ -311,6 +325,83 @@ InputSettings SettingsStore::load(std::string *warning) const
         g_clear_error(&value_error);
     }
 
+    if (g_key_file_has_key(key_file, kGroup, "preedit-style", nullptr))
+    {
+        gchar *value = g_key_file_get_string(key_file, kGroup, "preedit-style", nullptr);
+        const std::string_view name = value == nullptr ? std::string_view{} : std::string_view(value);
+        if (name == "pinyin")
+        {
+            settings.preedit_style = PreeditStyle::Pinyin;
+        }
+        else if (name == "hidden")
+        {
+            settings.preedit_style = PreeditStyle::Hidden;
+        }
+        else if (name != "raw")
+        {
+            invalid = true;
+        }
+        g_free(value);
+    }
+
+    if (g_key_file_has_key(key_file, kGroup, "quanpin-helpcode", nullptr))
+    {
+        GError *value_error = nullptr;
+        const gboolean value = g_key_file_get_boolean(key_file, kGroup, "quanpin-helpcode", &value_error);
+        if (value_error == nullptr)
+        {
+            settings.quanpin_helpcode_enabled = value;
+        }
+        else
+        {
+            invalid = true;
+        }
+        g_clear_error(&value_error);
+    }
+
+    if (g_key_file_has_key(key_file, kGroup, "quanpin-helpcode-schema", nullptr))
+    {
+        gchar *value = g_key_file_get_string(key_file, kGroup, "quanpin-helpcode-schema", nullptr);
+        if (value != nullptr && InputSession::is_supported_helpcode_schema(value))
+        {
+            settings.quanpin_helpcode_schema = value;
+        }
+        else
+        {
+            invalid = true;
+        }
+        g_free(value);
+    }
+
+    if (g_key_file_has_key(key_file, kGroup, "shuangpin-helpcode", nullptr))
+    {
+        GError *value_error = nullptr;
+        const gboolean value = g_key_file_get_boolean(key_file, kGroup, "shuangpin-helpcode", &value_error);
+        if (value_error == nullptr)
+        {
+            settings.shuangpin_helpcode_enabled = value;
+        }
+        else
+        {
+            invalid = true;
+        }
+        g_clear_error(&value_error);
+    }
+
+    if (g_key_file_has_key(key_file, kGroup, "shuangpin-helpcode-schema", nullptr))
+    {
+        gchar *value = g_key_file_get_string(key_file, kGroup, "shuangpin-helpcode-schema", nullptr);
+        if (value != nullptr && InputSession::is_supported_helpcode_schema(value))
+        {
+            settings.shuangpin_helpcode_schema = value;
+        }
+        else
+        {
+            invalid = true;
+        }
+        g_free(value);
+    }
+
     g_key_file_unref(key_file);
     if (invalid)
     {
@@ -325,9 +416,12 @@ bool SettingsStore::save(const InputSettings &settings, std::string *error) cons
     const char *mode = mode_name(settings.mode);
     const char *scheme = scheme_name(settings.scheme);
     const char *punctuation = punctuation_name(settings.punctuation_mode);
-    if (mode == nullptr || scheme == nullptr || punctuation == nullptr ||
+    const char *preedit_style = preedit_style_name(settings.preedit_style);
+    if (mode == nullptr || scheme == nullptr || punctuation == nullptr || preedit_style == nullptr ||
         !valid_character_width(settings.character_width) || settings.page_size < kMinimumPageSize ||
-        settings.page_size > kMaximumPageSize)
+        settings.page_size > kMaximumPageSize ||
+        !InputSession::is_supported_helpcode_schema(settings.quanpin_helpcode_schema) ||
+        !InputSession::is_supported_helpcode_schema(settings.shuangpin_helpcode_schema))
     {
         set_message(error, "Input settings were outside the supported range.");
         return false;
@@ -366,6 +460,13 @@ bool SettingsStore::save(const InputSettings &settings, std::string *error) cons
     g_key_file_set_boolean(key_file, kGroup, "smart-punctuation-repeat-to-chinese",
                            settings.smart_punctuation_repeat_to_chinese);
     g_key_file_set_boolean(key_file, kGroup, "paired-punctuation", settings.paired_punctuation);
+    g_key_file_set_string(key_file, kGroup, "preedit-style", preedit_style);
+    g_key_file_set_boolean(key_file, kGroup, "quanpin-helpcode", settings.quanpin_helpcode_enabled);
+    g_key_file_set_string(key_file, kGroup, "quanpin-helpcode-schema",
+                          settings.quanpin_helpcode_schema.c_str());
+    g_key_file_set_boolean(key_file, kGroup, "shuangpin-helpcode", settings.shuangpin_helpcode_enabled);
+    g_key_file_set_string(key_file, kGroup, "shuangpin-helpcode-schema",
+                          settings.shuangpin_helpcode_schema.c_str());
 
     gsize data_size = 0;
     GError *data_error = nullptr;

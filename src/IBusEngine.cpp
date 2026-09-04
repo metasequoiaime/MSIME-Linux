@@ -199,6 +199,11 @@ void save_settings(MetasequoiaEngine *engine)
     settings.smart_punctuation_repeat_to_chinese =
         engine->controller->smart_punctuation_repeat_to_chinese();
     settings.paired_punctuation = engine->controller->paired_punctuation();
+    settings.preedit_style = engine->controller->preedit_style();
+    settings.quanpin_helpcode_enabled = engine->controller->quanpin_helpcode_enabled();
+    settings.quanpin_helpcode_schema = engine->controller->quanpin_helpcode_schema();
+    settings.shuangpin_helpcode_enabled = engine->controller->shuangpin_helpcode_enabled();
+    settings.shuangpin_helpcode_schema = engine->controller->shuangpin_helpcode_schema();
     if (engine->settings_store->save(settings, engine->settings_warning))
     {
         engine->settings_warning->clear();
@@ -521,6 +526,11 @@ void metasequoia_engine_init(MetasequoiaEngine *engine)
     options.smart_punctuation = settings.smart_punctuation;
     options.smart_punctuation_repeat_to_chinese = settings.smart_punctuation_repeat_to_chinese;
     options.paired_punctuation = settings.paired_punctuation;
+    options.preedit_style = settings.preedit_style;
+    options.quanpin_helpcode_enabled = settings.quanpin_helpcode_enabled;
+    options.quanpin_helpcode_schema = settings.quanpin_helpcode_schema;
+    options.shuangpin_helpcode_enabled = settings.shuangpin_helpcode_enabled;
+    options.shuangpin_helpcode_schema = settings.shuangpin_helpcode_schema;
     engine->controller = new InputController(settings.scheme, options);
     (void)engine->controller->set_mode(settings.mode);
     engine->mode_toggle = new IBusModeToggleTracker();

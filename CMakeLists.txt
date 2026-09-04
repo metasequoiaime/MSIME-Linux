@@ -35,6 +35,9 @@ endif()
 
 option(METASEQUOIA_IME_BUILD_IBUS "Build the IBus engine" ON)
 set(METASEQUOIA_IME_DICTIONARY "${CMAKE_CURRENT_SOURCE_DIR}/vendor/MetasequoiaImeDict/out/msime.db" CACHE FILEPATH "Path to msime.db")
+set(METASEQUOIA_IME_HELPCODE_DIRECTORY
+    "${CMAKE_CURRENT_SOURCE_DIR}/vendor/MetasequoiaImeHelpCode/helpcodes"
+    CACHE PATH "Path to the Metasequoia helpcode data directory")
 
 if(METASEQUOIA_IME_BUILD_IBUS)
     find_package(PkgConfig REQUIRED)
@@ -77,5 +80,12 @@ if(METASEQUOIA_IME_BUILD_IBUS)
         install(FILES "${METASEQUOIA_IME_DICTIONARY}" DESTINATION ${CMAKE_INSTALL_DATADIR}/metasequoiaime)
     else()
         message(WARNING "Dictionary not found at ${METASEQUOIA_IME_DICTIONARY}; the engine will need msime.db in the data directory at runtime.")
+    endif()
+    if(EXISTS "${METASEQUOIA_IME_HELPCODE_DIRECTORY}")
+        install(DIRECTORY "${METASEQUOIA_IME_HELPCODE_DIRECTORY}/"
+                DESTINATION ${CMAKE_INSTALL_DATADIR}/metasequoiaime/helpcodes
+                FILES_MATCHING PATTERN "*.txt")
+    else()
+        message(WARNING "Helpcodes not found at ${METASEQUOIA_IME_HELPCODE_DIRECTORY}; helpcode input will be unavailable at runtime.")
     endif()
 endif()
