@@ -593,9 +593,10 @@ int main()
         InputOptions disabled_unicode_options;
         disabled_unicode_options.local_modes.unicode = false;
         InputController disabled_unicode_controller(SchemeType::Quanpin, disabled_unicode_options);
-        require(disabled_unicode_controller.handle_key(unicode_prefix).handled &&
+        require(!disabled_unicode_controller.handle_key(unicode_prefix).handled &&
+                    !disabled_unicode_controller.has_composition() &&
                     disabled_unicode_controller.local_input_mode() == LocalInputMode::None,
-                "A disabled Unicode mode intercepted Shift+U.");
+                "A disabled Unicode shortcut swallowed Shift+U.");
 
         InputController date_time_controller(SchemeType::Quanpin, 3);
         FrontendKeyEvent date_time_prefix{FrontendKey::Character, 'T'};
@@ -617,9 +618,10 @@ int main()
         InputOptions disabled_date_time_options;
         disabled_date_time_options.local_modes.date_time = false;
         InputController disabled_date_time_controller(SchemeType::Quanpin, disabled_date_time_options);
-        require(disabled_date_time_controller.handle_key(date_time_prefix).handled &&
+        require(!disabled_date_time_controller.handle_key(date_time_prefix).handled &&
+                    !disabled_date_time_controller.has_composition() &&
                     disabled_date_time_controller.local_input_mode() == LocalInputMode::None,
-                "A disabled date/time mode intercepted Shift+T.");
+                "A disabled date/time shortcut swallowed Shift+T.");
 
         InputController quick_phrase_controller(SchemeType::Quanpin, 3);
         FrontendKeyEvent quick_phrase_prefix{FrontendKey::Character, 'K'};
@@ -641,9 +643,10 @@ int main()
         InputOptions disabled_quick_phrase_options;
         disabled_quick_phrase_options.local_modes.quick_phrase = false;
         InputController disabled_quick_phrase_controller(SchemeType::Quanpin, disabled_quick_phrase_options);
-        require(disabled_quick_phrase_controller.handle_key(quick_phrase_prefix).handled &&
+        require(!disabled_quick_phrase_controller.handle_key(quick_phrase_prefix).handled &&
+                    !disabled_quick_phrase_controller.has_composition() &&
                     disabled_quick_phrase_controller.local_input_mode() == LocalInputMode::None,
-                "A disabled quick-phrase mode intercepted Shift+K.");
+                "A disabled quick-phrase shortcut swallowed Shift+K.");
 
         InputController expressive_controller(SchemeType::Quanpin, 3);
         FrontendKeyEvent emoji_prefix{FrontendKey::Character, 'E'};
@@ -680,13 +683,14 @@ int main()
         disabled_expressive_options.local_modes.emoji = false;
         disabled_expressive_options.local_modes.kaomoji = false;
         InputController disabled_expressive_controller(SchemeType::Quanpin, disabled_expressive_options);
-        require(disabled_expressive_controller.handle_key(emoji_prefix).handled &&
+        require(!disabled_expressive_controller.handle_key(emoji_prefix).handled &&
+                    !disabled_expressive_controller.has_composition() &&
                     disabled_expressive_controller.local_input_mode() == LocalInputMode::None,
-                "A disabled Emoji mode intercepted Shift+E.");
-        disabled_expressive_controller.handle_key(key(FrontendKey::Escape));
-        require(disabled_expressive_controller.handle_key(kaomoji_prefix).handled &&
+                "A disabled Emoji shortcut swallowed Shift+E.");
+        require(!disabled_expressive_controller.handle_key(kaomoji_prefix).handled &&
+                    !disabled_expressive_controller.has_composition() &&
                     disabled_expressive_controller.local_input_mode() == LocalInputMode::None,
-                "A disabled kaomoji mode intercepted Shift+M.");
+                "A disabled kaomoji shortcut swallowed Shift+M.");
 
         FrontendKeyEvent jianpin_prefix{FrontendKey::Character, 'J'};
         jianpin_prefix.shift_only = true;
@@ -740,9 +744,10 @@ int main()
         disabled_jianpin_options.local_modes.super_jianpin = false;
         InputController disabled_jianpin_controller(SchemeType::Quanpin, disabled_jianpin_options);
         require(!disabled_jianpin_controller.super_jianpin_mode_enabled() &&
-                    disabled_jianpin_controller.handle_key(jianpin_prefix).handled &&
+                    !disabled_jianpin_controller.handle_key(jianpin_prefix).handled &&
+                    !disabled_jianpin_controller.has_composition() &&
                     disabled_jianpin_controller.local_input_mode() == LocalInputMode::None,
-                "A disabled super-jianpin mode intercepted Shift+J.");
+                "A disabled super-jianpin shortcut swallowed Shift+J.");
 
         FrontendKeyEvent temporary_english_prefix{FrontendKey::Character, 'Y'};
         temporary_english_prefix.shift_only = true;
@@ -870,13 +875,14 @@ int main()
         InputController disabled_temporary_controller(SchemeType::Quanpin, disabled_temporary_options);
         require(!disabled_temporary_controller.temporary_english_mode_enabled() &&
                     !disabled_temporary_controller.temporary_japanese_mode_enabled() &&
-                    disabled_temporary_controller.handle_key(temporary_english_prefix).handled &&
+                    !disabled_temporary_controller.handle_key(temporary_english_prefix).handled &&
+                    !disabled_temporary_controller.has_composition() &&
                     disabled_temporary_controller.local_input_mode() == LocalInputMode::None,
-                "Disabled temporary English still intercepted Shift+Y.");
-        disabled_temporary_controller.handle_key(key(FrontendKey::Escape));
-        require(disabled_temporary_controller.handle_key(temporary_japanese_prefix).handled &&
+                "Disabled temporary English swallowed Shift+Y.");
+        require(!disabled_temporary_controller.handle_key(temporary_japanese_prefix).handled &&
+                    !disabled_temporary_controller.has_composition() &&
                     disabled_temporary_controller.local_input_mode() == LocalInputMode::None,
-                "Disabled temporary Japanese still intercepted Shift+R.");
+                "Disabled temporary Japanese swallowed Shift+R.");
 
         InputOptions mixed_english_options;
         mixed_english_options.english_input.mixed_candidates = true;
