@@ -54,6 +54,10 @@ if(METASEQUOIA_IME_BUILD_IBUS)
         target_link_libraries(MetasequoiaImeLinuxSettingsTests PRIVATE MetasequoiaImeLinuxSettings)
         target_compile_options(MetasequoiaImeLinuxSettingsTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
         add_test(NAME settings_store COMMAND MetasequoiaImeLinuxSettingsTests)
+
+        add_test(NAME ibus_smoke
+                 COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/IBusSmoke.sh ${CMAKE_CURRENT_BINARY_DIR})
+        set_tests_properties(ibus_smoke PROPERTIES TIMEOUT 15)
     endif()
 
     add_executable(metasequoia-ime-ibus src/IBusEngine.cpp)

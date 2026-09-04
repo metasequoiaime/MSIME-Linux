@@ -2,11 +2,13 @@
 set -euo pipefail
 
 project_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-build_root="$project_root/build"
+build_root=${METASEQUOIA_IME_BUILD_DIR:-"$project_root/build"}
 user_prefix="$HOME/.local"
 libexec_dir="$user_prefix/libexec"
 component_dir="${XDG_DATA_HOME:-$user_prefix/share}/ibus/component"
 data_dir="${XDG_DATA_HOME:-$user_prefix/share}/metasequoiaime"
+
+cmake -S "$project_root" -B "$build_root" -DCMAKE_INSTALL_PREFIX="$user_prefix"
 
 if [[ ! -x "$build_root/metasequoia-ime-ibus" ]]; then
     echo "Build output is missing. Run scripts/build.sh first." >&2

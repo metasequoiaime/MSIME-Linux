@@ -3,6 +3,7 @@ set -euo pipefail
 
 build_dir=${1:-build}
 build_dir=$(cd "$build_dir" && pwd)
+project_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 engine="$build_dir/metasequoia-ime-ibus"
 component="$build_dir/metasequoiaime.xml"
 
@@ -26,8 +27,9 @@ export XDG_CACHE_HOME="$smoke_root/cache"
 export XDG_CONFIG_HOME="$smoke_root/config"
 export XDG_RUNTIME_DIR="$smoke_root/run"
 export DISPLAY=:99
+export IBUS_USE_PORTAL=0
 export IBUS_COMPONENT_PATH="$smoke_root/components"
-export METASEQUOIA_IME_DATA_DIR=${METASEQUOIA_IME_DATA_DIR:-"$build_dir/../vendor/MetasequoiaImeDict/out"}
+export METASEQUOIA_IME_DATA_DIR=${METASEQUOIA_IME_DATA_DIR:-"$project_root/vendor/MetasequoiaImeDict/out"}
 
 mkdir -p "$HOME" "$XDG_CACHE_HOME" "$XDG_CONFIG_HOME" "$XDG_RUNTIME_DIR" "$IBUS_COMPONENT_PATH"
 chmod 700 "$XDG_RUNTIME_DIR"
