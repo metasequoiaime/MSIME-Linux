@@ -68,9 +68,11 @@ if(METASEQUOIA_IME_BUILD_IBUS)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(IBUS REQUIRED IMPORTED_TARGET ibus-1.0)
     pkg_check_modules(GLIB REQUIRED IMPORTED_TARGET glib-2.0)
+    pkg_check_modules(LIBSECRET REQUIRED IMPORTED_TARGET libsecret-1)
 
-    add_library(MetasequoiaImeLinuxSettings STATIC src/SettingsStore.cpp)
-    target_link_libraries(MetasequoiaImeLinuxSettings PUBLIC MetasequoiaImeLinuxCore PkgConfig::GLIB)
+    add_library(MetasequoiaImeLinuxSettings STATIC src/SecretStore.cpp src/SettingsStore.cpp)
+    target_link_libraries(MetasequoiaImeLinuxSettings
+                          PUBLIC MetasequoiaImeLinuxCore PkgConfig::GLIB PkgConfig::LIBSECRET)
     target_compile_options(MetasequoiaImeLinuxSettings PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
     add_library(MetasequoiaImeLinuxIBusKeyMapper STATIC src/IBusKeyMapper.cpp)
@@ -87,6 +89,14 @@ if(METASEQUOIA_IME_BUILD_IBUS)
         target_link_libraries(MetasequoiaImeLinuxSettingsTests PRIVATE MetasequoiaImeLinuxSettings)
         target_compile_options(MetasequoiaImeLinuxSettingsTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
         add_test(NAME settings_store COMMAND MetasequoiaImeLinuxSettingsTests)
+
+        add_executable(MetasequoiaImeLinuxSecretStoreTests tests/SecretStoreTests.cpp)
+        target_link_libraries(MetasequoiaImeLinuxSecretStoreTests PRIVATE MetasequoiaImeLinuxSettings)
+        target_compile_options(MetasequoiaImeLinuxSecretStoreTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+        add_test(NAME secret_store
+                 COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/SecretStoreIntegration.sh
+                              $<TARGET_FILE:MetasequoiaImeLinuxSecretStoreTests>)
+        set_tests_properties(secret_store PROPERTIES TIMEOUT 15)
 
         add_test(NAME ibus_smoke
                  COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/IBusSmoke.sh ${CMAKE_CURRENT_BINARY_DIR})

@@ -5,8 +5,11 @@
 #include <glib.h>
 #include <glib/gstdio.h>
 
+#include <algorithm>
 #include <cerrno>
+#include <chrono>
 #include <cstring>
+#include <optional>
 #include <string_view>
 #include <utility>
 #include <unistd.h>
@@ -17,12 +20,24 @@ namespace metasequoia::linux_ime
 namespace
 {
 constexpr const char *kGroup = "input";
+constexpr const char *kOnlineGroup = "online";
+constexpr const char *kAiGroup = "ai";
+constexpr const char *kTranslationGroup = "translation";
 constexpr std::size_t kMinimumPageSize = 3;
 constexpr std::size_t kMaximumPageSize = 9;
 constexpr int kMinimumFrequencyValue = 1;
 constexpr int kMaximumFrequencyValue = 10;
 constexpr gint kMinimumEnglishPrefix = 1;
 constexpr gint kMaximumEnglishPrefix = 8;
+constexpr gint kMinimumConnectTimeoutMs = 100;
+constexpr gint kMaximumConnectTimeoutMs = 10000;
+constexpr gint kMinimumTotalTimeoutMs = 500;
+constexpr gint kMaximumTotalTimeoutMs = 30000;
+constexpr gint kMinimumAiCandidateLimit = 1;
+constexpr gint kMaximumAiCandidateLimit = 10;
+constexpr std::size_t kMaximumEndpointBytes = 2048;
+constexpr std::size_t kMaximumModelBytes = 256;
+constexpr std::size_t kMaximumPromptBytes = 8192;
 
 void set_message(std::string *destination, const char *message)
 {
@@ -30,6 +45,133 @@ void set_message(std::string *destination, const char *message)
     {
         *destination = message;
     }
+}
+
+void append_message(std::string *destination, const char *message)
+{
+    if (destination == nullptr || message == nullptr || *message == '\0')
+    {
+        return;
+    }
+    if (!destination->empty())
+    {
+        destination->append(" ");
+    }
+    destination->append(message);
+}
+
+const char *ai_provider_name(online::AiProvider provider)
+{
+    switch (provider)
+    {
+    case online::AiProvider::DeepSeek:
+        return "deepseek";
+    case online::AiProvider::OpenAI:
+        return "openai";
+    case online::AiProvider::SiliconFlow:
+        return "siliconflow";
+    case online::AiProvider::Groq:
+        return "groq";
+    case online::AiProvider::Custom:
+        return "custom";
+    }
+    return nullptr;
+}
+
+std::optional<online::AiProvider> parse_ai_provider(std::string_view provider)
+{
+    if (provider == "deepseek")
+    {
+        return online::AiProvider::DeepSeek;
+    }
+    if (provider == "openai")
+    {
+        return online::AiProvider::OpenAI;
+    }
+    if (provider == "siliconflow")
+    {
+        return online::AiProvider::SiliconFlow;
+    }
+    if (provider == "groq")
+    {
+        return online::AiProvider::Groq;
+    }
+    if (provider == "custom")
+    {
+        return online::AiProvider::Custom;
+    }
+    return std::nullopt;
+}
+
+const char *translation_provider_name(TranslationProvider provider)
+{
+    switch (provider)
+    {
+    case TranslationProvider::Local:
+        return "local";
+    case TranslationProvider::DeepLX:
+        return "deeplx";
+    }
+    return nullptr;
+}
+
+std::optional<TranslationProvider> parse_translation_provider(std::string_view provider)
+{
+    if (provider == "local")
+    {
+        return TranslationProvider::Local;
+    }
+    if (provider == "deeplx")
+    {
+        return TranslationProvider::DeepLX;
+    }
+    return std::nullopt;
+}
+
+bool valid_utf8_text(std::string_view value, std::size_t maximum_bytes, bool allow_newlines)
+{
+    if (value.size() > maximum_bytes || value.find('\0') != std::string_view::npos ||
+        !g_utf8_validate(value.data(), static_cast<gssize>(value.size()), nullptr))
+    {
+        return false;
+    }
+    return std::none_of(value.begin(), value.end(), [allow_newlines](unsigned char character) {
+        if (allow_newlines && (character == '\n' || character == '\r' || character == '\t'))
+        {
+            return false;
+        }
+        return character < 0x20U || character == 0x7fU;
+    });
+}
+
+bool valid_https_endpoint(std::string_view endpoint)
+{
+    return endpoint.empty() ||
+           (endpoint.size() <= kMaximumEndpointBytes && endpoint.rfind("https://", 0) == 0 &&
+            valid_utf8_text(endpoint, kMaximumEndpointBytes, false));
+}
+
+bool valid_translation_language(std::string_view language)
+{
+    constexpr std::string_view languages[]{"en", "fr", "ja", "es", "ru", "de", "ko"};
+    return std::find(std::begin(languages), std::end(languages), language) != std::end(languages);
+}
+
+bool valid_online_settings(const OnlineSettings &settings)
+{
+    const auto connect_timeout = settings.connect_timeout.count();
+    const auto total_timeout = settings.total_timeout.count();
+    return ai_provider_name(settings.ai.provider) != nullptr &&
+           translation_provider_name(settings.translation_provider) != nullptr &&
+           valid_https_endpoint(settings.ai.endpoint) &&
+           valid_utf8_text(settings.ai.model, kMaximumModelBytes, false) &&
+           valid_utf8_text(settings.ai.prompt, kMaximumPromptBytes, true) &&
+           settings.ai.candidate_limit >= static_cast<std::size_t>(kMinimumAiCandidateLimit) &&
+           settings.ai.candidate_limit <= static_cast<std::size_t>(kMaximumAiCandidateLimit) &&
+           valid_translation_language(settings.translation_target_language) &&
+           valid_https_endpoint(settings.translation_endpoint) && connect_timeout >= kMinimumConnectTimeoutMs &&
+           connect_timeout <= kMaximumConnectTimeoutMs && total_timeout >= kMinimumTotalTimeoutMs &&
+           total_timeout <= kMaximumTotalTimeoutMs;
 }
 
 const char *mode_name(InputMode mode)
@@ -107,6 +249,25 @@ const char *frequency_adjustment_name(FrequencyAdjustmentMode mode)
 bool valid_character_width(CharacterWidth width)
 {
     return width == CharacterWidth::Half || width == CharacterWidth::Full;
+}
+
+bool valid_input_settings(const InputSettings &settings)
+{
+    return mode_name(settings.mode) != nullptr && scheme_name(settings.scheme) != nullptr &&
+           punctuation_name(settings.punctuation_mode) != nullptr &&
+           preedit_style_name(settings.preedit_style) != nullptr &&
+           frequency_adjustment_name(settings.frequency_adjustment_mode) != nullptr &&
+           valid_character_width(settings.character_width) && settings.page_size >= kMinimumPageSize &&
+           settings.page_size <= kMaximumPageSize &&
+           InputSession::is_supported_helpcode_schema(settings.quanpin_helpcode_schema) &&
+           InputSession::is_supported_helpcode_schema(settings.shuangpin_helpcode_schema) &&
+           settings.frequency_trigger_count >= kMinimumFrequencyValue &&
+           settings.frequency_trigger_count <= kMaximumFrequencyValue &&
+           settings.frequency_linear_step >= kMinimumFrequencyValue &&
+           settings.frequency_linear_step <= kMaximumFrequencyValue &&
+           settings.mixed_english_minimum_prefix >= static_cast<std::size_t>(kMinimumEnglishPrefix) &&
+           settings.mixed_english_minimum_prefix <= static_cast<std::size_t>(kMaximumEnglishPrefix) &&
+           valid_online_settings(settings.online);
 }
 
 bool write_all(int descriptor, const char *data, std::size_t size)
@@ -601,10 +762,170 @@ InputSettings SettingsStore::load(std::string *warning) const
         g_clear_error(&value_error);
     }
 
+    const auto load_boolean = [&](const char *group, const char *key, bool &destination) {
+        if (!g_key_file_has_key(key_file, group, key, nullptr))
+        {
+            return;
+        }
+        GError *value_error = nullptr;
+        const gboolean value = g_key_file_get_boolean(key_file, group, key, &value_error);
+        if (value_error == nullptr)
+        {
+            destination = value;
+        }
+        else
+        {
+            invalid = true;
+        }
+        g_clear_error(&value_error);
+    };
+    const auto load_string = [&](const char *group, const char *key, std::string &destination,
+                                 const auto &validator) {
+        if (!g_key_file_has_key(key_file, group, key, nullptr))
+        {
+            return;
+        }
+        gchar *value = g_key_file_get_string(key_file, group, key, nullptr);
+        const std::string_view text = value == nullptr ? std::string_view{} : std::string_view(value);
+        if (value != nullptr && validator(text))
+        {
+            destination.assign(text);
+        }
+        else
+        {
+            invalid = true;
+        }
+        g_free(value);
+    };
+
+    load_boolean(kOnlineGroup, "cloud-enabled", settings.online.cloud_candidates_enabled);
+    if (g_key_file_has_key(key_file, kOnlineGroup, "connect-timeout-ms", nullptr))
+    {
+        GError *value_error = nullptr;
+        const gint value = g_key_file_get_integer(key_file, kOnlineGroup, "connect-timeout-ms", &value_error);
+        if (value_error == nullptr && value >= kMinimumConnectTimeoutMs && value <= kMaximumConnectTimeoutMs)
+        {
+            settings.online.connect_timeout = std::chrono::milliseconds(value);
+        }
+        else
+        {
+            invalid = true;
+        }
+        g_clear_error(&value_error);
+    }
+    if (g_key_file_has_key(key_file, kOnlineGroup, "total-timeout-ms", nullptr))
+    {
+        GError *value_error = nullptr;
+        const gint value = g_key_file_get_integer(key_file, kOnlineGroup, "total-timeout-ms", &value_error);
+        if (value_error == nullptr && value >= kMinimumTotalTimeoutMs && value <= kMaximumTotalTimeoutMs)
+        {
+            settings.online.total_timeout = std::chrono::milliseconds(value);
+        }
+        else
+        {
+            invalid = true;
+        }
+        g_clear_error(&value_error);
+    }
+
+    load_boolean(kAiGroup, "enabled", settings.online.ai.enabled);
+    if (g_key_file_has_key(key_file, kAiGroup, "provider", nullptr))
+    {
+        gchar *value = g_key_file_get_string(key_file, kAiGroup, "provider", nullptr);
+        const auto provider = parse_ai_provider(value == nullptr ? std::string_view{} : std::string_view(value));
+        if (provider.has_value())
+        {
+            settings.online.ai.provider = *provider;
+        }
+        else
+        {
+            invalid = true;
+        }
+        g_free(value);
+    }
+    load_string(kAiGroup, "endpoint", settings.online.ai.endpoint, valid_https_endpoint);
+    load_string(kAiGroup, "model", settings.online.ai.model,
+                [](std::string_view value) { return valid_utf8_text(value, kMaximumModelBytes, false); });
+    load_string(kAiGroup, "prompt", settings.online.ai.prompt,
+                [](std::string_view value) { return valid_utf8_text(value, kMaximumPromptBytes, true); });
+    if (g_key_file_has_key(key_file, kAiGroup, "candidate-limit", nullptr))
+    {
+        GError *value_error = nullptr;
+        const gint value = g_key_file_get_integer(key_file, kAiGroup, "candidate-limit", &value_error);
+        if (value_error == nullptr && value >= kMinimumAiCandidateLimit && value <= kMaximumAiCandidateLimit)
+        {
+            settings.online.ai.candidate_limit = static_cast<std::size_t>(value);
+        }
+        else
+        {
+            invalid = true;
+        }
+        g_clear_error(&value_error);
+    }
+
+    load_boolean(kTranslationGroup, "enabled", settings.online.candidate_translations_enabled);
+    if (g_key_file_has_key(key_file, kTranslationGroup, "provider", nullptr))
+    {
+        gchar *value = g_key_file_get_string(key_file, kTranslationGroup, "provider", nullptr);
+        const auto provider =
+            parse_translation_provider(value == nullptr ? std::string_view{} : std::string_view(value));
+        if (provider.has_value())
+        {
+            settings.online.translation_provider = *provider;
+        }
+        else
+        {
+            invalid = true;
+        }
+        g_free(value);
+    }
+    load_string(kTranslationGroup, "target-language", settings.online.translation_target_language,
+                valid_translation_language);
+    load_string(kTranslationGroup, "endpoint", settings.online.translation_endpoint, valid_https_endpoint);
+
     g_key_file_unref(key_file);
     if (invalid)
     {
         set_message(warning, "Some input settings were invalid; defaults were used for those fields.");
+    }
+    return settings;
+}
+
+InputSettings SettingsStore::load(const SecretStore &secret_store, std::string *warning) const
+{
+    InputSettings settings = load(warning);
+    if (settings.online.ai.enabled)
+    {
+        const char *provider = ai_provider_name(settings.online.ai.provider);
+        const SecretLookupResult result =
+            provider == nullptr ? SecretLookupResult{SecretStatus::Unavailable, {}, {}}
+                                : secret_store.lookup(SecretKind::AiApiToken, provider);
+        if (result.status == SecretStatus::Found)
+        {
+            settings.online.ai.token = result.value;
+        }
+        else
+        {
+            settings.online.ai.enabled = false;
+            append_message(warning, "The AI credential is unavailable; the AI provider was disabled.");
+        }
+    }
+
+    if (settings.online.candidate_translations_enabled &&
+        settings.online.translation_provider == TranslationProvider::DeepLX)
+    {
+        const SecretLookupResult result =
+            secret_store.lookup(SecretKind::TranslationApiToken,
+                                translation_provider_name(settings.online.translation_provider));
+        if (result.status == SecretStatus::Found)
+        {
+            settings.online.translation_token = result.value;
+        }
+        else
+        {
+            settings.online.candidate_translations_enabled = false;
+            append_message(warning, "Translation credentials are unavailable; translation was disabled.");
+        }
     }
     return settings;
 }
@@ -617,18 +938,7 @@ bool SettingsStore::save(const InputSettings &settings, std::string *error) cons
     const char *punctuation = punctuation_name(settings.punctuation_mode);
     const char *preedit_style = preedit_style_name(settings.preedit_style);
     const char *frequency_adjustment = frequency_adjustment_name(settings.frequency_adjustment_mode);
-    if (mode == nullptr || scheme == nullptr || punctuation == nullptr || preedit_style == nullptr ||
-        frequency_adjustment == nullptr ||
-        !valid_character_width(settings.character_width) || settings.page_size < kMinimumPageSize ||
-        settings.page_size > kMaximumPageSize ||
-        !InputSession::is_supported_helpcode_schema(settings.quanpin_helpcode_schema) ||
-        !InputSession::is_supported_helpcode_schema(settings.shuangpin_helpcode_schema) ||
-        settings.frequency_trigger_count < kMinimumFrequencyValue ||
-        settings.frequency_trigger_count > kMaximumFrequencyValue ||
-        settings.frequency_linear_step < kMinimumFrequencyValue ||
-        settings.frequency_linear_step > kMaximumFrequencyValue ||
-        settings.mixed_english_minimum_prefix < static_cast<std::size_t>(kMinimumEnglishPrefix) ||
-        settings.mixed_english_minimum_prefix > static_cast<std::size_t>(kMaximumEnglishPrefix))
+    if (!valid_input_settings(settings))
     {
         set_message(error, "Input settings were outside the supported range.");
         return false;
@@ -690,6 +1000,39 @@ bool SettingsStore::save(const InputSettings &settings, std::string *error) cons
     g_key_file_set_boolean(key_file, kGroup, "mixed-kaomoji-candidates",
                            settings.mixed_kaomoji_candidates_enabled);
 
+    g_key_file_set_boolean(key_file, kOnlineGroup, "cloud-enabled", settings.online.cloud_candidates_enabled);
+    g_key_file_set_integer(key_file, kOnlineGroup, "connect-timeout-ms",
+                           static_cast<gint>(settings.online.connect_timeout.count()));
+    g_key_file_set_integer(key_file, kOnlineGroup, "total-timeout-ms",
+                           static_cast<gint>(settings.online.total_timeout.count()));
+    g_key_file_set_boolean(key_file, kAiGroup, "enabled", settings.online.ai.enabled);
+    g_key_file_set_string(key_file, kAiGroup, "provider", ai_provider_name(settings.online.ai.provider));
+    g_key_file_set_string(key_file, kAiGroup, "endpoint", settings.online.ai.endpoint.c_str());
+    g_key_file_set_string(key_file, kAiGroup, "model", settings.online.ai.model.c_str());
+    g_key_file_set_string(key_file, kAiGroup, "prompt", settings.online.ai.prompt.c_str());
+    g_key_file_set_integer(key_file, kAiGroup, "candidate-limit",
+                           static_cast<gint>(settings.online.ai.candidate_limit));
+    g_key_file_set_boolean(key_file, kTranslationGroup, "enabled",
+                           settings.online.candidate_translations_enabled);
+    g_key_file_set_string(key_file, kTranslationGroup, "provider",
+                          translation_provider_name(settings.online.translation_provider));
+    g_key_file_set_string(key_file, kTranslationGroup, "target-language",
+                          settings.online.translation_target_language.c_str());
+    g_key_file_set_string(key_file, kTranslationGroup, "endpoint",
+                          settings.online.translation_endpoint.c_str());
+
+    constexpr const char *secret_keys[]{"token", "api-token", "api-key"};
+    for (const char *secret_key : secret_keys)
+    {
+        g_key_file_remove_key(key_file, kAiGroup, secret_key, nullptr);
+        g_key_file_remove_key(key_file, kTranslationGroup, secret_key, nullptr);
+    }
+    constexpr const char *legacy_online_secret_keys[]{"ai-token", "translation-token", "translation-api-key"};
+    for (const char *secret_key : legacy_online_secret_keys)
+    {
+        g_key_file_remove_key(key_file, kOnlineGroup, secret_key, nullptr);
+    }
+
     gsize data_size = 0;
     GError *data_error = nullptr;
     gchar *data = g_key_file_to_data(key_file, &data_size, &data_error);
@@ -720,6 +1063,112 @@ bool SettingsStore::save(const InputSettings &settings, std::string *error) cons
     {
         g_unlink(temporary_path.data());
         set_message(error, "Unable to atomically replace input settings.");
+        return false;
+    }
+    return true;
+}
+
+bool SettingsStore::save(const InputSettings &settings, SecretStore &secret_store, std::string *error) const
+{
+    set_message(error, "");
+    if (!valid_input_settings(settings))
+    {
+        set_message(error, "Input settings were outside the supported range.");
+        return false;
+    }
+
+    struct PendingSecret
+    {
+        SecretKind kind;
+        std::string provider;
+        std::string value;
+        SecretLookupResult previous;
+        bool attempted = false;
+    };
+
+    std::vector<PendingSecret> pending;
+    if (settings.online.ai.enabled)
+    {
+        const char *provider = ai_provider_name(settings.online.ai.provider);
+        if (provider == nullptr || settings.online.ai.token.empty())
+        {
+            set_message(error, "Unable to store the AI credential; the provider configuration was not saved.");
+            return false;
+        }
+        pending.push_back({SecretKind::AiApiToken, provider, settings.online.ai.token, {}});
+    }
+    if (!settings.online.translation_token.empty())
+    {
+        const char *provider = translation_provider_name(settings.online.translation_provider);
+        if (provider == nullptr)
+        {
+            set_message(error,
+                        "Unable to store the translation credential; the provider configuration was not saved.");
+            return false;
+        }
+        pending.push_back(
+            {SecretKind::TranslationApiToken, provider, settings.online.translation_token, {}});
+    }
+
+    for (PendingSecret &secret : pending)
+    {
+        secret.previous = secret_store.lookup(secret.kind, secret.provider);
+        if (secret.previous.status == SecretStatus::Unavailable)
+        {
+            set_message(error, "Unable to access credentials; the provider configuration was not saved.");
+            return false;
+        }
+    }
+
+    const auto rollback = [&secret_store, &pending]() {
+        std::string ignored_diagnostic;
+        bool restored = true;
+        for (auto secret = pending.rbegin(); secret != pending.rend(); ++secret)
+        {
+            if (!secret->attempted)
+            {
+                continue;
+            }
+            if (secret->previous.status == SecretStatus::Found)
+            {
+                restored = secret_store.store(secret->kind, secret->provider, secret->previous.value,
+                                               &ignored_diagnostic) &&
+                           restored;
+            }
+            else
+            {
+                restored = secret_store.erase(secret->kind, secret->provider, &ignored_diagnostic) && restored;
+            }
+        }
+        return restored;
+    };
+
+    std::string ignored_diagnostic;
+    for (PendingSecret &secret : pending)
+    {
+        secret.attempted = true;
+        if (!secret_store.store(secret.kind, secret.provider, secret.value, &ignored_diagnostic))
+        {
+            if (rollback())
+            {
+                set_message(error, "Unable to store credentials; the provider configuration was not saved.");
+            }
+            else
+            {
+                set_message(error,
+                            "Unable to roll back credentials after a save failure; credential state may need repair.");
+            }
+            return false;
+        }
+    }
+
+    if (!save(settings, error))
+    {
+        if (!rollback())
+        {
+            set_message(error,
+                        "Unable to roll back credentials after a save failure; credential state may need repair.");
+        }
         return false;
     }
     return true;

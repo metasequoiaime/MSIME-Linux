@@ -69,6 +69,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
+if ! pkg-config --exists libsecret-1; then
+    echo "libsecret-1 is required for secure online-provider credentials." >&2
+    exit 1
+fi
+
 engine_is_running() {
     local process_directory
     local process_argv0
