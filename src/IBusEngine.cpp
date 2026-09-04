@@ -1,7 +1,6 @@
 #include "core/input_session.h"
 
 #include <ibus.h>
-#include <ibuskeysyms.h>
 
 #include <algorithm>
 #include <cctype>
