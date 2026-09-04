@@ -43,6 +43,8 @@ printf '%s\n' \
     'punctuation=english' \
     'full-width=true' \
     'comma-period-paging=true' \
+    'word-to-character=true' \
+    'bracket-paging=false' \
     'future-option=preserve-me' \
     >"$XDG_CONFIG_HOME/metasequoiaime/config.ini"
 
@@ -216,6 +218,8 @@ def settings_saved():
             "punctuation=chinese",
             "full-width=false",
             "comma-period-paging=true",
+            "word-to-character=true",
+            "bracket-paging=false",
             "future-option=preserve-me",
         )
     )
@@ -243,6 +247,8 @@ if not all(
         "punctuation=chinese",
         "full-width=false",
         "comma-period-paging=true",
+        "word-to-character=true",
+        "bracket-paging=false",
         "future-option=preserve-me",
     )
 ):
@@ -290,6 +296,57 @@ if not hotkeys_are_saved_and_synchronized():
         f"updates: {property_updates}"
     )
 
+committed_text = []
+
+
+def text_committed(_connection, _sender, _path, _interface, _signal, parameters):
+    serialized = parameters.get_child_value(0).get_variant()
+    committed_text.append(IBus.Serializable.deserialize_object(serialized).get_text())
+
+
+connection.signal_subscribe(
+    None,
+    "org.freedesktop.IBus.InputContext",
+    "CommitText",
+    context.get_object_path(),
+    None,
+    Gio.DBusSignalFlags.NONE,
+    text_committed,
+)
+context.property_activate("Scheme.Quanpin", IBus.PropState.CHECKED)
+
+
+def wait_for_commit(expected_text):
+    commit_loop = GLib.MainLoop()
+
+    def commit_received():
+        if expected_text in committed_text:
+            commit_loop.quit()
+            return GLib.SOURCE_REMOVE
+        return GLib.SOURCE_CONTINUE
+
+    GLib.timeout_add(20, commit_received)
+    GLib.timeout_add_seconds(5, commit_loop.quit)
+    commit_loop.run()
+    if expected_text not in committed_text:
+        raise RuntimeError(f"Expected IBus commit {expected_text!r}, received: {committed_text}")
+
+
+for keyval in (IBus.KEY_n, IBus.KEY_i, IBus.KEY_h, IBus.KEY_a, IBus.KEY_o):
+    if not context.process_key_event(keyval, 0, 0):
+        raise RuntimeError("The Quanpin composition was not handled before first-Han selection.")
+if not context.process_key_event(IBus.KEY_bracketleft, 0, 0):
+    raise RuntimeError("Left bracket was not handled for first-Han selection.")
+wait_for_commit("你")
+
+committed_text.clear()
+for keyval in (IBus.KEY_n, IBus.KEY_i, IBus.KEY_h, IBus.KEY_a, IBus.KEY_o):
+    if not context.process_key_event(keyval, 0, 0):
+        raise RuntimeError("The Quanpin composition was not handled before last-Han selection.")
+if not context.process_key_event(IBus.KEY_bracketright, 0, 0):
+    raise RuntimeError("Right bracket was not handled for last-Han selection.")
+wait_for_commit("好")
+
 auxiliary_messages = []
 warning_loop = GLib.MainLoop()
 
@@ -314,7 +371,7 @@ connection.signal_subscribe(
 )
 settings_path.unlink()
 settings_path.mkdir()
-context.property_activate("Scheme.Quanpin", IBus.PropState.CHECKED)
+context.property_activate("Scheme.Wubi", IBus.PropState.CHECKED)
 GLib.timeout_add_seconds(5, warning_loop.quit)
 warning_loop.run()
 

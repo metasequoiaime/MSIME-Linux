@@ -115,6 +115,8 @@ int main()
     require_punctuation(IBUS_period, 0, '.', "Period did not reach punctuation arbitration.");
     require_punctuation(IBUS_minus, 0, '-', "Minus did not reach punctuation arbitration.");
     require_punctuation(IBUS_equal, 0, '=', "Equals did not reach punctuation arbitration.");
+    require_punctuation(IBUS_bracketleft, 0, '[', "Left bracket did not reach punctuation arbitration.");
+    require_punctuation(IBUS_bracketright, 0, ']', "Right bracket did not reach punctuation arbitration.");
     require_punctuation(IBUS_exclam, IBUS_SHIFT_MASK, '!', "Shifted punctuation mapped incorrectly.");
 
     const auto keypad_decimal = translate_ibus_key(IBUS_KP_Decimal, 0);

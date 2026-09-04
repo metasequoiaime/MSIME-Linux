@@ -45,6 +45,8 @@ struct InputOptions
     PunctuationMode punctuation_mode = PunctuationMode::Chinese;
     CharacterWidth character_width = CharacterWidth::Half;
     bool comma_period_paging = false;
+    bool word_to_character = false;
+    bool bracket_paging = false;
 };
 
 class InputController
@@ -69,6 +71,8 @@ class InputController
     PunctuationMode punctuation_mode() const;
     CharacterWidth character_width() const;
     bool comma_period_paging() const;
+    bool word_to_character() const;
+    bool bracket_paging() const;
     SchemeType scheme() const;
     bool has_composition() const;
     const std::string &preedit() const;
@@ -92,6 +96,8 @@ class InputController
     PunctuationMode punctuation_mode_ = PunctuationMode::Chinese;
     CharacterWidth character_width_ = CharacterWidth::Half;
     bool comma_period_paging_ = false;
+    bool word_to_character_ = false;
+    bool bracket_paging_ = false;
     PunctuationFormatter punctuation_formatter_;
 };
 } // namespace metasequoia::linux_ime

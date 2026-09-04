@@ -16,6 +16,8 @@ struct InputSettings
     PunctuationMode punctuation_mode = PunctuationMode::Chinese;
     CharacterWidth character_width = CharacterWidth::Half;
     bool comma_period_paging = false;
+    bool word_to_character = false;
+    bool bracket_paging = false;
 };
 
 class SettingsStore

@@ -235,6 +235,36 @@ InputSettings SettingsStore::load(std::string *warning) const
         g_clear_error(&value_error);
     }
 
+    if (g_key_file_has_key(key_file, kGroup, "word-to-character", nullptr))
+    {
+        GError *value_error = nullptr;
+        const gboolean value = g_key_file_get_boolean(key_file, kGroup, "word-to-character", &value_error);
+        if (value_error == nullptr)
+        {
+            settings.word_to_character = value;
+        }
+        else
+        {
+            invalid = true;
+        }
+        g_clear_error(&value_error);
+    }
+
+    if (g_key_file_has_key(key_file, kGroup, "bracket-paging", nullptr))
+    {
+        GError *value_error = nullptr;
+        const gboolean value = g_key_file_get_boolean(key_file, kGroup, "bracket-paging", &value_error);
+        if (value_error == nullptr)
+        {
+            settings.bracket_paging = value;
+        }
+        else
+        {
+            invalid = true;
+        }
+        g_clear_error(&value_error);
+    }
+
     g_key_file_unref(key_file);
     if (invalid)
     {
@@ -284,6 +314,8 @@ bool SettingsStore::save(const InputSettings &settings, std::string *error) cons
     g_key_file_set_string(key_file, kGroup, "punctuation", punctuation);
     g_key_file_set_boolean(key_file, kGroup, "full-width", settings.character_width == CharacterWidth::Full);
     g_key_file_set_boolean(key_file, kGroup, "comma-period-paging", settings.comma_period_paging);
+    g_key_file_set_boolean(key_file, kGroup, "word-to-character", settings.word_to_character);
+    g_key_file_set_boolean(key_file, kGroup, "bracket-paging", settings.bracket_paging);
 
     gsize data_size = 0;
     GError *data_error = nullptr;

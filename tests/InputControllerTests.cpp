@@ -100,6 +100,8 @@ int main()
             database.execute("INSERT INTO tbl_2_n VALUES('ni''hao', 'nh', 'candidate-" +
                              std::to_string(index) + "', " + std::to_string(120 - index) + ")");
         }
+        database.execute("INSERT INTO tbl_2_n VALUES('ni''men', 'nm', '你们', 200)");
+        database.execute("INSERT INTO tbl_2_n VALUES('ni''men', 'nm', '君好', 100)");
 
         InputController controller(SchemeType::Quanpin, 3);
         require(controller.mode() == InputMode::Ime, "The controller did not start in IME mode.");
@@ -246,6 +248,44 @@ int main()
         paging_controller.handle_key(punctuation(','));
         require(paging_controller.has_composition() && paging_controller.highlighted_candidate() == 0,
                 "Comma did not page when comma/period paging was enabled.");
+
+        InputController disabled_edge_controller(SchemeType::Quanpin, 3);
+        type(disabled_edge_controller, "nimen");
+        const auto disabled_edge = disabled_edge_controller.handle_key(punctuation('['));
+        require(disabled_edge.handled && disabled_edge.commit == "你们【",
+                "A bracket selected a candidate edge while word-to-character was disabled.");
+
+        InputOptions edge_options;
+        edge_options.page_size = 3;
+        edge_options.word_to_character = true;
+        InputController edge_controller(SchemeType::Quanpin, edge_options);
+        require(edge_controller.word_to_character() && !edge_controller.bracket_paging(),
+                "Word-to-character options were not retained by the controller.");
+        type(edge_controller, "nimen");
+        edge_controller.handle_key(key(FrontendKey::Down));
+        const auto first_edge = edge_controller.handle_key(punctuation('['));
+        require(first_edge.handled && first_edge.commit == "君" && !edge_controller.has_composition(),
+                "Left bracket did not commit the highlighted candidate's first Han character.");
+
+        type(edge_controller, "nimen");
+        edge_controller.handle_key(key(FrontendKey::Down));
+        const auto last_edge = edge_controller.handle_key(punctuation(']'));
+        require(last_edge.handled && last_edge.commit == "好" && !edge_controller.has_composition(),
+                "Right bracket did not commit the highlighted candidate's last Han character.");
+
+        InputOptions bracket_options;
+        bracket_options.page_size = 3;
+        bracket_options.word_to_character = true;
+        bracket_options.bracket_paging = true;
+        InputController bracket_controller(SchemeType::Quanpin, bracket_options);
+        type(bracket_controller, "nihao");
+        const auto bracket_page_down = bracket_controller.handle_key(punctuation(']'));
+        require(bracket_page_down.handled && !bracket_page_down.commit.has_value() &&
+                    bracket_controller.has_composition() && bracket_controller.highlighted_candidate() == 3,
+                "Bracket paging did not take precedence over word-to-character selection.");
+        bracket_controller.handle_key(punctuation('['));
+        require(bracket_controller.highlighted_candidate() == 0,
+                "Left bracket did not page backward when bracket paging was enabled.");
 
         InputOptions full_width_options;
         full_width_options.character_width = CharacterWidth::Full;

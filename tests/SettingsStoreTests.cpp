@@ -75,7 +75,8 @@ int main()
     const InputSettings defaults = store.load(&warning);
     require(defaults.mode == InputMode::Ime && defaults.scheme == SchemeType::Quanpin && defaults.page_size == 9 &&
                 defaults.punctuation_mode == PunctuationMode::Chinese &&
-                defaults.character_width == CharacterWidth::Half && !defaults.comma_period_paging,
+                defaults.character_width == CharacterWidth::Half && !defaults.comma_period_paging &&
+                !defaults.word_to_character && !defaults.bracket_paging,
             "Missing settings did not use defaults.");
     require(warning.empty(), "A missing optional settings file produced a warning.");
 
@@ -86,6 +87,8 @@ int main()
     saved.punctuation_mode = PunctuationMode::English;
     saved.character_width = CharacterWidth::Full;
     saved.comma_period_paging = true;
+    saved.word_to_character = true;
+    saved.bracket_paging = false;
     std::string error;
     require(store.save(saved, &error) && error.empty(), "Valid settings could not be saved.");
     const InputSettings round_trip = store.load(&warning);
@@ -93,7 +96,9 @@ int main()
                 round_trip.page_size == saved.page_size &&
                 round_trip.punctuation_mode == saved.punctuation_mode &&
                 round_trip.character_width == saved.character_width &&
-                round_trip.comma_period_paging == saved.comma_period_paging,
+                round_trip.comma_period_paging == saved.comma_period_paging &&
+                round_trip.word_to_character == saved.word_to_character &&
+                round_trip.bracket_paging == saved.bracket_paging,
             "Settings did not survive a round trip.");
 
     const auto config_path = store.config_path();
@@ -105,6 +110,8 @@ int main()
                "punctuation=english\n"
                "full-width=true\n"
                "comma-period-paging=true\n"
+               "word-to-character=true\n"
+               "bracket-paging=false\n"
                "future-option=keep-me\n"
                "\n"
                "[future]\n"
@@ -118,6 +125,8 @@ int main()
     updated.punctuation_mode = PunctuationMode::Chinese;
     updated.character_width = CharacterWidth::Half;
     updated.comma_period_paging = false;
+    updated.word_to_character = false;
+    updated.bracket_paging = true;
     require(store.save(updated, &error), "Existing settings could not be replaced.");
     require(inode(config_path) != original_inode, "The settings file was modified in place instead of atomically replaced.");
     const std::string preserved = read_file(config_path);
@@ -137,11 +146,14 @@ int main()
                "page-size=12\n"
                "punctuation=unsupported\n"
                "full-width=unexpected\n"
-               "comma-period-paging=unexpected\n");
+               "comma-period-paging=unexpected\n"
+               "word-to-character=unexpected\n"
+               "bracket-paging=unexpected\n");
     const InputSettings invalid = store.load(&warning);
     require(invalid.mode == InputMode::Ime && invalid.scheme == SchemeType::Quanpin && invalid.page_size == 9 &&
                 invalid.punctuation_mode == PunctuationMode::Chinese &&
-                invalid.character_width == CharacterWidth::Half && !invalid.comma_period_paging,
+                invalid.character_width == CharacterWidth::Half && !invalid.comma_period_paging &&
+                !invalid.word_to_character && !invalid.bracket_paging,
             "Invalid settings did not fall back field by field.");
     require(!warning.empty(), "Invalid settings did not produce a diagnostic warning.");
 

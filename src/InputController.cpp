@@ -7,7 +7,8 @@ namespace metasequoia::linux_ime
 {
 InputController::InputController(SchemeType scheme_type, InputOptions options)
     : session_(scheme_type), page_size_(options.page_size), punctuation_mode_(options.punctuation_mode),
-      character_width_(options.character_width), comma_period_paging_(options.comma_period_paging)
+      character_width_(options.character_width), comma_period_paging_(options.comma_period_paging),
+      word_to_character_(options.word_to_character), bracket_paging_(options.bracket_paging)
 {
     if (page_size_ == 0)
     {
@@ -62,6 +63,21 @@ KeyResult InputController::handle_key(const FrontendKeyEvent &event)
             }
             if (has_composition())
             {
+                if (bracket_paging_ && (event.character == '[' || event.character == ']'))
+                {
+                    return move_page(event.character == ']');
+                }
+                if (word_to_character_ && !bracket_paging_ &&
+                    (event.character == '[' || event.character == ']'))
+                {
+                    result = session_.select_candidate_edge(
+                        highlighted_candidate_, event.character == '[' ? CandidateEdge::FirstHan : CandidateEdge::LastHan);
+                    if (result.handled)
+                    {
+                        reset_highlight();
+                        return result;
+                    }
+                }
                 if (event.character == '-' || event.character == '_')
                 {
                     return move_page(false);
@@ -272,6 +288,16 @@ CharacterWidth InputController::character_width() const
 bool InputController::comma_period_paging() const
 {
     return comma_period_paging_;
+}
+
+bool InputController::word_to_character() const
+{
+    return word_to_character_;
+}
+
+bool InputController::bracket_paging() const
+{
+    return bracket_paging_;
 }
 
 SchemeType InputController::scheme() const

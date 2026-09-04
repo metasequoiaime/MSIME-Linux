@@ -51,8 +51,9 @@ rm "$data_home/metasequoiaime/msime.db"
 - Use the IBus language-bar menu to select Quanpin, Shuangpin, Wubi or Japanese Romaji.
 - Use Up/Down to move the candidate cursor. PageUp/PageDown, `-`/`=`, and Shift+Tab/Tab change pages. Comma/period paging is available as an opt-in setting and is disabled by default.
 - Use `1`–`9` or keypad `1`–`9` to select from the visible page. Space commits the highlighted candidate, Return commits the raw input, and Escape cancels. Punctuation commits together with the highlighted candidate when a composition is active; apostrophe remains a pinyin separator.
+- Set `word-to-character=true` to make `[` commit the first Han character and `]` the last Han character of the highlighted candidate. If `bracket-paging=true`, bracket paging takes precedence and word-to-character selection is disabled for those keys.
 
-Settings are stored in `$XDG_CONFIG_HOME/metasequoiaime/config.ini`, falling back to `~/.config/metasequoiaime/config.ini`. The `[input]` group stores `mode`, `scheme`, `page-size`, `punctuation`, `full-width`, and `comma-period-paging`. Defaults are Chinese input, Quanpin, page size 9, Chinese punctuation, half width, and comma/period paging disabled. Edit or remove the file while the engine is not active; it will be written atomically after the next property or hotkey change.
+Settings are stored in `$XDG_CONFIG_HOME/metasequoiaime/config.ini`, falling back to `~/.config/metasequoiaime/config.ini`. The `[input]` group stores `mode`, `scheme`, `page-size`, `punctuation`, `full-width`, `comma-period-paging`, `word-to-character`, and `bracket-paging`. Defaults are Chinese input, Quanpin, page size 9, Chinese punctuation, half width, and all three optional paging/selection switches disabled. Edit or remove the file while the engine is not active; it will be written atomically after the next property or hotkey change.
 
 ## Desktop-core parity
 
@@ -64,6 +65,7 @@ Settings are stored in `$XDG_CONFIG_HOME/metasequoiaime/config.ini`, falling bac
 | XDG configuration with atomic replacement | Supported | Filesystem and IBus lifecycle tests |
 | IBus registration and current-user install | Supported | D-Bus and install CI smoke gates |
 | Chinese/English punctuation and full-width mode | Supported | Transform, controller, mapper, settings and real D-Bus tests |
+| Highlighted-candidate first/last Han selection | Supported | Engine Unicode tests, controller tests and real D-Bus commit smoke |
 | User-frequency UX | Planned | Desktop experience phase |
 | Emoji, kaomoji, phrases and extended input modes | Planned | Local extensions phase |
 | Cloud, AI, translation, voice and settings UI | Planned | Online and desktop-tools phases |

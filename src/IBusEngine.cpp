@@ -189,6 +189,8 @@ void save_settings(MetasequoiaEngine *engine)
     settings.punctuation_mode = engine->controller->punctuation_mode();
     settings.character_width = engine->controller->character_width();
     settings.comma_period_paging = engine->controller->comma_period_paging();
+    settings.word_to_character = engine->controller->word_to_character();
+    settings.bracket_paging = engine->controller->bracket_paging();
     if (engine->settings_store->save(settings, engine->settings_warning))
     {
         engine->settings_warning->clear();
@@ -447,6 +449,8 @@ void metasequoia_engine_init(MetasequoiaEngine *engine)
     options.punctuation_mode = settings.punctuation_mode;
     options.character_width = settings.character_width;
     options.comma_period_paging = settings.comma_period_paging;
+    options.word_to_character = settings.word_to_character;
+    options.bracket_paging = settings.bracket_paging;
     engine->controller = new InputController(settings.scheme, options);
     (void)engine->controller->set_mode(settings.mode);
     engine->mode_toggle = new IBusModeToggleTracker();
