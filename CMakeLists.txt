@@ -5,6 +5,10 @@ project(MetasequoiaImeLinux VERSION 0.1.0 LANGUAGES CXX)
 include(CTest)
 include(GNUInstallDirs)
 
+find_package(Boost REQUIRED COMPONENTS json)
+find_package(CURL REQUIRED)
+find_package(Threads REQUIRED)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -15,6 +19,16 @@ add_library(MetasequoiaImeLinuxCore STATIC src/InputController.cpp src/TextTrans
 target_link_libraries(MetasequoiaImeLinuxCore PUBLIC MetasequoiaIme::Engine)
 target_include_directories(MetasequoiaImeLinuxCore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_options(MetasequoiaImeLinuxCore PRIVATE -Wall -Wextra -Wpedantic -Werror)
+
+add_library(MetasequoiaImeLinuxOnline STATIC
+            src/online/CurlHttpTransport.cpp
+            src/online/GoogleCloudProvider.cpp
+            src/online/OnlineCandidateService.cpp)
+target_link_libraries(MetasequoiaImeLinuxOnline
+                      PUBLIC MetasequoiaImeLinuxCore
+                      PRIVATE Boost::json CURL::libcurl Threads::Threads)
+target_include_directories(MetasequoiaImeLinuxOnline PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_options(MetasequoiaImeLinuxOnline PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 add_executable(metasequoia-ime-dictionary-replay src/DictionaryReplay.cpp)
 target_link_libraries(metasequoia-ime-dictionary-replay PRIVATE MetasequoiaIme::Engine)
@@ -36,6 +50,11 @@ if(BUILD_TESTING)
     target_link_libraries(MetasequoiaImeLinuxControllerTests PRIVATE MetasequoiaImeLinuxCore)
     target_compile_options(MetasequoiaImeLinuxControllerTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
     add_test(NAME input_controller COMMAND MetasequoiaImeLinuxControllerTests)
+
+    add_executable(MetasequoiaImeLinuxOnlineCandidateTests tests/OnlineCandidateServiceTests.cpp)
+    target_link_libraries(MetasequoiaImeLinuxOnlineCandidateTests PRIVATE MetasequoiaImeLinuxOnline)
+    target_compile_options(MetasequoiaImeLinuxOnlineCandidateTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    add_test(NAME online_candidate_service COMMAND MetasequoiaImeLinuxOnlineCandidateTests)
 endif()
 
 option(METASEQUOIA_IME_BUILD_IBUS "Build the IBus engine" ON)
