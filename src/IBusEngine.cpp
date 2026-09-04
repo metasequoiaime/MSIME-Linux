@@ -1,4 +1,5 @@
 #include "InputController.h"
+#include "IBusKeyMapper.h"
 
 #include <ibus.h>
 
@@ -6,11 +7,10 @@
 
 namespace
 {
-constexpr guint kModifierMask = IBUS_CONTROL_MASK | IBUS_MOD1_MASK | IBUS_SUPER_MASK | IBUS_META_MASK;
-
 using metasequoia::linux_ime::FrontendKey;
-using metasequoia::linux_ime::FrontendKeyEvent;
+using metasequoia::linux_ime::IBusKeyDisposition;
 using metasequoia::linux_ime::InputController;
+using metasequoia::linux_ime::translate_ibus_key;
 
 struct _MetasequoiaEngine
 {
@@ -74,7 +74,7 @@ void apply_result(MetasequoiaEngine *engine, const metasequoia::KeyResult &resul
 
 void commit_for_passthrough(MetasequoiaEngine *engine)
 {
-    FrontendKeyEvent event;
+    metasequoia::linux_ime::FrontendKeyEvent event;
     event.host_shortcut = true;
     const auto result = engine->controller->handle_key(event);
     if (result.commit.has_value())
@@ -83,92 +83,23 @@ void commit_for_passthrough(MetasequoiaEngine *engine)
     }
 }
 
-bool translate_key(guint keyval, FrontendKeyEvent &event)
-{
-    switch (keyval)
-    {
-    case IBUS_BackSpace:
-        event.key = FrontendKey::Backspace;
-        return true;
-    case IBUS_Return:
-    case IBUS_KP_Enter:
-        event.key = FrontendKey::Enter;
-        return true;
-    case IBUS_Escape:
-        event.key = FrontendKey::Escape;
-        return true;
-    case IBUS_space:
-        event.key = FrontendKey::Space;
-        return true;
-    case IBUS_Up:
-        event.key = FrontendKey::Up;
-        return true;
-    case IBUS_Down:
-        event.key = FrontendKey::Down;
-        return true;
-    case IBUS_Page_Up:
-    case IBUS_KP_Page_Up:
-    case IBUS_minus:
-    case IBUS_comma:
-    case IBUS_ISO_Left_Tab:
-        event.key = FrontendKey::PageUp;
-        return true;
-    case IBUS_Page_Down:
-    case IBUS_KP_Page_Down:
-    case IBUS_equal:
-    case IBUS_period:
-    case IBUS_Tab:
-        event.key = FrontendKey::PageDown;
-        return true;
-    default:
-        break;
-    }
-
-    if (keyval >= '1' && keyval <= '9')
-    {
-        event.key = FrontendKey::Digit;
-        event.digit = keyval - '0';
-        return true;
-    }
-    if (keyval >= IBUS_KP_1 && keyval <= IBUS_KP_9)
-    {
-        event.key = FrontendKey::Digit;
-        event.digit = keyval - IBUS_KP_1 + 1;
-        return true;
-    }
-    if ((keyval >= 'a' && keyval <= 'z') || (keyval >= 'A' && keyval <= 'Z') || keyval == IBUS_apostrophe)
-    {
-        event.key = FrontendKey::Character;
-        event.character = static_cast<char>(keyval);
-        return true;
-    }
-    return false;
-}
-
 gboolean process_key_event(IBusEngine *ibus_engine, guint keyval, guint keycode, guint state)
 {
     (void)keycode;
     auto *engine = METASEQUOIA_ENGINE(ibus_engine);
 
-    if ((state & IBUS_RELEASE_MASK) != 0)
+    const auto translation = translate_ibus_key(keyval, state);
+    if (translation.disposition == IBusKeyDisposition::Ignore)
     {
         return FALSE;
     }
-
-    if ((state & kModifierMask) != 0)
-    {
-        commit_for_passthrough(engine);
-        return FALSE;
-    }
-
-    FrontendKeyEvent event;
-    if (!translate_key(keyval, event))
+    if (translation.disposition == IBusKeyDisposition::Forward)
     {
         commit_for_passthrough(engine);
         return FALSE;
     }
 
-    const auto result = engine->controller->handle_key(event);
+    const auto result = engine->controller->handle_key(translation.event);
     if (!result.handled)
     {
         commit_for_passthrough(engine);

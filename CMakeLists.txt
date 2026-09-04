@@ -35,8 +35,19 @@ if(METASEQUOIA_IME_BUILD_IBUS)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(IBUS REQUIRED IMPORTED_TARGET ibus-1.0)
 
+    add_library(MetasequoiaImeLinuxIBusKeyMapper STATIC src/IBusKeyMapper.cpp)
+    target_link_libraries(MetasequoiaImeLinuxIBusKeyMapper PUBLIC MetasequoiaImeLinuxCore PkgConfig::IBUS)
+    target_compile_options(MetasequoiaImeLinuxIBusKeyMapper PRIVATE -Wall -Wextra -Wpedantic -Werror)
+
+    if(BUILD_TESTING)
+        add_executable(MetasequoiaImeLinuxIBusKeyMapperTests tests/IBusKeyMapperTests.cpp)
+        target_link_libraries(MetasequoiaImeLinuxIBusKeyMapperTests PRIVATE MetasequoiaImeLinuxIBusKeyMapper)
+        target_compile_options(MetasequoiaImeLinuxIBusKeyMapperTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+        add_test(NAME ibus_key_mapper COMMAND MetasequoiaImeLinuxIBusKeyMapperTests)
+    endif()
+
     add_executable(metasequoia-ime-ibus src/IBusEngine.cpp)
-    target_link_libraries(metasequoia-ime-ibus PRIVATE MetasequoiaImeLinuxCore PkgConfig::IBUS)
+    target_link_libraries(metasequoia-ime-ibus PRIVATE MetasequoiaImeLinuxIBusKeyMapper)
     target_compile_options(metasequoia-ime-ibus PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
     configure_file(resources/metasequoiaime.xml.in ${CMAKE_CURRENT_BINARY_DIR}/metasequoiaime.xml @ONLY)
