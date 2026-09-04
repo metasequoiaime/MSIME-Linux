@@ -104,7 +104,8 @@ if(METASEQUOIA_IME_BUILD_IBUS)
     endif()
 
     add_executable(metasequoia-ime-ibus src/IBusEngine.cpp)
-    target_link_libraries(metasequoia-ime-ibus PRIVATE MetasequoiaImeLinuxIBusKeyMapper MetasequoiaImeLinuxSettings)
+    target_link_libraries(metasequoia-ime-ibus PRIVATE MetasequoiaImeLinuxIBusKeyMapper MetasequoiaImeLinuxSettings
+                                                       MetasequoiaImeLinuxOnline)
     target_compile_options(metasequoia-ime-ibus PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
     configure_file(resources/metasequoiaime.xml.in ${CMAKE_CURRENT_BINARY_DIR}/metasequoiaime.xml @ONLY)

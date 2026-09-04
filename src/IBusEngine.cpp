@@ -1,12 +1,15 @@
 #include "InputController.h"
 #include "IBusKeyMapper.h"
 #include "SettingsStore.h"
+#include "online/HttpTransport.h"
+#include "online/OnlineCandidateService.h"
 
 #include <ibus.h>
 
 #include <algorithm>
 #include <cstring>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <string>
 
@@ -24,6 +27,10 @@ using metasequoia::linux_ime::InputSettings;
 using metasequoia::linux_ime::PunctuationMode;
 using metasequoia::linux_ime::SettingsStore;
 using metasequoia::linux_ime::translate_ibus_key;
+using metasequoia::linux_ime::online::AiSuggestionProvider;
+using metasequoia::linux_ime::online::CurlHttpTransport;
+using metasequoia::linux_ime::online::GoogleCloudProvider;
+using metasequoia::linux_ime::online::OnlineCandidateService;
 
 struct _MetasequoiaEngine
 {
@@ -31,6 +38,9 @@ struct _MetasequoiaEngine
     InputController *controller = nullptr;
     IBusModeToggleTracker *mode_toggle = nullptr;
     SettingsStore *settings_store = nullptr;
+    metasequoia::linux_ime::LibsecretSecretStore *secret_store = nullptr;
+    OnlineCandidateService *online_service = nullptr;
+    metasequoia::linux_ime::OnlineSettings *online_settings = nullptr;
     std::string *settings_warning = nullptr;
     IBusPropList *properties = nullptr;
     IBusProperty *mode_property = nullptr;
@@ -184,6 +194,64 @@ void show_settings_warning(MetasequoiaEngine *engine)
     ibus_engine_update_auxiliary_text(IBUS_ENGINE(engine), text(engine->settings_warning->c_str()), TRUE);
 }
 
+void update_lookup_table(MetasequoiaEngine *engine);
+
+void refresh_online(MetasequoiaEngine *engine)
+{
+    if (!engine->online_service)
+    {
+        return;
+    }
+    const auto request = engine->controller->online_request();
+    if (!request.has_value())
+    {
+        engine->online_service->clear();
+        return;
+    }
+    auto online_request = *request;
+    online_request.query.cloud_eligible =
+        online_request.query.cloud_eligible && engine->online_settings->cloud_candidates_enabled;
+    online_request.query.ai_eligible = online_request.query.ai_eligible && engine->online_settings->ai.enabled;
+    if (!online_request.query.cloud_eligible && !online_request.query.ai_eligible)
+    {
+        engine->online_service->clear();
+        return;
+    }
+    engine->online_service->submit(std::move(online_request), {}, engine->online_settings->ai);
+}
+
+struct OnlineDelivery
+{
+    MetasequoiaEngine *engine = nullptr;
+    metasequoia::linux_ime::OnlineRequest request;
+    std::string candidate;
+    CandidateSource source = CandidateSource::CloudSuggestion;
+};
+
+gboolean deliver_online(gpointer user_data)
+{
+    std::unique_ptr<OnlineDelivery> delivery(static_cast<OnlineDelivery *>(user_data));
+    auto *engine = delivery->engine;
+    if (engine->controller->apply_online_candidate(delivery->request.generation, delivery->request.query,
+                                                   std::move(delivery->candidate), delivery->source))
+    {
+        update_lookup_table(engine);
+    }
+    g_object_unref(engine);
+    return G_SOURCE_REMOVE;
+}
+
+void queue_online_result(MetasequoiaEngine *engine, const metasequoia::linux_ime::OnlineRequest &request,
+                         std::string candidate, CandidateSource source)
+{
+    auto delivery = std::make_unique<OnlineDelivery>();
+    delivery->engine = static_cast<MetasequoiaEngine *>(g_object_ref(engine));
+    delivery->request = request;
+    delivery->candidate = std::move(candidate);
+    delivery->source = source;
+    g_main_context_invoke_full(nullptr, G_PRIORITY_DEFAULT, deliver_online, delivery.release(), nullptr);
+}
+
 void save_settings(MetasequoiaEngine *engine)
 {
     InputSettings settings;
@@ -215,7 +283,8 @@ void save_settings(MetasequoiaEngine *engine)
     settings.mixed_english_minimum_prefix = engine->controller->mixed_english_minimum_prefix();
     settings.mixed_emoji_candidates_enabled = engine->controller->mixed_emoji_candidates_enabled();
     settings.mixed_kaomoji_candidates_enabled = engine->controller->mixed_kaomoji_candidates_enabled();
-    if (engine->settings_store->save(settings, engine->settings_warning))
+    settings.online = *engine->online_settings;
+    if (engine->secret_store && engine->settings_store->save(settings, *engine->secret_store, engine->settings_warning))
     {
         engine->settings_warning->clear();
     }
@@ -272,6 +341,7 @@ void apply_result(MetasequoiaEngine *engine, const ControllerResult &result)
 
     update_preedit(engine);
     update_lookup_table(engine);
+    refresh_online(engine);
 }
 
 std::optional<char32_t> preceding_character(IBusEngine *engine)
@@ -376,6 +446,7 @@ void focus_in(IBusEngine *ibus_engine)
     update_preedit(engine);
     update_lookup_table(engine);
     show_settings_warning(engine);
+    refresh_online(engine);
 }
 
 void focus_out(IBusEngine *ibus_engine)
@@ -385,6 +456,7 @@ void focus_out(IBusEngine *ibus_engine)
     engine->controller->invalidate_context();
     ibus_engine_hide_preedit_text(ibus_engine);
     update_lookup_table(engine);
+    refresh_online(engine);
 }
 
 void reset(IBusEngine *ibus_engine)
@@ -393,6 +465,7 @@ void reset(IBusEngine *ibus_engine)
     engine->controller->reset();
     update_preedit(engine);
     update_lookup_table(engine);
+    refresh_online(engine);
 }
 
 void enable(IBusEngine *ibus_engine)
@@ -497,6 +570,12 @@ void property_activate(IBusEngine *ibus_engine, const gchar *property_name, guin
 void finalize(GObject *object)
 {
     auto *engine = METASEQUOIA_ENGINE(object);
+    delete engine->online_service;
+    engine->online_service = nullptr;
+    delete engine->online_settings;
+    engine->online_settings = nullptr;
+    delete engine->secret_store;
+    engine->secret_store = nullptr;
     delete engine->controller;
     engine->controller = nullptr;
     delete engine->mode_toggle;
@@ -530,7 +609,17 @@ void metasequoia_engine_init(MetasequoiaEngine *engine)
 {
     engine->settings_store = new SettingsStore();
     engine->settings_warning = new std::string();
-    const InputSettings settings = engine->settings_store->load(engine->settings_warning);
+    engine->secret_store = new metasequoia::linux_ime::LibsecretSecretStore();
+    InputSettings settings = engine->settings_store->load(engine->settings_warning);
+    // Avoid synchronously waking Secret Service for the common offline configuration. If an
+    // online provider is explicitly enabled, hydrate its credentials before starting workers.
+    if (settings.online.ai.enabled ||
+        (settings.online.candidate_translations_enabled &&
+         settings.online.translation_provider == metasequoia::linux_ime::TranslationProvider::DeepLX))
+    {
+        settings = engine->settings_store->load(*engine->secret_store, engine->settings_warning);
+    }
+    engine->online_settings = new metasequoia::linux_ime::OnlineSettings(settings.online);
     InputOptions options;
     options.page_size = settings.page_size;
     options.punctuation_mode = settings.punctuation_mode;
@@ -562,6 +651,21 @@ void metasequoia_engine_init(MetasequoiaEngine *engine)
     engine->mode_toggle = new IBusModeToggleTracker();
     initialize_properties(engine);
     update_property_values(engine);
+
+    const auto transport = std::make_shared<CurlHttpTransport>();
+    const auto cloud_provider = std::make_shared<GoogleCloudProvider>(transport);
+    std::shared_ptr<AiSuggestionProvider> ai_provider;
+    if (engine->online_settings->ai.enabled)
+    {
+        ai_provider = std::make_shared<AiSuggestionProvider>(transport);
+    }
+    engine->online_service = new OnlineCandidateService(
+        cloud_provider,
+        [engine](const metasequoia::linux_ime::OnlineRequest &request, std::string candidate,
+                 CandidateSource source) {
+            queue_online_result(engine, request, std::move(candidate), source);
+        },
+        std::chrono::milliseconds(500), ai_provider);
 }
 
 void bus_disconnected(IBusBus *bus, gpointer user_data)
