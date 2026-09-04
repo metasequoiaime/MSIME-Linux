@@ -46,9 +46,19 @@ KeyResult InputController::handle_key(const FrontendKeyEvent &event)
         }
         return result;
     case FrontendKey::Enter:
-        return session_.handle_command(Command::CommitRaw);
+        result = session_.handle_command(Command::CommitRaw);
+        if (result.handled)
+        {
+            reset_highlight();
+        }
+        return result;
     case FrontendKey::Escape:
-        return session_.handle_command(Command::Cancel);
+        result = session_.handle_command(Command::Cancel);
+        if (result.handled)
+        {
+            reset_highlight();
+        }
+        return result;
     case FrontendKey::Space:
         return commit_highlighted();
     case FrontendKey::Digit:

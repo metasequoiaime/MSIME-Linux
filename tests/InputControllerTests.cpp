@@ -138,9 +138,12 @@ int main()
 
         const auto raw = controller.handle_key(key(FrontendKey::Enter));
         require(raw.handled && raw.commit == "nihao", "Enter did not commit raw input.");
+        require(controller.highlighted_candidate() == 0, "Enter left a stale candidate highlight.");
         type(controller, "nihao");
+        controller.handle_key(key(FrontendKey::Down));
         const auto cancel = controller.handle_key(key(FrontendKey::Escape));
-        require(cancel.handled && !cancel.commit.has_value() && !controller.has_composition(),
+        require(cancel.handled && !cancel.commit.has_value() && !controller.has_composition() &&
+                    controller.highlighted_candidate() == 0,
                 "Escape did not cancel the composition.");
 
         type(controller, "nihao");
@@ -159,13 +162,16 @@ int main()
         require(controller.scheme() == SchemeType::Wubi && !controller.has_composition(),
                 "Scheme switching did not reset into the requested scheme.");
 
+        controller.switch_scheme(SchemeType::Quanpin);
+        type(controller, "nihao");
+        controller.handle_key(key(FrontendKey::Down));
         const auto direct_mode = controller.set_mode(InputMode::Direct);
-        require(direct_mode.handled && !direct_mode.commit.has_value(), "Direct mode was not activated.");
+        require(direct_mode.handled && direct_mode.commit == "candidate-1",
+                "Direct mode did not commit the highlighted candidate before activation.");
         require(!controller.handle_key({FrontendKey::Character, 'a'}).handled,
                 "Direct mode swallowed a client character.");
         require(controller.set_mode(InputMode::Ime).handled, "IME mode was not restored.");
 
-        controller.switch_scheme(SchemeType::Quanpin);
         type(controller, "nihao");
         const auto clicked = controller.select_candidate(8);
         require(clicked.handled && clicked.commit == "candidate-8", "Absolute candidate selection committed wrong text.");
