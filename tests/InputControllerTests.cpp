@@ -13,8 +13,11 @@ namespace
 {
 using metasequoia::linux_ime::FrontendKey;
 using metasequoia::linux_ime::FrontendKeyEvent;
+using metasequoia::linux_ime::CharacterWidth;
 using metasequoia::linux_ime::InputController;
 using metasequoia::linux_ime::InputMode;
+using metasequoia::linux_ime::InputOptions;
+using metasequoia::linux_ime::PunctuationMode;
 
 class Database
 {
@@ -71,6 +74,11 @@ FrontendKeyEvent digit(unsigned value)
     FrontendKeyEvent event{FrontendKey::Digit};
     event.digit = value;
     return event;
+}
+
+FrontendKeyEvent punctuation(char value)
+{
+    return {FrontendKey::Punctuation, value};
 }
 } // namespace
 
@@ -185,6 +193,89 @@ int main()
         type(controller, "nihao");
         const auto clicked = controller.select_candidate(8);
         require(clicked.handled && clicked.commit == "candidate-8", "Absolute candidate selection committed wrong text.");
+
+        InputController punctuation_controller(SchemeType::Quanpin, 3);
+        const auto plain_comma = punctuation_controller.handle_key(punctuation(','));
+        require(plain_comma.handled && plain_comma.commit == "，",
+                "Chinese punctuation was not committed without a composition.");
+
+        type(punctuation_controller, "nihao");
+        punctuation_controller.handle_key(key(FrontendKey::Down));
+        const auto candidate_punctuation = punctuation_controller.handle_key(punctuation('!'));
+        require(candidate_punctuation.handled && candidate_punctuation.commit == "candidate-1！" &&
+                    !punctuation_controller.has_composition(),
+                "Punctuation did not commit the highlighted candidate exactly once.");
+
+        require(punctuation_controller.set_punctuation_mode(PunctuationMode::English).handled,
+                "English punctuation mode was not activated.");
+        require(!punctuation_controller.handle_key(punctuation(',')).handled,
+                "Plain English punctuation was swallowed without a composition.");
+        type(punctuation_controller, "nihao");
+        const auto english_candidate_punctuation = punctuation_controller.handle_key(punctuation(','));
+        require(english_candidate_punctuation.handled && english_candidate_punctuation.commit == "candidate-0,",
+                "English punctuation did not follow the committed candidate.");
+
+        require(punctuation_controller.set_punctuation_mode(PunctuationMode::Chinese).handled,
+                "Chinese punctuation mode was not restored.");
+        const auto opening_quote = punctuation_controller.handle_key(punctuation('\''));
+        require(opening_quote.handled && opening_quote.commit == "‘",
+                "A standalone apostrophe did not become Chinese punctuation.");
+        type(punctuation_controller, "ni");
+        const auto separator = punctuation_controller.handle_key(punctuation('\''));
+        require(separator.handled && !separator.commit.has_value() && punctuation_controller.preedit() == "ni'",
+                "An apostrophe inside a composition stopped acting as a pinyin separator.");
+        punctuation_controller.reset();
+
+        type(punctuation_controller, "nihao");
+        punctuation_controller.handle_key(punctuation('='));
+        require(punctuation_controller.highlighted_candidate() == 3,
+                "Equals did not retain PageDown semantics during composition.");
+        punctuation_controller.handle_key(punctuation('-'));
+        require(punctuation_controller.highlighted_candidate() == 0,
+                "Minus did not retain PageUp semantics during composition.");
+        const auto default_comma = punctuation_controller.handle_key(punctuation(','));
+        require(default_comma.handled && default_comma.commit == "candidate-0，",
+                "Comma unexpectedly paged when comma/period paging was disabled.");
+
+        InputOptions paging_options;
+        paging_options.page_size = 3;
+        paging_options.comma_period_paging = true;
+        InputController paging_controller(SchemeType::Quanpin, paging_options);
+        type(paging_controller, "nihao");
+        paging_controller.handle_key(punctuation('='));
+        paging_controller.handle_key(punctuation(','));
+        require(paging_controller.has_composition() && paging_controller.highlighted_candidate() == 0,
+                "Comma did not page when comma/period paging was enabled.");
+
+        InputOptions full_width_options;
+        full_width_options.character_width = CharacterWidth::Full;
+        full_width_options.punctuation_mode = PunctuationMode::English;
+        InputController full_width_controller(SchemeType::Quanpin, full_width_options);
+        full_width_controller.set_mode(InputMode::Direct);
+        require(full_width_controller.handle_key({FrontendKey::Character, 'A'}).commit == "Ａ",
+                "Direct uppercase input was not converted to full width.");
+        require(full_width_controller.handle_key(digit(2)).commit == "２",
+                "Direct digit input was not converted to full width.");
+        require(full_width_controller.handle_key(key(FrontendKey::Space)).commit == "　",
+                "Direct space input was not converted to full width.");
+        require(full_width_controller.handle_key(punctuation('@')).commit == "＠",
+                "Direct punctuation input was not converted to full width.");
+
+        full_width_controller.set_punctuation_mode(PunctuationMode::Chinese);
+        require(full_width_controller.handle_key(punctuation('$')).commit == "￥",
+                "Chinese punctuation did not take precedence over full-width conversion.");
+
+        InputController toggle_controller(SchemeType::Quanpin, 3);
+        type(toggle_controller, "nihao");
+        const auto punctuation_toggle = toggle_controller.handle_key(key(FrontendKey::TogglePunctuation));
+        require(punctuation_toggle.handled && !punctuation_toggle.commit.has_value() &&
+                    toggle_controller.punctuation_mode() == PunctuationMode::English &&
+                    toggle_controller.has_composition(),
+                "Toggling punctuation changed the active composition.");
+        const auto width_toggle = toggle_controller.handle_key(key(FrontendKey::ToggleWidth));
+        require(width_toggle.handled && !width_toggle.commit.has_value() &&
+                    toggle_controller.character_width() == CharacterWidth::Full && toggle_controller.has_composition(),
+                "Toggling character width changed the active composition.");
     }
 
     std::filesystem::remove_all(data_directory);

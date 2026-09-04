@@ -5,13 +5,19 @@
 
 namespace metasequoia::linux_ime
 {
-InputController::InputController(SchemeType scheme_type, std::size_t page_size)
-    : session_(scheme_type), page_size_(page_size)
+InputController::InputController(SchemeType scheme_type, InputOptions options)
+    : session_(scheme_type), page_size_(options.page_size), punctuation_mode_(options.punctuation_mode),
+      character_width_(options.character_width), comma_period_paging_(options.comma_period_paging)
 {
     if (page_size_ == 0)
     {
         throw std::invalid_argument("Candidate page size must be greater than zero.");
     }
+}
+
+InputController::InputController(SchemeType scheme_type, std::size_t page_size)
+    : InputController(scheme_type, InputOptions{page_size})
+{
 }
 
 KeyResult InputController::handle_key(const FrontendKeyEvent &event)
@@ -23,69 +29,133 @@ KeyResult InputController::handle_key(const FrontendKeyEvent &event)
         return result;
     }
 
-    if (mode_ == InputMode::Direct)
+    if (event.key == FrontendKey::TogglePunctuation)
     {
-        return {};
+        return toggle_punctuation_mode();
+    }
+    if (event.key == FrontendKey::ToggleWidth)
+    {
+        return toggle_character_width();
     }
 
-    KeyResult result;
+    if (mode_ == InputMode::Ime)
+    {
+        KeyResult result;
+        switch (event.key)
+        {
+        case FrontendKey::Character:
+            result = session_.handle_character(event.character);
+            if (result.handled)
+            {
+                reset_highlight();
+            }
+            return result;
+        case FrontendKey::Punctuation:
+            if (event.character == '\'' && has_composition())
+            {
+                result = session_.handle_character(event.character);
+                if (result.handled)
+                {
+                    reset_highlight();
+                }
+                return result;
+            }
+            if (has_composition())
+            {
+                if (event.character == '-' || event.character == '_')
+                {
+                    return move_page(false);
+                }
+                if (event.character == '=' || event.character == '+')
+                {
+                    return move_page(true);
+                }
+                if (comma_period_paging_ && (event.character == ',' || event.character == '.'))
+                {
+                    return move_page(event.character == '.');
+                }
+            }
+            return commit_punctuation(event.character);
+        case FrontendKey::Backspace:
+            result = session_.handle_command(Command::Backspace);
+            if (result.handled)
+            {
+                reset_highlight();
+            }
+            return result;
+        case FrontendKey::Enter:
+            result = session_.handle_command(Command::CommitRaw);
+            if (result.handled)
+            {
+                reset_highlight();
+            }
+            return result;
+        case FrontendKey::Escape:
+            result = session_.handle_command(Command::Cancel);
+            if (result.handled)
+            {
+                reset_highlight();
+            }
+            return result;
+        case FrontendKey::Space:
+            if (has_composition())
+            {
+                return commit_highlighted();
+            }
+            break;
+        case FrontendKey::Digit:
+            if (!has_composition())
+            {
+                break;
+            }
+            if (event.digit < 1 || event.digit > 9)
+            {
+                return {};
+            }
+            if (event.digit > page_size_)
+            {
+                return {true, std::nullopt};
+            }
+            if (const std::size_t absolute_index = page_start() + event.digit - 1;
+                absolute_index < candidates().size())
+            {
+                return select_candidate(absolute_index);
+            }
+            return {true, std::nullopt};
+        case FrontendKey::Up:
+            return move_cursor(false);
+        case FrontendKey::Down:
+            return move_cursor(true);
+        case FrontendKey::PageUp:
+            return move_page(false);
+        case FrontendKey::PageDown:
+            return move_page(true);
+        case FrontendKey::TogglePunctuation:
+        case FrontendKey::ToggleWidth:
+            break;
+        }
+    }
+
     switch (event.key)
     {
     case FrontendKey::Character:
-        result = session_.handle_character(event.character);
-        if (result.handled)
-        {
-            reset_highlight();
-        }
-        return result;
-    case FrontendKey::Backspace:
-        result = session_.handle_command(Command::Backspace);
-        if (result.handled)
-        {
-            reset_highlight();
-        }
-        return result;
-    case FrontendKey::Enter:
-        result = session_.handle_command(Command::CommitRaw);
-        if (result.handled)
-        {
-            reset_highlight();
-        }
-        return result;
-    case FrontendKey::Escape:
-        result = session_.handle_command(Command::Cancel);
-        if (result.handled)
-        {
-            reset_highlight();
-        }
-        return result;
+        return commit_full_width(event.character);
+    case FrontendKey::Punctuation:
+        return commit_punctuation(event.character);
     case FrontendKey::Space:
-        return commit_highlighted();
+        return commit_full_width(' ');
     case FrontendKey::Digit:
-    {
-        if (!has_composition() || event.digit < 1 || event.digit > 9)
-        {
-            return {};
-        }
-        if (event.digit > page_size_)
-        {
-            return {true, std::nullopt};
-        }
-        const std::size_t absolute_index = page_start() + event.digit - 1;
-        if (absolute_index >= candidates().size())
-        {
-            return {true, std::nullopt};
-        }
-        return select_candidate(absolute_index);
-    }
+        return event.digit <= 9 ? commit_full_width(static_cast<char>('0' + event.digit)) : KeyResult{};
+    case FrontendKey::Backspace:
+    case FrontendKey::Enter:
+    case FrontendKey::Escape:
     case FrontendKey::Up:
-        return move_cursor(false);
     case FrontendKey::Down:
-        return move_cursor(true);
     case FrontendKey::PageUp:
-        return move_page(false);
     case FrontendKey::PageDown:
-        return move_page(true);
+    case FrontendKey::TogglePunctuation:
+    case FrontendKey::ToggleWidth:
+        return {};
     }
     return {};
 }
@@ -132,6 +202,38 @@ KeyResult InputController::toggle_mode()
     return set_mode(mode_ == InputMode::Ime ? InputMode::Direct : InputMode::Ime);
 }
 
+KeyResult InputController::set_punctuation_mode(PunctuationMode mode)
+{
+    if (punctuation_mode_ == mode)
+    {
+        return {};
+    }
+    punctuation_mode_ = mode;
+    return {true, std::nullopt};
+}
+
+KeyResult InputController::toggle_punctuation_mode()
+{
+    return set_punctuation_mode(punctuation_mode_ == PunctuationMode::Chinese ? PunctuationMode::English
+                                                                              : PunctuationMode::Chinese);
+}
+
+KeyResult InputController::set_character_width(CharacterWidth width)
+{
+    if (character_width_ == width)
+    {
+        return {};
+    }
+    character_width_ = width;
+    return {true, std::nullopt};
+}
+
+KeyResult InputController::toggle_character_width()
+{
+    return set_character_width(character_width_ == CharacterWidth::Half ? CharacterWidth::Full
+                                                                         : CharacterWidth::Half);
+}
+
 KeyResult InputController::switch_scheme(SchemeType scheme_type)
 {
     if (session_.scheme() == scheme_type)
@@ -155,6 +257,21 @@ void InputController::reset()
 InputMode InputController::mode() const
 {
     return mode_;
+}
+
+PunctuationMode InputController::punctuation_mode() const
+{
+    return punctuation_mode_;
+}
+
+CharacterWidth InputController::character_width() const
+{
+    return character_width_;
+}
+
+bool InputController::comma_period_paging() const
+{
+    return comma_period_paging_;
 }
 
 SchemeType InputController::scheme() const
@@ -204,6 +321,55 @@ KeyResult InputController::commit_highlighted()
         return session_.handle_command(Command::CommitCandidate);
     }
     return select_candidate(highlighted_candidate_);
+}
+
+KeyResult InputController::commit_punctuation(char ascii)
+{
+    const bool had_composition = has_composition();
+    KeyResult result = commit_highlighted();
+
+    std::string punctuation;
+    if (punctuation_mode_ == PunctuationMode::Chinese && is_punctuation(ascii))
+    {
+        punctuation = punctuation_formatter_.chinese(ascii);
+    }
+    else if (!had_composition && character_width_ == CharacterWidth::Full)
+    {
+        punctuation = to_full_width(ascii);
+    }
+    else if (had_composition)
+    {
+        punctuation.assign(1, ascii);
+    }
+
+    if (punctuation.empty())
+    {
+        return result;
+    }
+    if (result.commit.has_value())
+    {
+        result.commit->append(punctuation);
+    }
+    else
+    {
+        result.commit = std::move(punctuation);
+    }
+    result.handled = true;
+    return result;
+}
+
+KeyResult InputController::commit_full_width(char ascii)
+{
+    if (character_width_ != CharacterWidth::Full)
+    {
+        return {};
+    }
+    std::string converted = to_full_width(ascii);
+    if (converted.empty())
+    {
+        return {};
+    }
+    return {true, std::move(converted)};
 }
 
 KeyResult InputController::move_cursor(bool forward)

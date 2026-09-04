@@ -11,7 +11,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_subdirectory(vendor/MetasequoiaImeEngine engine)
 
-add_library(MetasequoiaImeLinuxCore STATIC src/InputController.cpp)
+add_library(MetasequoiaImeLinuxCore STATIC src/InputController.cpp src/TextTransform.cpp)
 target_link_libraries(MetasequoiaImeLinuxCore PUBLIC MetasequoiaIme::Engine)
 target_include_directories(MetasequoiaImeLinuxCore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_options(MetasequoiaImeLinuxCore PRIVATE -Wall -Wextra -Wpedantic -Werror)
