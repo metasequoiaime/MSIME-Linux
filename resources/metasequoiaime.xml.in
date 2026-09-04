@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component>
+  <name>com.houko.inputmethod.MetasequoiaImeLinux</name>
+  <description>Metasequoia IME IBus component</description>
+  <exec>@CMAKE_INSTALL_FULL_LIBEXECDIR@/metasequoia-ime-ibus --ibus</exec>
+  <version>@PROJECT_VERSION@</version>
+  <author>Metasequoia IME contributors</author>
+  <license>MIT</license>
+  <homepage>https://github.com/houko/MetasequoiaImeLinux</homepage>
+  <engines>
+    <engine>
+      <name>metasequoiaime</name>
+      <longname>Metasequoia IME</longname>
+      <description>Full-pinyin Chinese input method</description>
+      <language>zh</language>
+      <license>MIT</license>
+      <author>Metasequoia IME contributors</author>
+      <layout>us</layout>
+    </engine>
+  </engines>
+</component>
+
