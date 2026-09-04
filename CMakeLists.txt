@@ -17,6 +17,11 @@ target_include_directories(MetasequoiaImeLinuxCore PUBLIC ${CMAKE_CURRENT_SOURCE
 target_compile_options(MetasequoiaImeLinuxCore PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 if(BUILD_TESTING)
+    add_executable(MetasequoiaImeLinuxTextTransformTests tests/TextTransformTests.cpp src/TextTransform.cpp)
+    target_include_directories(MetasequoiaImeLinuxTextTransformTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_compile_options(MetasequoiaImeLinuxTextTransformTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    add_test(NAME text_transform COMMAND MetasequoiaImeLinuxTextTransformTests)
+
     add_executable(MetasequoiaImeLinuxTests tests/InputSessionTests.cpp)
     target_link_libraries(MetasequoiaImeLinuxTests PRIVATE MetasequoiaIme::Engine)
     target_compile_options(MetasequoiaImeLinuxTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
