@@ -23,6 +23,8 @@ constexpr const char *kGroup = "input";
 constexpr const char *kOnlineGroup = "online";
 constexpr const char *kAiGroup = "ai";
 constexpr const char *kTranslationGroup = "translation";
+constexpr const char *kUtilityGroup = "utility";
+constexpr const char *kVoiceGroup = "voice";
 constexpr std::size_t kMinimumPageSize = 3;
 constexpr std::size_t kMaximumPageSize = 9;
 constexpr int kMinimumFrequencyValue = 1;
@@ -174,6 +176,14 @@ bool valid_online_settings(const OnlineSettings &settings)
            total_timeout <= kMaximumTotalTimeoutMs;
 }
 
+bool valid_voice_settings(const VoiceInputConfig &settings)
+{
+    return valid_utf8_text(settings.provider, 64, false) && !settings.provider.empty() &&
+           valid_https_endpoint(settings.endpoint) && valid_utf8_text(settings.model, 256, false) &&
+           !settings.model.empty() && valid_utf8_text(settings.language, 32, false) && !settings.language.empty() &&
+           (!settings.enabled || !settings.endpoint.empty());
+}
+
 const char *mode_name(InputMode mode)
 {
     switch (mode)
@@ -267,7 +277,7 @@ bool valid_input_settings(const InputSettings &settings)
            settings.frequency_linear_step <= kMaximumFrequencyValue &&
            settings.mixed_english_minimum_prefix >= static_cast<std::size_t>(kMinimumEnglishPrefix) &&
            settings.mixed_english_minimum_prefix <= static_cast<std::size_t>(kMaximumEnglishPrefix) &&
-           valid_online_settings(settings.online);
+           valid_online_settings(settings.online) && valid_voice_settings(settings.voice);
 }
 
 bool write_all(int descriptor, const char *data, std::size_t size)
@@ -882,6 +892,15 @@ InputSettings SettingsStore::load(std::string *warning) const
     load_string(kTranslationGroup, "target-language", settings.online.translation_target_language,
                 valid_translation_language);
     load_string(kTranslationGroup, "endpoint", settings.online.translation_endpoint, valid_https_endpoint);
+    load_boolean(kUtilityGroup, "clipboard-history", settings.clipboard_history_enabled);
+    load_boolean(kVoiceGroup, "enabled", settings.voice.enabled);
+    load_string(kVoiceGroup, "provider", settings.voice.provider,
+                [](std::string_view value) { return valid_utf8_text(value, 64, false) && !value.empty(); });
+    load_string(kVoiceGroup, "endpoint", settings.voice.endpoint, valid_https_endpoint);
+    load_string(kVoiceGroup, "model", settings.voice.model,
+                [](std::string_view value) { return valid_utf8_text(value, 256, false) && !value.empty(); });
+    load_string(kVoiceGroup, "language", settings.voice.language,
+                [](std::string_view value) { return valid_utf8_text(value, 32, false) && !value.empty(); });
 
     g_key_file_unref(key_file);
     if (invalid)
@@ -925,6 +944,19 @@ InputSettings SettingsStore::load(const SecretStore &secret_store, std::string *
         {
             settings.online.candidate_translations_enabled = false;
             append_message(warning, "Translation credentials are unavailable; translation was disabled.");
+        }
+    }
+    if (settings.voice.enabled)
+    {
+        const SecretLookupResult result = secret_store.lookup(SecretKind::VoiceApiToken, settings.voice.provider);
+        if (result.status == SecretStatus::Found)
+        {
+            settings.voice.token = result.value;
+        }
+        else
+        {
+            settings.voice.enabled = false;
+            append_message(warning, "Voice credentials are unavailable; voice input was disabled.");
         }
     }
     return settings;
@@ -999,6 +1031,7 @@ bool SettingsStore::save(const InputSettings &settings, std::string *error) cons
                            settings.mixed_emoji_candidates_enabled);
     g_key_file_set_boolean(key_file, kGroup, "mixed-kaomoji-candidates",
                            settings.mixed_kaomoji_candidates_enabled);
+    g_key_file_set_boolean(key_file, kUtilityGroup, "clipboard-history", settings.clipboard_history_enabled);
 
     g_key_file_set_boolean(key_file, kOnlineGroup, "cloud-enabled", settings.online.cloud_candidates_enabled);
     g_key_file_set_integer(key_file, kOnlineGroup, "connect-timeout-ms",
@@ -1020,12 +1053,18 @@ bool SettingsStore::save(const InputSettings &settings, std::string *error) cons
                           settings.online.translation_target_language.c_str());
     g_key_file_set_string(key_file, kTranslationGroup, "endpoint",
                           settings.online.translation_endpoint.c_str());
+    g_key_file_set_boolean(key_file, kVoiceGroup, "enabled", settings.voice.enabled);
+    g_key_file_set_string(key_file, kVoiceGroup, "provider", settings.voice.provider.c_str());
+    g_key_file_set_string(key_file, kVoiceGroup, "endpoint", settings.voice.endpoint.c_str());
+    g_key_file_set_string(key_file, kVoiceGroup, "model", settings.voice.model.c_str());
+    g_key_file_set_string(key_file, kVoiceGroup, "language", settings.voice.language.c_str());
 
     constexpr const char *secret_keys[]{"token", "api-token", "api-key"};
     for (const char *secret_key : secret_keys)
     {
         g_key_file_remove_key(key_file, kAiGroup, secret_key, nullptr);
         g_key_file_remove_key(key_file, kTranslationGroup, secret_key, nullptr);
+        g_key_file_remove_key(key_file, kVoiceGroup, secret_key, nullptr);
     }
     constexpr const char *legacy_online_secret_keys[]{"ai-token", "translation-token", "translation-api-key"};
     for (const char *secret_key : legacy_online_secret_keys)
@@ -1108,6 +1147,15 @@ bool SettingsStore::save(const InputSettings &settings, SecretStore &secret_stor
         }
         pending.push_back(
             {SecretKind::TranslationApiToken, provider, settings.online.translation_token, {}});
+    }
+    if (settings.voice.enabled)
+    {
+        if (settings.voice.token.empty() || settings.voice.provider.empty())
+        {
+            set_message(error, "Unable to store the voice credential; the provider configuration was not saved.");
+            return false;
+        }
+        pending.push_back({SecretKind::VoiceApiToken, settings.voice.provider, settings.voice.token, {}});
     }
 
     for (PendingSecret &secret : pending)

@@ -9,6 +9,7 @@ enum class SecretKind
 {
     AiApiToken,
     TranslationApiToken,
+    VoiceApiToken,
 };
 
 enum class SecretStatus

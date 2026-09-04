@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Metasequoia IME Voice Input
+Name[zh_CN]=水杉输入法语音输入
+Comment=Transcribe a recorded WAV file with the configured provider
+Comment[zh_CN]=使用已配置的服务转写 WAV 录音
+Exec=@CMAKE_INSTALL_FULL_BINDIR@/metasequoia-ime-voice --file %f
+Terminal=true
+Categories=Utility;Accessibility;
+MimeType=audio/wav;audio/x-wav;

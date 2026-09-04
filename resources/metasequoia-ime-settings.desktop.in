@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Metasequoia IME Settings
+Name[zh_CN]=水杉输入法设置
+Comment=Configure Metasequoia IME for Linux
+Comment[zh_CN]=配置 Linux 水杉输入法
+Exec=@CMAKE_INSTALL_FULL_BINDIR@/metasequoia-ime-settings
+Terminal=false
+Categories=Settings;Utility;
+Keywords=IME;Input Method;Chinese;Pinyin;

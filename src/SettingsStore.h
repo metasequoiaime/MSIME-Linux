@@ -2,6 +2,7 @@
 
 #include "InputController.h"
 #include "SecretStore.h"
+#include "VoiceInput.h"
 #include "online/AiSuggestionProvider.h"
 
 #include <chrono>
@@ -59,6 +60,8 @@ struct InputSettings
     std::size_t mixed_english_minimum_prefix = 2;
     bool mixed_emoji_candidates_enabled = false;
     bool mixed_kaomoji_candidates_enabled = false;
+    bool clipboard_history_enabled = false;
+    VoiceInputConfig voice;
     OnlineSettings online;
 };
 

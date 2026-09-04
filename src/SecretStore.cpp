@@ -38,6 +38,8 @@ const char *kind_name(SecretKind kind)
         return "ai-api-token";
     case SecretKind::TranslationApiToken:
         return "translation-api-token";
+    case SecretKind::VoiceApiToken:
+        return "voice-api-token";
     }
     return nullptr;
 }
@@ -50,6 +52,8 @@ const char *kind_label(SecretKind kind)
         return "Metasequoia IME AI API token";
     case SecretKind::TranslationApiToken:
         return "Metasequoia IME translation API token";
+    case SecretKind::VoiceApiToken:
+        return "Metasequoia IME voice API token";
     }
     return nullptr;
 }
