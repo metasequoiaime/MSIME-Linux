@@ -68,6 +68,8 @@ printf '%s\n' \
     'frequency-linear-step=2' \
     'unicode-mode=true' \
     'super-jianpin-mode=true' \
+    'temporary-english-mode=true' \
+    'temporary-japanese-mode=true' \
     'mixed-english-candidates=true' \
     'mixed-english-minimum-prefix=2' \
     'mixed-emoji-candidates=true' \
@@ -303,6 +305,8 @@ def settings_saved():
             "frequency-linear-step=2",
             "unicode-mode=true",
             "super-jianpin-mode=true",
+            "temporary-english-mode=true",
+            "temporary-japanese-mode=true",
             "mixed-english-candidates=true",
             "mixed-english-minimum-prefix=2",
             "mixed-emoji-candidates=true",
@@ -349,6 +353,8 @@ if not all(
         "frequency-linear-step=2",
         "unicode-mode=true",
         "super-jianpin-mode=true",
+        "temporary-english-mode=true",
+        "temporary-japanese-mode=true",
         "mixed-english-candidates=true",
         "mixed-english-minimum-prefix=2",
         "mixed-emoji-candidates=true",
@@ -704,6 +710,142 @@ if not any(visible and jianpin_learned in candidates and jianpin_anchor in candi
     raise RuntimeError("Super-jianpin frequency learning did not persist within its canonical key.")
 if not context.process_key_event(IBus.KEY_Escape, 0, 0):
     raise RuntimeError("Escape did not cancel the reopened super-jianpin composition.")
+
+
+if not context.process_key_event(IBus.KEY_Y, 0, IBus.ModifierType.SHIFT_MASK):
+    raise RuntimeError("Shift+Y did not enter temporary English mode.")
+if not context.process_key_event(IBus.KEY_BackSpace, 0, 0):
+    raise RuntimeError("Backspace did not exit a bare temporary English prefix.")
+lookup_updates.clear()
+committed_text.clear()
+if not context.process_key_event(IBus.KEY_Y, 0, IBus.ModifierType.SHIFT_MASK):
+    raise RuntimeError("Temporary English mode could not be re-entered.")
+for keyval in (IBus.KEY_h, IBus.KEY_e):
+    if not context.process_key_event(keyval, 0, 0):
+        raise RuntimeError("Temporary English input was not handled.")
+
+
+def temporary_english_candidate_observed():
+    if any(first_candidate == "he" and visible for first_candidate, visible in lookup_updates):
+        temporary_english_loop.quit()
+        return GLib.SOURCE_REMOVE
+    return GLib.SOURCE_CONTINUE
+
+
+temporary_english_loop = GLib.MainLoop()
+GLib.timeout_add(20, temporary_english_candidate_observed)
+GLib.timeout_add_seconds(5, temporary_english_loop.quit)
+temporary_english_loop.run()
+if not any(first_candidate == "he" and visible for first_candidate, visible in lookup_updates):
+    raise RuntimeError("Temporary English did not publish raw input as its leading candidate.")
+if not context.process_key_event(IBus.KEY_space, 0, 0):
+    raise RuntimeError("Space did not select raw temporary English input.")
+wait_for_commit("he")
+
+committed_text.clear()
+if not context.process_key_event(IBus.KEY_Y, 0, IBus.ModifierType.SHIFT_MASK):
+    raise RuntimeError("Temporary English could not start for an Enter commit.")
+for keyval in (IBus.KEY_h, IBus.KEY_i):
+    if not context.process_key_event(keyval, 0, 0):
+        raise RuntimeError("Temporary English raw Enter input was not handled.")
+if not context.process_key_event(IBus.KEY_Return, 0, 0):
+    raise RuntimeError("Enter did not commit temporary English without its display prefix.")
+wait_for_commit("hi")
+
+committed_text.clear()
+if not context.process_key_event(IBus.KEY_Y, 0, IBus.ModifierType.SHIFT_MASK):
+    raise RuntimeError("Temporary English could not start for cancellation.")
+for keyval in (IBus.KEY_h, IBus.KEY_e):
+    if not context.process_key_event(keyval, 0, 0):
+        raise RuntimeError("Temporary English input before cancellation was not handled.")
+if not context.process_key_event(IBus.KEY_Escape, 0, 0) or committed_text:
+    raise RuntimeError("Escape did not cancel temporary English without committing it.")
+
+if not context.process_key_event(IBus.KEY_R, 0, IBus.ModifierType.SHIFT_MASK):
+    raise RuntimeError("Shift+R did not enter temporary Japanese mode.")
+if not context.process_key_event(IBus.KEY_BackSpace, 0, 0):
+    raise RuntimeError("Backspace did not exit a bare temporary Japanese prefix.")
+lookup_updates.clear()
+committed_text.clear()
+if not context.process_key_event(IBus.KEY_R, 0, IBus.ModifierType.SHIFT_MASK):
+    raise RuntimeError("Temporary Japanese mode could not be re-entered.")
+for keyval in (IBus.KEY_k, IBus.KEY_a):
+    if not context.process_key_event(keyval, 0, 0):
+        raise RuntimeError("Temporary Japanese romaji input was not handled.")
+
+
+def temporary_japanese_candidate_observed():
+    if any(first_candidate == "か" and visible for first_candidate, visible in lookup_updates):
+        temporary_japanese_loop.quit()
+        return GLib.SOURCE_REMOVE
+    return GLib.SOURCE_CONTINUE
+
+
+temporary_japanese_loop = GLib.MainLoop()
+GLib.timeout_add(20, temporary_japanese_candidate_observed)
+GLib.timeout_add_seconds(5, temporary_japanese_loop.quit)
+temporary_japanese_loop.run()
+if not any(first_candidate == "か" and visible for first_candidate, visible in lookup_updates):
+    raise RuntimeError("Temporary Japanese did not publish the generated ka candidate.")
+if not context.process_key_event(IBus.KEY_space, 0, 0):
+    raise RuntimeError("Space did not select the temporary Japanese candidate.")
+wait_for_commit("か")
+
+lookup_updates.clear()
+for keyval in (IBus.KEY_n, IBus.KEY_i):
+    if not context.process_key_event(keyval, 0, 0):
+        raise RuntimeError("Chinese input was not restored after temporary Japanese commit.")
+
+
+def restored_chinese_candidate_observed():
+    if any(first_candidate == "你" and visible for first_candidate, visible in lookup_updates):
+        restored_chinese_loop.quit()
+        return GLib.SOURCE_REMOVE
+    return GLib.SOURCE_CONTINUE
+
+
+restored_chinese_loop = GLib.MainLoop()
+GLib.timeout_add(20, restored_chinese_candidate_observed)
+GLib.timeout_add_seconds(5, restored_chinese_loop.quit)
+restored_chinese_loop.run()
+if not any(first_candidate == "你" and visible for first_candidate, visible in lookup_updates):
+    raise RuntimeError("Temporary Japanese did not return the IBus engine to Quanpin.")
+if not context.process_key_event(IBus.KEY_Escape, 0, 0):
+    raise RuntimeError("Escape did not cancel the restored Quanpin composition.")
+
+committed_text.clear()
+if not context.process_key_event(IBus.KEY_R, 0, IBus.ModifierType.SHIFT_MASK):
+    raise RuntimeError("Temporary Japanese could not start before a scheme-menu switch.")
+for keyval in (IBus.KEY_k, IBus.KEY_a):
+    if not context.process_key_event(keyval, 0, 0):
+        raise RuntimeError("Temporary Japanese input before a scheme-menu switch was not handled.")
+context.property_activate("Scheme.Shuangpin", IBus.PropState.CHECKED)
+wait_for_commit("か")
+
+
+def shuangpin_scheme_observed():
+    if latest_property("Scheme.Shuangpin")[1] == IBus.PropState.CHECKED:
+        shuangpin_scheme_loop.quit()
+        return GLib.SOURCE_REMOVE
+    return GLib.SOURCE_CONTINUE
+
+
+shuangpin_scheme_loop = GLib.MainLoop()
+GLib.timeout_add(20, shuangpin_scheme_observed)
+GLib.timeout_add_seconds(5, shuangpin_scheme_loop.quit)
+shuangpin_scheme_loop.run()
+if latest_property("Scheme.Shuangpin")[1] != IBus.PropState.CHECKED:
+    raise RuntimeError("The scheme menu did not leave temporary Japanese in Shuangpin.")
+context.property_activate("Scheme.Quanpin", IBus.PropState.CHECKED)
+
+committed_text.clear()
+if not context.process_key_event(IBus.KEY_R, 0, IBus.ModifierType.SHIFT_MASK):
+    raise RuntimeError("Temporary Japanese could not start for cancellation.")
+for keyval in (IBus.KEY_k, IBus.KEY_a):
+    if not context.process_key_event(keyval, 0, 0):
+        raise RuntimeError("Temporary Japanese input before cancellation was not handled.")
+if not context.process_key_event(IBus.KEY_Escape, 0, 0) or committed_text:
+    raise RuntimeError("Escape did not cancel temporary Japanese without committing it.")
 
 
 lookup_updates.clear()

@@ -86,6 +86,7 @@ int main()
                 defaults.frequency_adjustment_mode == FrequencyAdjustmentMode::Promote &&
                 defaults.frequency_trigger_count == 1 && defaults.frequency_linear_step == 1 &&
                 defaults.unicode_mode_enabled && defaults.super_jianpin_mode_enabled &&
+                defaults.temporary_english_mode_enabled && defaults.temporary_japanese_mode_enabled &&
                 !defaults.mixed_english_candidates_enabled &&
                 defaults.mixed_english_minimum_prefix == 2 &&
                 !defaults.mixed_emoji_candidates_enabled && !defaults.mixed_kaomoji_candidates_enabled,
@@ -114,6 +115,8 @@ int main()
     saved.frequency_linear_step = 4;
     saved.unicode_mode_enabled = false;
     saved.super_jianpin_mode_enabled = false;
+    saved.temporary_english_mode_enabled = false;
+    saved.temporary_japanese_mode_enabled = false;
     saved.mixed_english_candidates_enabled = true;
     saved.mixed_english_minimum_prefix = 4;
     saved.mixed_emoji_candidates_enabled = true;
@@ -141,6 +144,8 @@ int main()
                 round_trip.frequency_linear_step == saved.frequency_linear_step &&
                 round_trip.unicode_mode_enabled == saved.unicode_mode_enabled &&
                 round_trip.super_jianpin_mode_enabled == saved.super_jianpin_mode_enabled &&
+                round_trip.temporary_english_mode_enabled == saved.temporary_english_mode_enabled &&
+                round_trip.temporary_japanese_mode_enabled == saved.temporary_japanese_mode_enabled &&
                 round_trip.mixed_english_candidates_enabled == saved.mixed_english_candidates_enabled &&
                 round_trip.mixed_english_minimum_prefix == saved.mixed_english_minimum_prefix &&
                 round_trip.mixed_emoji_candidates_enabled == saved.mixed_emoji_candidates_enabled &&
@@ -171,6 +176,8 @@ int main()
                "frequency-linear-step=7\n"
                "unicode-mode=false\n"
                "super-jianpin-mode=false\n"
+               "temporary-english-mode=false\n"
+               "temporary-japanese-mode=false\n"
                "mixed-english-candidates=true\n"
                "mixed-english-minimum-prefix=4\n"
                "mixed-emoji-candidates=true\n"
@@ -203,6 +210,8 @@ int main()
     updated.frequency_linear_step = 9;
     updated.unicode_mode_enabled = true;
     updated.super_jianpin_mode_enabled = true;
+    updated.temporary_english_mode_enabled = true;
+    updated.temporary_japanese_mode_enabled = true;
     updated.mixed_english_candidates_enabled = false;
     updated.mixed_english_minimum_prefix = 5;
     updated.mixed_emoji_candidates_enabled = false;
@@ -242,6 +251,8 @@ int main()
                "frequency-linear-step=11\n"
                "unicode-mode=unexpected\n"
                "super-jianpin-mode=unexpected\n"
+               "temporary-english-mode=unexpected\n"
+               "temporary-japanese-mode=unexpected\n"
                "mixed-english-candidates=unexpected\n"
                "mixed-english-minimum-prefix=9\n"
                "mixed-emoji-candidates=unexpected\n"
@@ -258,6 +269,7 @@ int main()
                 invalid.frequency_adjustment_mode == FrequencyAdjustmentMode::Promote &&
                 invalid.frequency_trigger_count == 1 && invalid.frequency_linear_step == 1 &&
                 invalid.unicode_mode_enabled && invalid.super_jianpin_mode_enabled &&
+                invalid.temporary_english_mode_enabled && invalid.temporary_japanese_mode_enabled &&
                 !invalid.mixed_english_candidates_enabled &&
                 invalid.mixed_english_minimum_prefix == 2 &&
                 !invalid.mixed_emoji_candidates_enabled && !invalid.mixed_kaomoji_candidates_enabled,

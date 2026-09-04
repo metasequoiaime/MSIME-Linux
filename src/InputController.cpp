@@ -140,12 +140,34 @@ ControllerResult InputController::handle_key(const FrontendKeyEvent &event)
                         return select_page_candidate(selection - 1);
                     }
                 }
+                const bool temporary_input = local_input_mode() == LocalInputMode::TemporaryEnglish ||
+                                             local_input_mode() == LocalInputMode::TemporaryJapanese;
+                if (temporary_input && has_composition())
+                {
+                    if (bracket_paging_ && (event.character == '[' || event.character == ']'))
+                    {
+                        return move_page(event.character == ']');
+                    }
+                    if (event.character == '-' || event.character == '_')
+                    {
+                        return move_page(false);
+                    }
+                    if (event.character == '=' || event.character == '+')
+                    {
+                        return move_page(true);
+                    }
+                    if (comma_period_paging_ && (event.character == ',' || event.character == '.'))
+                    {
+                        return move_page(event.character == '.');
+                    }
+                }
                 result = session_.handle_character(event.character, event.shift_only);
                 if (result.handled)
                 {
                     reset_highlight();
+                    return result;
                 }
-                return result;
+                return commit_punctuation(event.character, event.preceding_character);
             }
             if (event.character == '\'' && has_composition())
             {
@@ -371,7 +393,7 @@ ControllerResult InputController::toggle_dedicated_english_mode()
 ControllerResult InputController::switch_scheme(SchemeType scheme_type)
 {
     clear_smart_punctuation_history();
-    if (session_.scheme() == scheme_type)
+    if (session_.scheme() == scheme_type && session_.local_input_mode() == LocalInputMode::None)
     {
         return {};
     }
@@ -495,6 +517,16 @@ bool InputController::unicode_mode_enabled() const
 bool InputController::super_jianpin_mode_enabled() const
 {
     return session_.local_mode_options().super_jianpin;
+}
+
+bool InputController::temporary_english_mode_enabled() const
+{
+    return session_.local_mode_options().temporary_english;
+}
+
+bool InputController::temporary_japanese_mode_enabled() const
+{
+    return session_.local_mode_options().temporary_japanese;
 }
 
 bool InputController::mixed_english_candidates_enabled() const

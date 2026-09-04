@@ -143,6 +143,8 @@ class InputController
     LocalInputMode local_input_mode() const;
     bool unicode_mode_enabled() const;
     bool super_jianpin_mode_enabled() const;
+    bool temporary_english_mode_enabled() const;
+    bool temporary_japanese_mode_enabled() const;
     bool mixed_english_candidates_enabled() const;
     std::size_t mixed_english_minimum_prefix() const;
     bool mixed_emoji_candidates_enabled() const;

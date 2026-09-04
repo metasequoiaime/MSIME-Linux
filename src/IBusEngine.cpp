@@ -209,6 +209,8 @@ void save_settings(MetasequoiaEngine *engine)
     settings.frequency_linear_step = engine->controller->frequency_linear_step();
     settings.unicode_mode_enabled = engine->controller->unicode_mode_enabled();
     settings.super_jianpin_mode_enabled = engine->controller->super_jianpin_mode_enabled();
+    settings.temporary_english_mode_enabled = engine->controller->temporary_english_mode_enabled();
+    settings.temporary_japanese_mode_enabled = engine->controller->temporary_japanese_mode_enabled();
     settings.mixed_english_candidates_enabled = engine->controller->mixed_english_candidates_enabled();
     settings.mixed_english_minimum_prefix = engine->controller->mixed_english_minimum_prefix();
     settings.mixed_emoji_candidates_enabled = engine->controller->mixed_emoji_candidates_enabled();
@@ -549,6 +551,8 @@ void metasequoia_engine_init(MetasequoiaEngine *engine)
     options.frequency_linear_step = settings.frequency_linear_step;
     options.local_modes.unicode = settings.unicode_mode_enabled;
     options.local_modes.super_jianpin = settings.super_jianpin_mode_enabled;
+    options.local_modes.temporary_english = settings.temporary_english_mode_enabled;
+    options.local_modes.temporary_japanese = settings.temporary_japanese_mode_enabled;
     options.english_input.mixed_candidates = settings.mixed_english_candidates_enabled;
     options.english_input.minimum_prefix = settings.mixed_english_minimum_prefix;
     options.mixed_expressive.emoji_candidates = settings.mixed_emoji_candidates_enabled;

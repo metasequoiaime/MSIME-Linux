@@ -744,6 +744,140 @@ int main()
                     disabled_jianpin_controller.local_input_mode() == LocalInputMode::None,
                 "A disabled super-jianpin mode intercepted Shift+J.");
 
+        FrontendKeyEvent temporary_english_prefix{FrontendKey::Character, 'Y'};
+        temporary_english_prefix.shift_only = true;
+        InputController temporary_english_controller(SchemeType::Quanpin, 3);
+        require(temporary_english_controller.temporary_english_mode_enabled() &&
+                    temporary_english_controller.handle_key(temporary_english_prefix).handled &&
+                    temporary_english_controller.local_input_mode() == LocalInputMode::TemporaryEnglish &&
+                    temporary_english_controller.preedit() == "Y",
+                "The controller did not enter temporary English mode from Shift+Y.");
+        type(temporary_english_controller, "he");
+        require(temporary_english_controller.candidates().size() == 3 &&
+                    temporary_english_controller.candidates()[0].word == "he" &&
+                    temporary_english_controller.candidates()[1].word == "Hello" &&
+                    temporary_english_controller.candidates()[2].word == "Help",
+                "The controller did not expose raw temporary English before completions.");
+        const auto temporary_english_commit = temporary_english_controller.handle_key(digit(2));
+        require(temporary_english_commit.handled && temporary_english_commit.commit == "Hello" &&
+                    temporary_english_controller.local_input_mode() == LocalInputMode::None &&
+                    temporary_english_controller.scheme() == SchemeType::Quanpin,
+                "Temporary English selection did not commit and return to Quanpin.");
+        require(temporary_english_controller.handle_key(temporary_english_prefix).handled &&
+                    temporary_english_controller.handle_key(key(FrontendKey::Backspace)).handled &&
+                    temporary_english_controller.local_input_mode() == LocalInputMode::None,
+                "Backspace on the bare Y prefix did not exit temporary English mode.");
+        require(temporary_english_controller.handle_key(temporary_english_prefix).handled,
+                "Temporary English could not start for a bare-prefix Space.");
+        const auto bare_english_space = temporary_english_controller.handle_key(key(FrontendKey::Space));
+        require(bare_english_space.handled && !bare_english_space.commit.has_value() &&
+                    temporary_english_controller.local_input_mode() == LocalInputMode::None,
+                "Space committed the bare temporary-English display prefix.");
+        require(temporary_english_controller.handle_key(temporary_english_prefix).handled,
+                "Temporary English could not start for bare-prefix punctuation.");
+        const auto bare_english_comma = temporary_english_controller.handle_key(punctuation(','));
+        require(bare_english_comma.handled && bare_english_comma.commit == "，" &&
+                    temporary_english_controller.local_input_mode() == LocalInputMode::None,
+                "Punctuation committed the bare temporary-English display prefix.");
+
+        InputOptions temporary_english_paging_options;
+        temporary_english_paging_options.page_size = 1;
+        temporary_english_paging_options.comma_period_paging = true;
+        InputController temporary_english_paging(SchemeType::Quanpin, temporary_english_paging_options);
+        temporary_english_paging.handle_key(temporary_english_prefix);
+        type(temporary_english_paging, "he");
+        const auto temporary_english_equals = temporary_english_paging.handle_key(punctuation('='));
+        require(temporary_english_equals.handled && !temporary_english_equals.commit.has_value() &&
+                    temporary_english_paging.highlighted_candidate() == 1 &&
+                    temporary_english_paging.local_input_mode() == LocalInputMode::TemporaryEnglish,
+                "Equals committed temporary English instead of paging forward.");
+        const auto temporary_english_period = temporary_english_paging.handle_key(punctuation('.'));
+        require(temporary_english_period.handled && !temporary_english_period.commit.has_value() &&
+                    temporary_english_paging.highlighted_candidate() == 2,
+                "Period did not page forward in temporary English mode.");
+        const auto temporary_english_paging_comma = temporary_english_paging.handle_key(punctuation(','));
+        require(temporary_english_paging_comma.handled && !temporary_english_paging_comma.commit.has_value() &&
+                    temporary_english_paging.highlighted_candidate() == 1,
+                "Comma did not page backward in temporary English mode.");
+        temporary_english_paging.handle_key(key(FrontendKey::Escape));
+        InputOptions temporary_english_punctuation_options;
+        temporary_english_punctuation_options.punctuation_mode = PunctuationMode::English;
+        InputController temporary_english_punctuation(SchemeType::Quanpin,
+                                                      temporary_english_punctuation_options);
+        temporary_english_punctuation.handle_key(temporary_english_prefix);
+        type(temporary_english_punctuation, "he");
+        temporary_english_punctuation.handle_key(key(FrontendKey::Down));
+        const auto temporary_english_comma = temporary_english_punctuation.handle_key(punctuation(','));
+        require(temporary_english_comma.handled && temporary_english_comma.commit == "Hello," &&
+                    temporary_english_punctuation.local_input_mode() == LocalInputMode::None,
+                "Temporary English swallowed punctuation instead of committing its highlighted candidate.");
+
+        FrontendKeyEvent temporary_japanese_prefix{FrontendKey::Character, 'R'};
+        temporary_japanese_prefix.shift_only = true;
+        InputController temporary_japanese_controller(SchemeType::Quanpin, 3);
+        require(temporary_japanese_controller.temporary_japanese_mode_enabled() &&
+                    temporary_japanese_controller.handle_key(temporary_japanese_prefix).handled &&
+                    temporary_japanese_controller.local_input_mode() == LocalInputMode::TemporaryJapanese &&
+                    temporary_japanese_controller.preedit() == "R",
+                "The controller did not enter temporary Japanese mode from Shift+R.");
+        type(temporary_japanese_controller, "ka");
+        require(std::any_of(temporary_japanese_controller.candidates().begin(),
+                            temporary_japanese_controller.candidates().end(),
+                            [](const WordItem &candidate) { return candidate.word == "か"; }),
+                "The controller did not expose temporary Japanese conversion candidates.");
+        const auto temporary_japanese_commit = temporary_japanese_controller.handle_key(key(FrontendKey::Space));
+        require(temporary_japanese_commit.handled && temporary_japanese_commit.commit == "か" &&
+                    temporary_japanese_controller.local_input_mode() == LocalInputMode::None &&
+                    temporary_japanese_controller.scheme() == SchemeType::Quanpin,
+                "Temporary Japanese commit did not restore Quanpin.");
+        require(temporary_japanese_controller.handle_key(temporary_japanese_prefix).handled &&
+                    temporary_japanese_controller.handle_key(key(FrontendKey::Backspace)).handled &&
+                    temporary_japanese_controller.local_input_mode() == LocalInputMode::None &&
+                    temporary_japanese_controller.scheme() == SchemeType::Quanpin,
+                "Backspace on the bare R prefix did not restore Quanpin.");
+        require(temporary_japanese_controller.handle_key(temporary_japanese_prefix).handled,
+                "Temporary Japanese could not start before a bare-prefix scheme switch.");
+        const auto bare_japanese_scheme_switch =
+            temporary_japanese_controller.switch_scheme(SchemeType::Shuangpin);
+        require(bare_japanese_scheme_switch.handled && !bare_japanese_scheme_switch.commit.has_value() &&
+                    temporary_japanese_controller.local_input_mode() == LocalInputMode::None &&
+                    temporary_japanese_controller.scheme() == SchemeType::Shuangpin,
+                "A scheme switch committed the bare temporary-Japanese display prefix.");
+        temporary_japanese_controller.switch_scheme(SchemeType::Quanpin);
+        require(temporary_japanese_controller.handle_key(temporary_japanese_prefix).handled,
+                "Temporary Japanese could not start before reselecting the original scheme.");
+        type(temporary_japanese_controller, "ka");
+        const auto reselect_quanpin = temporary_japanese_controller.switch_scheme(SchemeType::Quanpin);
+        require(reselect_quanpin.handled && reselect_quanpin.commit == "か" &&
+                    temporary_japanese_controller.local_input_mode() == LocalInputMode::None &&
+                    temporary_japanese_controller.scheme() == SchemeType::Quanpin,
+                "Reselecting the original scheme did not finish temporary Japanese mode.");
+        InputOptions temporary_japanese_punctuation_options;
+        temporary_japanese_punctuation_options.punctuation_mode = PunctuationMode::English;
+        InputController temporary_japanese_punctuation(SchemeType::Quanpin,
+                                                       temporary_japanese_punctuation_options);
+        temporary_japanese_punctuation.handle_key(temporary_japanese_prefix);
+        type(temporary_japanese_punctuation, "ka");
+        const auto temporary_japanese_comma = temporary_japanese_punctuation.handle_key(punctuation(','));
+        require(temporary_japanese_comma.handled && temporary_japanese_comma.commit == "か," &&
+                    temporary_japanese_punctuation.local_input_mode() == LocalInputMode::None &&
+                    temporary_japanese_punctuation.scheme() == SchemeType::Quanpin,
+                "Temporary Japanese swallowed punctuation or failed to restore Quanpin.");
+
+        InputOptions disabled_temporary_options;
+        disabled_temporary_options.local_modes.temporary_english = false;
+        disabled_temporary_options.local_modes.temporary_japanese = false;
+        InputController disabled_temporary_controller(SchemeType::Quanpin, disabled_temporary_options);
+        require(!disabled_temporary_controller.temporary_english_mode_enabled() &&
+                    !disabled_temporary_controller.temporary_japanese_mode_enabled() &&
+                    disabled_temporary_controller.handle_key(temporary_english_prefix).handled &&
+                    disabled_temporary_controller.local_input_mode() == LocalInputMode::None,
+                "Disabled temporary English still intercepted Shift+Y.");
+        disabled_temporary_controller.handle_key(key(FrontendKey::Escape));
+        require(disabled_temporary_controller.handle_key(temporary_japanese_prefix).handled &&
+                    disabled_temporary_controller.local_input_mode() == LocalInputMode::None,
+                "Disabled temporary Japanese still intercepted Shift+R.");
+
         InputOptions mixed_english_options;
         mixed_english_options.english_input.mixed_candidates = true;
         mixed_english_options.english_input.minimum_prefix = 2;

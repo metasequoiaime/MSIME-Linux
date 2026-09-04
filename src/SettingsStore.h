@@ -31,6 +31,8 @@ struct InputSettings
     int frequency_linear_step = 1;
     bool unicode_mode_enabled = true;
     bool super_jianpin_mode_enabled = true;
+    bool temporary_english_mode_enabled = true;
+    bool temporary_japanese_mode_enabled = true;
     bool mixed_english_candidates_enabled = false;
     std::size_t mixed_english_minimum_prefix = 2;
     bool mixed_emoji_candidates_enabled = false;
