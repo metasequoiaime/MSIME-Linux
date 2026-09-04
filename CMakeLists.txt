@@ -24,7 +24,8 @@ add_library(MetasequoiaImeLinuxOnline STATIC
             src/online/AiSuggestionProvider.cpp
             src/online/CurlHttpTransport.cpp
             src/online/GoogleCloudProvider.cpp
-            src/online/OnlineCandidateService.cpp)
+            src/online/OnlineCandidateService.cpp
+            src/online/TranslationProvider.cpp)
 target_link_libraries(MetasequoiaImeLinuxOnline
                       PUBLIC MetasequoiaImeLinuxCore
                       PRIVATE Boost::json CURL::libcurl Threads::Threads)
@@ -56,6 +57,11 @@ if(BUILD_TESTING)
     target_link_libraries(MetasequoiaImeLinuxOnlineCandidateTests PRIVATE MetasequoiaImeLinuxOnline)
     target_compile_options(MetasequoiaImeLinuxOnlineCandidateTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
     add_test(NAME online_candidate_service COMMAND MetasequoiaImeLinuxOnlineCandidateTests)
+
+    add_executable(MetasequoiaImeLinuxTranslationTests tests/TranslationProviderTests.cpp)
+    target_link_libraries(MetasequoiaImeLinuxTranslationTests PRIVATE MetasequoiaImeLinuxOnline)
+    target_compile_options(MetasequoiaImeLinuxTranslationTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    add_test(NAME translation_provider COMMAND MetasequoiaImeLinuxTranslationTests)
 endif()
 
 option(METASEQUOIA_IME_BUILD_IBUS "Build the IBus engine" ON)
