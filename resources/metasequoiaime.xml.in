@@ -7,11 +7,12 @@
   <author>Metasequoia IME contributors</author>
   <license>MIT</license>
   <homepage>https://github.com/houko/MetasequoiaImeLinux</homepage>
+  <textdomain>metasequoiaime</textdomain>
   <engines>
     <engine>
       <name>metasequoiaime</name>
       <longname>Metasequoia IME</longname>
-      <description>Full-pinyin Chinese input method</description>
+      <description>Chinese and Japanese input with Quanpin, Shuangpin, Wubi and Romaji schemes</description>
       <language>zh</language>
       <license>MIT</license>
       <author>Metasequoia IME contributors</author>
@@ -19,4 +20,3 @@
     </engine>
   </engines>
 </component>
-

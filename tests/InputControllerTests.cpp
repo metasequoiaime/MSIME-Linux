@@ -173,6 +173,16 @@ int main()
         require(controller.set_mode(InputMode::Ime).handled, "IME mode was not restored.");
 
         type(controller, "nihao");
+        controller.handle_key(key(FrontendKey::Down));
+        const auto toggled_direct = controller.toggle_mode();
+        require(toggled_direct.handled && toggled_direct.commit == "candidate-1" &&
+                    controller.mode() == InputMode::Direct && !controller.has_composition(),
+                "Mode toggle did not commit the highlighted candidate exactly once.");
+        const auto toggled_ime = controller.toggle_mode();
+        require(toggled_ime.handled && !toggled_ime.commit.has_value() && controller.mode() == InputMode::Ime,
+                "A second mode toggle repeated the previous composition commit.");
+
+        type(controller, "nihao");
         const auto clicked = controller.select_candidate(8);
         require(clicked.handled && clicked.commit == "candidate-8", "Absolute candidate selection committed wrong text.");
     }

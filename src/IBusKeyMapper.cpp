@@ -23,6 +23,26 @@ IBusKeyTranslation forward()
 }
 } // namespace
 
+bool IBusModeToggleTracker::observe(guint keyval, guint state)
+{
+    const bool is_shift = keyval == IBUS_Shift_L || keyval == IBUS_Shift_R;
+    const bool is_release = (state & IBUS_RELEASE_MASK) != 0;
+    if (!is_shift)
+    {
+        shift_armed_ = false;
+        return false;
+    }
+    if (!is_release)
+    {
+        shift_armed_ = (state & kHostModifierMask) == 0;
+        return false;
+    }
+
+    const bool should_toggle = shift_armed_ && (state & kHostModifierMask) == 0;
+    shift_armed_ = false;
+    return should_toggle;
+}
+
 IBusKeyTranslation translate_ibus_key(guint keyval, guint state)
 {
     if ((state & IBUS_RELEASE_MASK) != 0)
@@ -36,6 +56,9 @@ IBusKeyTranslation translate_ibus_key(guint keyval, guint state)
 
     switch (keyval)
     {
+    case IBUS_Shift_L:
+    case IBUS_Shift_R:
+        return {};
     case IBUS_BackSpace:
         return dispatch(FrontendKey::Backspace);
     case IBUS_Return:

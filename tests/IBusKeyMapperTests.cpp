@@ -9,6 +9,7 @@ namespace
 {
 using metasequoia::linux_ime::FrontendKey;
 using metasequoia::linux_ime::IBusKeyDisposition;
+using metasequoia::linux_ime::IBusModeToggleTracker;
 using metasequoia::linux_ime::translate_ibus_key;
 
 void require(bool condition, const char *message)
@@ -28,6 +29,28 @@ void require_key(guint keyval, guint state, FrontendKey expected, const char *me
 
 int main()
 {
+    IBusModeToggleTracker toggle_tracker;
+    require(!toggle_tracker.observe(IBUS_Shift_L, 0), "Shift toggled mode on key-down.");
+    require(!toggle_tracker.observe(IBUS_Shift_L, 0), "Shift auto-repeat toggled mode.");
+    require(toggle_tracker.observe(IBUS_Shift_L, IBUS_RELEASE_MASK | IBUS_SHIFT_MASK),
+            "A bare Shift tap did not toggle mode on release.");
+    require(!toggle_tracker.observe(IBUS_Shift_L, IBUS_RELEASE_MASK),
+            "A repeated Shift release toggled mode twice.");
+
+    require(!toggle_tracker.observe(IBUS_Shift_R, 0), "Right Shift toggled mode on key-down.");
+    require(!toggle_tracker.observe(IBUS_A, IBUS_SHIFT_MASK), "Shift plus a character toggled mode.");
+    require(!toggle_tracker.observe(IBUS_Shift_R, IBUS_RELEASE_MASK | IBUS_SHIFT_MASK),
+            "Shift used as a modifier toggled mode.");
+
+    require(!toggle_tracker.observe(IBUS_Control_L, 0), "Control toggled mode.");
+    require(!toggle_tracker.observe(IBUS_Shift_L, IBUS_CONTROL_MASK), "Control+Shift toggled mode on key-down.");
+    require(!toggle_tracker.observe(IBUS_Shift_L, IBUS_RELEASE_MASK | IBUS_CONTROL_MASK | IBUS_SHIFT_MASK),
+            "Control+Shift toggled mode on key release.");
+
+    const auto shift_press = translate_ibus_key(IBUS_Shift_L, 0);
+    require(shift_press.disposition == IBusKeyDisposition::Ignore,
+            "A Shift press was treated as a host shortcut and committed the composition.");
+
     const auto release = translate_ibus_key(IBUS_a, IBUS_RELEASE_MASK);
     require(release.disposition == IBusKeyDisposition::Ignore, "A key release was dispatched.");
 

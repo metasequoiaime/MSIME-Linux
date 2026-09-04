@@ -127,6 +127,11 @@ KeyResult InputController::set_mode(InputMode mode)
     return result;
 }
 
+KeyResult InputController::toggle_mode()
+{
+    return set_mode(mode_ == InputMode::Ime ? InputMode::Direct : InputMode::Ime);
+}
+
 KeyResult InputController::switch_scheme(SchemeType scheme_type)
 {
     if (session_.scheme() == scheme_type)
