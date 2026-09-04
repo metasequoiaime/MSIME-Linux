@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
+#include <optional>
 #include <stdexcept>
 #include <string>
 
@@ -76,9 +77,11 @@ FrontendKeyEvent digit(unsigned value)
     return event;
 }
 
-FrontendKeyEvent punctuation(char value)
+FrontendKeyEvent punctuation(char value, std::optional<char32_t> preceding_character = std::nullopt)
 {
-    return {FrontendKey::Punctuation, value};
+    FrontendKeyEvent event{FrontendKey::Punctuation, value};
+    event.preceding_character = preceding_character;
+    return event;
 }
 } // namespace
 
@@ -220,8 +223,8 @@ int main()
         require(punctuation_controller.set_punctuation_mode(PunctuationMode::Chinese).handled,
                 "Chinese punctuation mode was not restored.");
         const auto opening_quote = punctuation_controller.handle_key(punctuation('\''));
-        require(opening_quote.handled && opening_quote.commit == "‘",
-                "A standalone apostrophe did not become Chinese punctuation.");
+        require(opening_quote.handled && opening_quote.commit == "‘’" && opening_quote.cursor_left == 1,
+                "A standalone apostrophe did not become a paired Chinese punctuation commit.");
         type(punctuation_controller, "ni");
         const auto separator = punctuation_controller.handle_key(punctuation('\''));
         require(separator.handled && !separator.commit.has_value() && punctuation_controller.preedit() == "ni'",
@@ -236,8 +239,8 @@ int main()
         require(punctuation_controller.highlighted_candidate() == 0,
                 "Minus did not retain PageUp semantics during composition.");
         const auto default_comma = punctuation_controller.handle_key(punctuation(','));
-        require(default_comma.handled && default_comma.commit == "candidate-0，",
-                "Comma unexpectedly paged when comma/period paging was disabled.");
+        require(default_comma.handled && default_comma.commit == "candidate-0,",
+                "A candidate's ASCII tail was ignored by smart punctuation.");
 
         InputOptions paging_options;
         paging_options.page_size = 3;
@@ -252,7 +255,7 @@ int main()
         InputController disabled_edge_controller(SchemeType::Quanpin, 3);
         type(disabled_edge_controller, "nimen");
         const auto disabled_edge = disabled_edge_controller.handle_key(punctuation('['));
-        require(disabled_edge.handled && disabled_edge.commit == "你们【",
+        require(disabled_edge.handled && disabled_edge.commit == "你们【】" && disabled_edge.cursor_left == 1,
                 "A bracket selected a candidate edge while word-to-character was disabled.");
 
         InputOptions edge_options;
@@ -286,6 +289,96 @@ int main()
         bracket_controller.handle_key(punctuation('['));
         require(bracket_controller.highlighted_candidate() == 0,
                 "Left bracket did not page backward when bracket paging was enabled.");
+
+        auto now = std::chrono::steady_clock::time_point{};
+        InputOptions smart_options;
+        smart_options.paired_punctuation = false;
+        smart_options.now = [&now] { return now; };
+        InputController smart_controller(SchemeType::Quanpin, smart_options);
+        const auto smart_comma = smart_controller.handle_key(punctuation(',', U'A'));
+        require(smart_comma.handled && smart_comma.commit == "," && smart_comma.delete_before == 0,
+                "Smart punctuation did not keep comma ASCII after an ASCII letter.");
+
+        now += std::chrono::seconds(1);
+        const auto repeated_comma = smart_controller.handle_key(punctuation(',', U','));
+        require(repeated_comma.handled && repeated_comma.commit == "，" && repeated_comma.delete_before == 1,
+                "Repeated smart punctuation did not replace the recent ASCII comma.");
+
+        const auto smart_period = smart_controller.handle_key(punctuation('.', U'7'));
+        require(smart_period.handled && smart_period.commit == ".",
+                "Smart punctuation did not keep period ASCII after an ASCII digit.");
+        now += std::chrono::milliseconds(2001);
+        const auto expired_period = smart_controller.handle_key(punctuation('.', U'.'));
+        require(expired_period.handled && expired_period.commit == "。" && expired_period.delete_before == 0,
+                "Expired smart punctuation history deleted application text.");
+
+        const auto missing_context = smart_controller.handle_key(punctuation(':'));
+        require(missing_context.handled && missing_context.commit == "：",
+                "Missing surrounding text did not fall back to Chinese punctuation.");
+
+        const auto smart_before_reset = smart_controller.handle_key(punctuation(',', U'B'));
+        require(smart_before_reset.commit == ",", "The reset invalidation fixture did not commit ASCII punctuation.");
+        smart_controller.reset();
+        const auto after_reset = smart_controller.handle_key(punctuation(',', U','));
+        require(after_reset.commit == "，" && after_reset.delete_before == 0,
+                "Reset left stale smart punctuation replacement state.");
+
+        const auto smart_before_navigation = smart_controller.handle_key(punctuation(':', U'C'));
+        require(smart_before_navigation.commit == ":",
+                "The navigation invalidation fixture did not commit ASCII punctuation.");
+        smart_controller.handle_key(key(FrontendKey::PageDown));
+        const auto after_navigation = smart_controller.handle_key(punctuation(':', U':'));
+        require(after_navigation.commit == "：" && after_navigation.delete_before == 0,
+                "Navigation left stale smart punctuation replacement state.");
+
+        InputController candidate_smart_controller(SchemeType::Quanpin, smart_options);
+        type(candidate_smart_controller, "nihao");
+        const auto candidate_smart_comma = candidate_smart_controller.handle_key(punctuation(','));
+        require(candidate_smart_comma.commit == "candidate-0,",
+                "Candidate commit did not use its ASCII tail for smart punctuation.");
+        now += std::chrono::seconds(1);
+        const auto repeated_candidate_comma =
+            candidate_smart_controller.handle_key(punctuation(',', U','));
+        require(repeated_candidate_comma.commit == "，" && repeated_candidate_comma.delete_before == 1,
+                "Repeated smart punctuation did not replace ASCII punctuation committed with a candidate.");
+
+        InputOptions disabled_smart_options;
+        disabled_smart_options.smart_punctuation = false;
+        disabled_smart_options.paired_punctuation = false;
+        InputController disabled_smart_controller(SchemeType::Quanpin, disabled_smart_options);
+        require(disabled_smart_controller.handle_key(punctuation(',', U'A')).commit == "，",
+                "Disabled smart punctuation still emitted ASCII punctuation.");
+
+        InputOptions pair_options;
+        pair_options.smart_punctuation = false;
+        pair_options.paired_punctuation = true;
+        InputController pair_controller(SchemeType::Quanpin, pair_options);
+        const auto double_quote_pair = pair_controller.handle_key(punctuation('"'));
+        require(double_quote_pair.handled && double_quote_pair.commit == "“”" &&
+                    double_quote_pair.cursor_left == 1,
+                "Double quote pair did not request one cursor-left event.");
+        const auto repeated_double_quote_pair = pair_controller.handle_key(punctuation('"'));
+        require(repeated_double_quote_pair.commit == "“”" && repeated_double_quote_pair.cursor_left == 1,
+                "A repeated paired quote started with the closing quote.");
+        const auto parenthesis_pair = pair_controller.handle_key(punctuation('('));
+        require(parenthesis_pair.commit == "（）" && parenthesis_pair.cursor_left == 1,
+                "Opening parenthesis did not add its closing pair.");
+        const auto outer_book_title_pair = pair_controller.handle_key(punctuation('<'));
+        const auto inner_book_title_pair = pair_controller.handle_key(punctuation('<'));
+        require(outer_book_title_pair.commit == "《》" && outer_book_title_pair.cursor_left == 1 &&
+                    inner_book_title_pair.commit == "〈〉" && inner_book_title_pair.cursor_left == 1,
+                "Nested book-title marks did not produce outer and inner pairs.");
+        pair_controller.invalidate_context();
+        require(pair_controller.handle_key(punctuation('<')).commit == "《》",
+                "Context invalidation left stale book-title nesting.");
+        pair_controller.reset();
+        require(pair_controller.handle_key(punctuation('<')).commit == "《》",
+                "Reset left stale book-title nesting.");
+        FrontendKeyEvent document_navigation;
+        document_navigation.host_shortcut = true;
+        pair_controller.handle_key(document_navigation);
+        require(pair_controller.handle_key(punctuation('<')).commit == "《》",
+                "Passthrough document navigation left stale book-title nesting.");
 
         InputOptions full_width_options;
         full_width_options.character_width = CharacterWidth::Full;

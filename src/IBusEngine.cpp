@@ -4,7 +4,10 @@
 
 #include <ibus.h>
 
+#include <algorithm>
 #include <cstring>
+#include <limits>
+#include <optional>
 #include <string>
 
 namespace
@@ -13,6 +16,7 @@ using metasequoia::linux_ime::FrontendKey;
 using metasequoia::linux_ime::IBusKeyDisposition;
 using metasequoia::linux_ime::IBusModeToggleTracker;
 using metasequoia::linux_ime::CharacterWidth;
+using metasequoia::linux_ime::ControllerResult;
 using metasequoia::linux_ime::InputController;
 using metasequoia::linux_ime::InputMode;
 using metasequoia::linux_ime::InputOptions;
@@ -191,6 +195,10 @@ void save_settings(MetasequoiaEngine *engine)
     settings.comma_period_paging = engine->controller->comma_period_paging();
     settings.word_to_character = engine->controller->word_to_character();
     settings.bracket_paging = engine->controller->bracket_paging();
+    settings.smart_punctuation = engine->controller->smart_punctuation();
+    settings.smart_punctuation_repeat_to_chinese =
+        engine->controller->smart_punctuation_repeat_to_chinese();
+    settings.paired_punctuation = engine->controller->paired_punctuation();
     if (engine->settings_store->save(settings, engine->settings_warning))
     {
         engine->settings_warning->clear();
@@ -224,19 +232,63 @@ void update_lookup_table(MetasequoiaEngine *engine)
     ibus_engine_update_lookup_table(IBUS_ENGINE(engine), table, visible);
 }
 
-void apply_result(MetasequoiaEngine *engine, const metasequoia::KeyResult &result)
+void apply_result(MetasequoiaEngine *engine, const ControllerResult &result)
 {
+    if (result.delete_before > 0)
+    {
+        const auto count = static_cast<guint>(std::min<std::size_t>(
+            result.delete_before, static_cast<std::size_t>(std::numeric_limits<gint>::max())));
+        ibus_engine_delete_surrounding_text(IBUS_ENGINE(engine), -static_cast<gint>(count), count);
+    }
     if (result.commit.has_value())
     {
         IBusText *text = ibus_text_new_from_string(result.commit->c_str());
         ibus_engine_commit_text(IBUS_ENGINE(engine), text);
-        update_preedit(engine);
-        update_lookup_table(engine);
-        return;
+    }
+    for (std::size_t index = 0; index < result.cursor_left; ++index)
+    {
+        ibus_engine_forward_key_event(IBUS_ENGINE(engine), IBUS_Left, 0, 0);
     }
 
     update_preedit(engine);
     update_lookup_table(engine);
+}
+
+std::optional<char32_t> preceding_character(IBusEngine *engine)
+{
+    IBusText *surrounding = nullptr;
+    guint cursor = 0;
+    guint anchor = 0;
+    ibus_engine_get_surrounding_text(engine, &surrounding, &cursor, &anchor);
+    if (surrounding == nullptr || cursor == 0 || cursor != anchor)
+    {
+        return std::nullopt;
+    }
+
+    const gchar *contents = ibus_text_get_text(surrounding);
+    if (contents == nullptr || !g_utf8_validate(contents, -1, nullptr))
+    {
+        return std::nullopt;
+    }
+    const glong length = g_utf8_strlen(contents, -1);
+    if (length < 0 || cursor > static_cast<guint>(length))
+    {
+        return std::nullopt;
+    }
+
+    const gchar *cursor_pointer = g_utf8_offset_to_pointer(contents, cursor);
+    const gchar *previous_pointer = g_utf8_find_prev_char(contents, cursor_pointer);
+    if (previous_pointer == nullptr)
+    {
+        return std::nullopt;
+    }
+    const gunichar value = g_utf8_get_char_validated(
+        previous_pointer, static_cast<gssize>(cursor_pointer - previous_pointer));
+    if (value == static_cast<gunichar>(-1) || value == static_cast<gunichar>(-2))
+    {
+        return std::nullopt;
+    }
+    return static_cast<char32_t>(value);
 }
 
 void commit_for_passthrough(MetasequoiaEngine *engine)
@@ -264,7 +316,7 @@ gboolean process_key_event(IBusEngine *ibus_engine, guint keyval, guint keycode,
         return FALSE;
     }
 
-    const auto translation = translate_ibus_key(keyval, state);
+    auto translation = translate_ibus_key(keyval, state);
     if (translation.disposition == IBusKeyDisposition::Ignore)
     {
         return FALSE;
@@ -273,6 +325,11 @@ gboolean process_key_event(IBusEngine *ibus_engine, guint keyval, guint keycode,
     {
         commit_for_passthrough(engine);
         return FALSE;
+    }
+
+    if (translation.event.key == FrontendKey::Punctuation)
+    {
+        translation.event.preceding_character = preceding_character(ibus_engine);
     }
 
     const auto result = engine->controller->handle_key(translation.event);
@@ -294,6 +351,7 @@ gboolean process_key_event(IBusEngine *ibus_engine, guint keyval, guint keycode,
 void focus_in(IBusEngine *ibus_engine)
 {
     auto *engine = METASEQUOIA_ENGINE(ibus_engine);
+    engine->controller->invalidate_context();
     ibus_engine_register_properties(ibus_engine, engine->properties);
     update_preedit(engine);
     update_lookup_table(engine);
@@ -304,6 +362,7 @@ void focus_out(IBusEngine *ibus_engine)
 {
     auto *engine = METASEQUOIA_ENGINE(ibus_engine);
     commit_for_passthrough(engine);
+    engine->controller->invalidate_context();
     ibus_engine_hide_preedit_text(ibus_engine);
     update_lookup_table(engine);
 }
@@ -314,6 +373,13 @@ void reset(IBusEngine *ibus_engine)
     engine->controller->reset();
     update_preedit(engine);
     update_lookup_table(engine);
+}
+
+void enable(IBusEngine *ibus_engine)
+{
+    auto *engine = METASEQUOIA_ENGINE(ibus_engine);
+    engine->controller->invalidate_context();
+    ibus_engine_get_surrounding_text(ibus_engine, nullptr, nullptr, nullptr);
 }
 
 void candidate_clicked(IBusEngine *ibus_engine, guint index, guint button, guint state)
@@ -361,7 +427,7 @@ void cursor_down(IBusEngine *ibus_engine)
 void property_activate(IBusEngine *ibus_engine, const gchar *property_name, guint property_state)
 {
     auto *engine = METASEQUOIA_ENGINE(ibus_engine);
-    metasequoia::KeyResult result;
+    ControllerResult result;
     if (std::strcmp(property_name, "InputMode") == 0)
     {
         result = engine->controller->set_mode(property_state == PROP_STATE_CHECKED ? InputMode::Ime
@@ -429,6 +495,7 @@ void metasequoia_engine_class_init(MetasequoiaEngineClass *klass)
     engine_class->process_key_event = process_key_event;
     engine_class->focus_in = focus_in;
     engine_class->focus_out = focus_out;
+    engine_class->enable = enable;
     engine_class->reset = reset;
     engine_class->page_up = page_up;
     engine_class->page_down = page_down;
@@ -451,6 +518,9 @@ void metasequoia_engine_init(MetasequoiaEngine *engine)
     options.comma_period_paging = settings.comma_period_paging;
     options.word_to_character = settings.word_to_character;
     options.bracket_paging = settings.bracket_paging;
+    options.smart_punctuation = settings.smart_punctuation;
+    options.smart_punctuation_repeat_to_chinese = settings.smart_punctuation_repeat_to_chinese;
+    options.paired_punctuation = settings.paired_punctuation;
     engine->controller = new InputController(settings.scheme, options);
     (void)engine->controller->set_mode(settings.mode);
     engine->mode_toggle = new IBusModeToggleTracker();

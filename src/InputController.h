@@ -3,7 +3,11 @@
 #include "TextTransform.h"
 #include "core/input_session.h"
 
+#include <chrono>
 #include <cstddef>
+#include <functional>
+#include <optional>
+#include <string>
 #include <vector>
 
 namespace metasequoia::linux_ime
@@ -37,6 +41,29 @@ struct FrontendKeyEvent
     char character = 0;
     unsigned digit = 0;
     bool host_shortcut = false;
+    std::optional<char32_t> preceding_character;
+
+    FrontendKeyEvent() = default;
+    FrontendKeyEvent(FrontendKey key_value, char character_value = 0, unsigned digit_value = 0,
+                     bool host_shortcut_value = false,
+                     std::optional<char32_t> preceding_character_value = std::nullopt)
+        : key(key_value), character(character_value), digit(digit_value),
+          host_shortcut(host_shortcut_value), preceding_character(preceding_character_value)
+    {
+    }
+};
+
+struct ControllerResult
+{
+    bool handled = false;
+    std::optional<std::string> commit;
+    std::size_t delete_before = 0;
+    std::size_t cursor_left = 0;
+
+    ControllerResult() = default;
+    ControllerResult(bool handled, std::optional<std::string> commit, std::size_t delete_before = 0,
+                     std::size_t cursor_left = 0);
+    ControllerResult(KeyResult result);
 };
 
 struct InputOptions
@@ -47,6 +74,10 @@ struct InputOptions
     bool comma_period_paging = false;
     bool word_to_character = false;
     bool bracket_paging = false;
+    bool smart_punctuation = true;
+    bool smart_punctuation_repeat_to_chinese = true;
+    bool paired_punctuation = true;
+    std::function<std::chrono::steady_clock::time_point()> now;
 };
 
 class InputController
@@ -55,17 +86,18 @@ class InputController
     explicit InputController(SchemeType scheme_type, InputOptions options = {});
     InputController(SchemeType scheme_type, std::size_t page_size);
 
-    KeyResult handle_key(const FrontendKeyEvent &event);
-    KeyResult select_candidate(std::size_t absolute_index);
-    KeyResult select_page_candidate(std::size_t page_index);
-    KeyResult set_mode(InputMode mode);
-    KeyResult toggle_mode();
-    KeyResult set_punctuation_mode(PunctuationMode mode);
-    KeyResult toggle_punctuation_mode();
-    KeyResult set_character_width(CharacterWidth width);
-    KeyResult toggle_character_width();
-    KeyResult switch_scheme(SchemeType scheme_type);
+    ControllerResult handle_key(const FrontendKeyEvent &event);
+    ControllerResult select_candidate(std::size_t absolute_index);
+    ControllerResult select_page_candidate(std::size_t page_index);
+    ControllerResult set_mode(InputMode mode);
+    ControllerResult toggle_mode();
+    ControllerResult set_punctuation_mode(PunctuationMode mode);
+    ControllerResult toggle_punctuation_mode();
+    ControllerResult set_character_width(CharacterWidth width);
+    ControllerResult toggle_character_width();
+    ControllerResult switch_scheme(SchemeType scheme_type);
     void reset();
+    void invalidate_context();
 
     InputMode mode() const;
     PunctuationMode punctuation_mode() const;
@@ -73,6 +105,9 @@ class InputController
     bool comma_period_paging() const;
     bool word_to_character() const;
     bool bracket_paging() const;
+    bool smart_punctuation() const;
+    bool smart_punctuation_repeat_to_chinese() const;
+    bool paired_punctuation() const;
     SchemeType scheme() const;
     bool has_composition() const;
     const std::string &preedit() const;
@@ -82,12 +117,13 @@ class InputController
     std::size_t page_start() const;
 
   private:
-    KeyResult commit_highlighted();
-    KeyResult commit_punctuation(char ascii);
-    KeyResult commit_full_width(char ascii);
-    KeyResult move_cursor(bool forward);
-    KeyResult move_page(bool forward);
+    ControllerResult commit_highlighted();
+    ControllerResult commit_punctuation(char ascii, std::optional<char32_t> preceding_character);
+    ControllerResult commit_full_width(char ascii);
+    ControllerResult move_cursor(bool forward);
+    ControllerResult move_page(bool forward);
     void reset_highlight();
+    void clear_smart_punctuation_history();
 
     InputSession session_;
     InputMode mode_ = InputMode::Ime;
@@ -98,6 +134,13 @@ class InputController
     bool comma_period_paging_ = false;
     bool word_to_character_ = false;
     bool bracket_paging_ = false;
+    bool smart_punctuation_ = true;
+    bool smart_punctuation_repeat_to_chinese_ = true;
+    bool paired_punctuation_ = true;
+    std::function<std::chrono::steady_clock::time_point()> now_;
+    bool smart_punctuation_history_active_ = false;
+    char smart_punctuation_history_key_ = 0;
+    std::chrono::steady_clock::time_point smart_punctuation_history_time_{};
     PunctuationFormatter punctuation_formatter_;
 };
 } // namespace metasequoia::linux_ime

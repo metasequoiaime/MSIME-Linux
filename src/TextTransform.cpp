@@ -95,10 +95,19 @@ std::string PunctuationFormatter::chinese(char ascii)
     case ',':
         return "，";
     case '<':
-        return "《";
+        if (book_title_nesting_++ == 0)
+        {
+            return "《";
+        }
+        return "〈";
     case '.':
         return "。";
     case '>':
+        if (book_title_nesting_ > 0)
+        {
+            --book_title_nesting_;
+            return book_title_nesting_ == 0 ? "》" : "〉";
+        }
         return "》";
     case '?':
         return "？";
@@ -111,6 +120,7 @@ void PunctuationFormatter::reset()
 {
     double_quote_open_ = true;
     single_quote_open_ = true;
+    book_title_nesting_ = 0;
 }
 
 bool is_punctuation(char ascii)
@@ -148,6 +158,50 @@ bool is_punctuation(char ascii)
     default:
         return false;
     }
+}
+
+bool should_keep_ascii_punctuation(char ascii, std::optional<char32_t> preceding_character)
+{
+    if ((ascii != ',' && ascii != '.' && ascii != ':') || !preceding_character.has_value())
+    {
+        return false;
+    }
+    const char32_t preceding = *preceding_character;
+    return (preceding >= U'0' && preceding <= U'9') || (preceding >= U'A' && preceding <= U'Z') ||
+           (preceding >= U'a' && preceding <= U'z');
+}
+
+std::string paired_punctuation_closing(std::string_view opening)
+{
+    if (opening == "“")
+    {
+        return "”";
+    }
+    if (opening == "‘")
+    {
+        return "’";
+    }
+    if (opening == "【")
+    {
+        return "】";
+    }
+    if (opening == "{")
+    {
+        return "}";
+    }
+    if (opening == "《")
+    {
+        return "》";
+    }
+    if (opening == "〈")
+    {
+        return "〉";
+    }
+    if (opening == "（")
+    {
+        return "）";
+    }
+    return {};
 }
 
 std::string to_full_width(char ascii)

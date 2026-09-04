@@ -45,6 +45,9 @@ printf '%s\n' \
     'comma-period-paging=true' \
     'word-to-character=true' \
     'bracket-paging=false' \
+    'smart-punctuation=true' \
+    'smart-punctuation-repeat-to-chinese=true' \
+    'paired-punctuation=true' \
     'future-option=preserve-me' \
     >"$XDG_CONFIG_HOME/metasequoiaime/config.ini"
 
@@ -160,6 +163,7 @@ context.set_capabilities(
     | IBus.Capabilite.AUXILIARY_TEXT
     | IBus.Capabilite.LOOKUP_TABLE
     | IBus.Capabilite.PROPERTY
+    | IBus.Capabilite.SURROUNDING_TEXT
 )
 context.focus_in()
 context.set_engine("metasequoiaime")
@@ -220,6 +224,9 @@ def settings_saved():
             "comma-period-paging=true",
             "word-to-character=true",
             "bracket-paging=false",
+            "smart-punctuation=true",
+            "smart-punctuation-repeat-to-chinese=true",
+            "paired-punctuation=true",
             "future-option=preserve-me",
         )
     )
@@ -249,6 +256,9 @@ if not all(
         "comma-period-paging=true",
         "word-to-character=true",
         "bracket-paging=false",
+        "smart-punctuation=true",
+        "smart-punctuation-repeat-to-chinese=true",
+        "paired-punctuation=true",
         "future-option=preserve-me",
     )
 ):
@@ -346,6 +356,120 @@ for keyval in (IBus.KEY_n, IBus.KEY_i, IBus.KEY_h, IBus.KEY_a, IBus.KEY_o):
 if not context.process_key_event(IBus.KEY_bracketright, 0, 0):
     raise RuntimeError("Right bracket was not handled for last-Han selection.")
 wait_for_commit("好")
+
+deleted_ranges = []
+forwarded_keys = []
+
+
+def surrounding_deleted(_connection, _sender, _path, _interface, _signal, parameters):
+    deleted_ranges.append(
+        (
+            parameters.get_child_value(0).get_int32(),
+            parameters.get_child_value(1).get_uint32(),
+        )
+    )
+
+
+def key_forwarded(_connection, _sender, _path, _interface, _signal, parameters):
+    forwarded_keys.append(
+        (
+            parameters.get_child_value(0).get_uint32(),
+            parameters.get_child_value(1).get_uint32(),
+            parameters.get_child_value(2).get_uint32(),
+        )
+    )
+
+
+connection.signal_subscribe(
+    None,
+    "org.freedesktop.IBus.InputContext",
+    "DeleteSurroundingText",
+    context.get_object_path(),
+    None,
+    Gio.DBusSignalFlags.NONE,
+    surrounding_deleted,
+)
+connection.signal_subscribe(
+    None,
+    "org.freedesktop.IBus.InputContext",
+    "ForwardKeyEvent",
+    context.get_object_path(),
+    None,
+    Gio.DBusSignalFlags.NONE,
+    key_forwarded,
+)
+
+context.property_activate("Punctuation", IBus.PropState.CHECKED)
+context.property_activate("CharacterWidth", IBus.PropState.UNCHECKED)
+
+
+def smart_punctuation_mode_restored():
+    if (
+        latest_property("Punctuation") == ("中标", IBus.PropState.CHECKED)
+        and latest_property("CharacterWidth") == ("半", IBus.PropState.UNCHECKED)
+    ):
+        punctuation_mode_loop.quit()
+        return GLib.SOURCE_REMOVE
+    return GLib.SOURCE_CONTINUE
+
+
+punctuation_mode_loop = GLib.MainLoop()
+GLib.timeout_add(20, smart_punctuation_mode_restored)
+GLib.timeout_add_seconds(5, punctuation_mode_loop.quit)
+punctuation_mode_loop.run()
+if not (
+    latest_property("Punctuation") == ("中标", IBus.PropState.CHECKED)
+    and latest_property("CharacterWidth") == ("半", IBus.PropState.UNCHECKED)
+):
+    raise RuntimeError(f"Could not restore smart-punctuation test mode: {property_updates}")
+
+committed_text.clear()
+context.set_surrounding_text(IBus.Text.new_from_string("A"), 1, 1)
+if not context.process_key_event(IBus.KEY_comma, 0, 0):
+    raise RuntimeError("Smart comma was not handled after an ASCII letter.")
+wait_for_commit(",")
+
+committed_text.clear()
+context.set_surrounding_text(IBus.Text.new_from_string("A,"), 2, 2)
+if not context.process_key_event(IBus.KEY_comma, 0, 0):
+    raise RuntimeError("Repeated smart comma was not handled.")
+wait_for_commit("，")
+
+
+def replacement_observed():
+    if (-1, 1) in deleted_ranges:
+        replacement_loop.quit()
+        return GLib.SOURCE_REMOVE
+    return GLib.SOURCE_CONTINUE
+
+
+replacement_loop = GLib.MainLoop()
+GLib.timeout_add(20, replacement_observed)
+GLib.timeout_add_seconds(5, replacement_loop.quit)
+replacement_loop.run()
+if (-1, 1) not in deleted_ranges:
+    raise RuntimeError(f"Repeated smart punctuation did not delete the prior ASCII character: {deleted_ranges}")
+
+committed_text.clear()
+context.set_surrounding_text(IBus.Text.new_from_string(""), 0, 0)
+if not context.process_key_event(IBus.KEY_parenleft, 0, IBus.ModifierType.SHIFT_MASK):
+    raise RuntimeError("Paired opening parenthesis was not handled.")
+wait_for_commit("（）")
+
+
+def cursor_move_observed():
+    if any(keyval == IBus.KEY_Left and state == 0 for keyval, _keycode, state in forwarded_keys):
+        cursor_loop.quit()
+        return GLib.SOURCE_REMOVE
+    return GLib.SOURCE_CONTINUE
+
+
+cursor_loop = GLib.MainLoop()
+GLib.timeout_add(20, cursor_move_observed)
+GLib.timeout_add_seconds(5, cursor_loop.quit)
+cursor_loop.run()
+if not any(keyval == IBus.KEY_Left and state == 0 for keyval, _keycode, state in forwarded_keys):
+    raise RuntimeError(f"Paired punctuation did not forward a cursor-left event: {forwarded_keys}")
 
 auxiliary_messages = []
 warning_loop = GLib.MainLoop()

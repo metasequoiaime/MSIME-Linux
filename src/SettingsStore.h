@@ -18,6 +18,9 @@ struct InputSettings
     bool comma_period_paging = false;
     bool word_to_character = false;
     bool bracket_paging = false;
+    bool smart_punctuation = true;
+    bool smart_punctuation_repeat_to_chinese = true;
+    bool paired_punctuation = true;
 };
 
 class SettingsStore

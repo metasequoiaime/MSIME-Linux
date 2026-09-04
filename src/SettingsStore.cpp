@@ -265,6 +265,52 @@ InputSettings SettingsStore::load(std::string *warning) const
         g_clear_error(&value_error);
     }
 
+    if (g_key_file_has_key(key_file, kGroup, "smart-punctuation", nullptr))
+    {
+        GError *value_error = nullptr;
+        const gboolean value = g_key_file_get_boolean(key_file, kGroup, "smart-punctuation", &value_error);
+        if (value_error == nullptr)
+        {
+            settings.smart_punctuation = value;
+        }
+        else
+        {
+            invalid = true;
+        }
+        g_clear_error(&value_error);
+    }
+
+    if (g_key_file_has_key(key_file, kGroup, "smart-punctuation-repeat-to-chinese", nullptr))
+    {
+        GError *value_error = nullptr;
+        const gboolean value =
+            g_key_file_get_boolean(key_file, kGroup, "smart-punctuation-repeat-to-chinese", &value_error);
+        if (value_error == nullptr)
+        {
+            settings.smart_punctuation_repeat_to_chinese = value;
+        }
+        else
+        {
+            invalid = true;
+        }
+        g_clear_error(&value_error);
+    }
+
+    if (g_key_file_has_key(key_file, kGroup, "paired-punctuation", nullptr))
+    {
+        GError *value_error = nullptr;
+        const gboolean value = g_key_file_get_boolean(key_file, kGroup, "paired-punctuation", &value_error);
+        if (value_error == nullptr)
+        {
+            settings.paired_punctuation = value;
+        }
+        else
+        {
+            invalid = true;
+        }
+        g_clear_error(&value_error);
+    }
+
     g_key_file_unref(key_file);
     if (invalid)
     {
@@ -316,6 +362,10 @@ bool SettingsStore::save(const InputSettings &settings, std::string *error) cons
     g_key_file_set_boolean(key_file, kGroup, "comma-period-paging", settings.comma_period_paging);
     g_key_file_set_boolean(key_file, kGroup, "word-to-character", settings.word_to_character);
     g_key_file_set_boolean(key_file, kGroup, "bracket-paging", settings.bracket_paging);
+    g_key_file_set_boolean(key_file, kGroup, "smart-punctuation", settings.smart_punctuation);
+    g_key_file_set_boolean(key_file, kGroup, "smart-punctuation-repeat-to-chinese",
+                           settings.smart_punctuation_repeat_to_chinese);
+    g_key_file_set_boolean(key_file, kGroup, "paired-punctuation", settings.paired_punctuation);
 
     gsize data_size = 0;
     GError *data_error = nullptr;

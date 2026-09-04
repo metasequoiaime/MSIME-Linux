@@ -52,8 +52,10 @@ rm "$data_home/metasequoiaime/msime.db"
 - Use Up/Down to move the candidate cursor. PageUp/PageDown, `-`/`=`, and Shift+Tab/Tab change pages. Comma/period paging is available as an opt-in setting and is disabled by default.
 - Use `1`–`9` or keypad `1`–`9` to select from the visible page. Space commits the highlighted candidate, Return commits the raw input, and Escape cancels. Punctuation commits together with the highlighted candidate when a composition is active; apostrophe remains a pinyin separator.
 - Set `word-to-character=true` to make `[` commit the first Han character and `]` the last Han character of the highlighted candidate. If `bracket-paging=true`, bracket paging takes precedence and word-to-character selection is disabled for those keys.
+- With `smart-punctuation=true`, comma, period and colon remain ASCII after an ASCII letter or digit. Repeating the same mark within two seconds replaces it with its Chinese form when `smart-punctuation-repeat-to-chinese=true`; unavailable surrounding text safely falls back to Chinese punctuation.
+- With `paired-punctuation=true`, opening quotes, brackets, braces, book-title marks and parentheses insert both halves and leave the cursor between them.
 
-Settings are stored in `$XDG_CONFIG_HOME/metasequoiaime/config.ini`, falling back to `~/.config/metasequoiaime/config.ini`. The `[input]` group stores `mode`, `scheme`, `page-size`, `punctuation`, `full-width`, `comma-period-paging`, `word-to-character`, and `bracket-paging`. Defaults are Chinese input, Quanpin, page size 9, Chinese punctuation, half width, and all three optional paging/selection switches disabled. Edit or remove the file while the engine is not active; it will be written atomically after the next property or hotkey change.
+Settings are stored in `$XDG_CONFIG_HOME/metasequoiaime/config.ini`, falling back to `~/.config/metasequoiaime/config.ini`. The `[input]` group stores `mode`, `scheme`, `page-size`, `punctuation`, `full-width`, `comma-period-paging`, `word-to-character`, `bracket-paging`, `smart-punctuation`, `smart-punctuation-repeat-to-chinese`, and `paired-punctuation`. Defaults are Chinese input, Quanpin, page size 9, Chinese punctuation, half width, all three paging/selection switches disabled, and all three smart/paired punctuation switches enabled. Edit or remove the file while the engine is not active; it will be written atomically after the next property or hotkey change.
 
 ## Desktop-core parity
 
@@ -65,6 +67,7 @@ Settings are stored in `$XDG_CONFIG_HOME/metasequoiaime/config.ini`, falling bac
 | XDG configuration with atomic replacement | Supported | Filesystem and IBus lifecycle tests |
 | IBus registration and current-user install | Supported | D-Bus and install CI smoke gates |
 | Chinese/English punctuation and full-width mode | Supported | Transform, controller, mapper, settings and real D-Bus tests |
+| Smart and paired punctuation | Supported | Surrounding-text, replacement deletion and cursor-forwarding D-Bus smoke |
 | Highlighted-candidate first/last Han selection | Supported | Engine Unicode tests, controller tests and real D-Bus commit smoke |
 | User-frequency UX | Planned | Desktop experience phase |
 | Emoji, kaomoji, phrases and extended input modes | Planned | Local extensions phase |

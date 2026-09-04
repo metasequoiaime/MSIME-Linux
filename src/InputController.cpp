@@ -2,13 +2,40 @@
 
 #include <algorithm>
 #include <stdexcept>
+#include <utility>
 
 namespace metasequoia::linux_ime
 {
+namespace
+{
+InputOptions options_with_page_size(std::size_t page_size)
+{
+    InputOptions options;
+    options.page_size = page_size;
+    return options;
+}
+} // namespace
+
+ControllerResult::ControllerResult(bool handled_value, std::optional<std::string> commit_value,
+                                   std::size_t delete_before_value, std::size_t cursor_left_value)
+    : handled(handled_value), commit(std::move(commit_value)), delete_before(delete_before_value),
+      cursor_left(cursor_left_value)
+{
+}
+
+ControllerResult::ControllerResult(KeyResult result)
+    : handled(result.handled), commit(std::move(result.commit))
+{
+}
+
 InputController::InputController(SchemeType scheme_type, InputOptions options)
     : session_(scheme_type), page_size_(options.page_size), punctuation_mode_(options.punctuation_mode),
       character_width_(options.character_width), comma_period_paging_(options.comma_period_paging),
-      word_to_character_(options.word_to_character), bracket_paging_(options.bracket_paging)
+      word_to_character_(options.word_to_character), bracket_paging_(options.bracket_paging),
+      smart_punctuation_(options.smart_punctuation),
+      smart_punctuation_repeat_to_chinese_(options.smart_punctuation_repeat_to_chinese),
+      paired_punctuation_(options.paired_punctuation),
+      now_(options.now ? std::move(options.now) : [] { return std::chrono::steady_clock::now(); })
 {
     if (page_size_ == 0)
     {
@@ -17,15 +44,21 @@ InputController::InputController(SchemeType scheme_type, InputOptions options)
 }
 
 InputController::InputController(SchemeType scheme_type, std::size_t page_size)
-    : InputController(scheme_type, InputOptions{page_size})
+    : InputController(scheme_type, options_with_page_size(page_size))
 {
 }
 
-KeyResult InputController::handle_key(const FrontendKeyEvent &event)
+ControllerResult InputController::handle_key(const FrontendKeyEvent &event)
 {
+    if (event.key != FrontendKey::Punctuation || event.character != smart_punctuation_history_key_)
+    {
+        clear_smart_punctuation_history();
+    }
+
     if (event.host_shortcut)
     {
-        KeyResult result = commit_highlighted();
+        ControllerResult result = commit_highlighted();
+        invalidate_context();
         result.handled = false;
         return result;
     }
@@ -41,7 +74,7 @@ KeyResult InputController::handle_key(const FrontendKeyEvent &event)
 
     if (mode_ == InputMode::Ime)
     {
-        KeyResult result;
+        ControllerResult result;
         switch (event.key)
         {
         case FrontendKey::Character:
@@ -91,7 +124,7 @@ KeyResult InputController::handle_key(const FrontendKeyEvent &event)
                     return move_page(event.character == '.');
                 }
             }
-            return commit_punctuation(event.character);
+            return commit_punctuation(event.character, event.preceding_character);
         case FrontendKey::Backspace:
             result = session_.handle_command(Command::Backspace);
             if (result.handled)
@@ -157,11 +190,11 @@ KeyResult InputController::handle_key(const FrontendKeyEvent &event)
     case FrontendKey::Character:
         return commit_full_width(event.character);
     case FrontendKey::Punctuation:
-        return commit_punctuation(event.character);
+        return commit_punctuation(event.character, event.preceding_character);
     case FrontendKey::Space:
         return commit_full_width(' ');
     case FrontendKey::Digit:
-        return event.digit <= 9 ? commit_full_width(static_cast<char>('0' + event.digit)) : KeyResult{};
+        return event.digit <= 9 ? commit_full_width(static_cast<char>('0' + event.digit)) : ControllerResult{};
     case FrontendKey::Backspace:
     case FrontendKey::Enter:
     case FrontendKey::Escape:
@@ -176,9 +209,9 @@ KeyResult InputController::handle_key(const FrontendKeyEvent &event)
     return {};
 }
 
-KeyResult InputController::select_candidate(std::size_t absolute_index)
+ControllerResult InputController::select_candidate(std::size_t absolute_index)
 {
-    KeyResult result = session_.select_candidate(absolute_index);
+    ControllerResult result = session_.select_candidate(absolute_index);
     if (result.handled)
     {
         reset_highlight();
@@ -186,7 +219,7 @@ KeyResult InputController::select_candidate(std::size_t absolute_index)
     return result;
 }
 
-KeyResult InputController::select_page_candidate(std::size_t page_index)
+ControllerResult InputController::select_page_candidate(std::size_t page_index)
 {
     if (!has_composition() || page_index >= page_size_)
     {
@@ -195,14 +228,15 @@ KeyResult InputController::select_page_candidate(std::size_t page_index)
     return select_candidate(page_start() + page_index);
 }
 
-KeyResult InputController::set_mode(InputMode mode)
+ControllerResult InputController::set_mode(InputMode mode)
 {
+    clear_smart_punctuation_history();
     if (mode_ == mode)
     {
         return {};
     }
 
-    KeyResult result;
+    ControllerResult result;
     if (mode == InputMode::Direct)
     {
         result = commit_highlighted();
@@ -213,13 +247,14 @@ KeyResult InputController::set_mode(InputMode mode)
     return result;
 }
 
-KeyResult InputController::toggle_mode()
+ControllerResult InputController::toggle_mode()
 {
     return set_mode(mode_ == InputMode::Ime ? InputMode::Direct : InputMode::Ime);
 }
 
-KeyResult InputController::set_punctuation_mode(PunctuationMode mode)
+ControllerResult InputController::set_punctuation_mode(PunctuationMode mode)
 {
+    clear_smart_punctuation_history();
     if (punctuation_mode_ == mode)
     {
         return {};
@@ -228,14 +263,15 @@ KeyResult InputController::set_punctuation_mode(PunctuationMode mode)
     return {true, std::nullopt};
 }
 
-KeyResult InputController::toggle_punctuation_mode()
+ControllerResult InputController::toggle_punctuation_mode()
 {
     return set_punctuation_mode(punctuation_mode_ == PunctuationMode::Chinese ? PunctuationMode::English
                                                                               : PunctuationMode::Chinese);
 }
 
-KeyResult InputController::set_character_width(CharacterWidth width)
+ControllerResult InputController::set_character_width(CharacterWidth width)
 {
+    clear_smart_punctuation_history();
     if (character_width_ == width)
     {
         return {};
@@ -244,20 +280,21 @@ KeyResult InputController::set_character_width(CharacterWidth width)
     return {true, std::nullopt};
 }
 
-KeyResult InputController::toggle_character_width()
+ControllerResult InputController::toggle_character_width()
 {
     return set_character_width(character_width_ == CharacterWidth::Half ? CharacterWidth::Full
                                                                          : CharacterWidth::Half);
 }
 
-KeyResult InputController::switch_scheme(SchemeType scheme_type)
+ControllerResult InputController::switch_scheme(SchemeType scheme_type)
 {
+    clear_smart_punctuation_history();
     if (session_.scheme() == scheme_type)
     {
         return {};
     }
 
-    KeyResult result = commit_highlighted();
+    ControllerResult result = commit_highlighted();
     session_.switch_scheme(scheme_type);
     result.handled = true;
     reset_highlight();
@@ -268,6 +305,13 @@ void InputController::reset()
 {
     session_.handle_command(Command::Cancel);
     reset_highlight();
+    invalidate_context();
+}
+
+void InputController::invalidate_context()
+{
+    clear_smart_punctuation_history();
+    punctuation_formatter_.reset();
 }
 
 InputMode InputController::mode() const
@@ -298,6 +342,21 @@ bool InputController::word_to_character() const
 bool InputController::bracket_paging() const
 {
     return bracket_paging_;
+}
+
+bool InputController::smart_punctuation() const
+{
+    return smart_punctuation_;
+}
+
+bool InputController::smart_punctuation_repeat_to_chinese() const
+{
+    return smart_punctuation_repeat_to_chinese_;
+}
+
+bool InputController::paired_punctuation() const
+{
+    return paired_punctuation_;
 }
 
 SchemeType InputController::scheme() const
@@ -335,7 +394,7 @@ std::size_t InputController::page_start() const
     return highlighted_candidate_ / page_size_ * page_size_;
 }
 
-KeyResult InputController::commit_highlighted()
+ControllerResult InputController::commit_highlighted()
 {
     if (!has_composition())
     {
@@ -349,15 +408,46 @@ KeyResult InputController::commit_highlighted()
     return select_candidate(highlighted_candidate_);
 }
 
-KeyResult InputController::commit_punctuation(char ascii)
+ControllerResult InputController::commit_punctuation(char ascii,
+                                                     std::optional<char32_t> preceding_character)
 {
     const bool had_composition = has_composition();
-    KeyResult result = commit_highlighted();
+    ControllerResult result = commit_highlighted();
+
+    if (result.commit.has_value() && !result.commit->empty())
+    {
+        const auto last = static_cast<unsigned char>(result.commit->back());
+        preceding_character = last <= 0x7f ? std::optional<char32_t>(last) : std::nullopt;
+    }
+
+    const auto now = now_();
+    const bool can_replace_recent_ascii =
+        punctuation_mode_ == PunctuationMode::Chinese && smart_punctuation_ &&
+        smart_punctuation_repeat_to_chinese_ && !had_composition && smart_punctuation_history_active_ &&
+        smart_punctuation_history_key_ == ascii && preceding_character == static_cast<char32_t>(ascii) &&
+        now >= smart_punctuation_history_time_ &&
+        now - smart_punctuation_history_time_ <= std::chrono::seconds(2);
+    if (can_replace_recent_ascii)
+    {
+        clear_smart_punctuation_history();
+        std::string chinese = punctuation_formatter_.chinese(ascii);
+        if (!chinese.empty())
+        {
+            return {true, std::move(chinese), 1, 0};
+        }
+    }
 
     std::string punctuation;
     if (punctuation_mode_ == PunctuationMode::Chinese && is_punctuation(ascii))
     {
-        punctuation = punctuation_formatter_.chinese(ascii);
+        if (smart_punctuation_ && should_keep_ascii_punctuation(ascii, preceding_character))
+        {
+            punctuation.assign(1, ascii);
+        }
+        else
+        {
+            punctuation = punctuation_formatter_.chinese(ascii);
+        }
     }
     else if (!had_composition && character_width_ == CharacterWidth::Full)
     {
@@ -370,7 +460,30 @@ KeyResult InputController::commit_punctuation(char ascii)
 
     if (punctuation.empty())
     {
+        clear_smart_punctuation_history();
         return result;
+    }
+
+    const bool committed_smart_ascii = punctuation_mode_ == PunctuationMode::Chinese && smart_punctuation_ &&
+                                       punctuation.size() == 1 && punctuation.front() == ascii &&
+                                       should_keep_ascii_punctuation(ascii, preceding_character);
+
+    if (paired_punctuation_ && punctuation_mode_ == PunctuationMode::Chinese)
+    {
+        if (ascii == '"' && punctuation == "”")
+        {
+            punctuation = "“";
+        }
+        else if (ascii == '\'' && punctuation == "’")
+        {
+            punctuation = "‘";
+        }
+        std::string closing = paired_punctuation_closing(punctuation);
+        if (!closing.empty())
+        {
+            punctuation += closing;
+            result.cursor_left = 1;
+        }
     }
     if (result.commit.has_value())
     {
@@ -381,10 +494,20 @@ KeyResult InputController::commit_punctuation(char ascii)
         result.commit = std::move(punctuation);
     }
     result.handled = true;
+    if (committed_smart_ascii)
+    {
+        smart_punctuation_history_active_ = true;
+        smart_punctuation_history_key_ = ascii;
+        smart_punctuation_history_time_ = now;
+    }
+    else
+    {
+        clear_smart_punctuation_history();
+    }
     return result;
 }
 
-KeyResult InputController::commit_full_width(char ascii)
+ControllerResult InputController::commit_full_width(char ascii)
 {
     if (character_width_ != CharacterWidth::Full)
     {
@@ -398,7 +521,7 @@ KeyResult InputController::commit_full_width(char ascii)
     return {true, std::move(converted)};
 }
 
-KeyResult InputController::move_cursor(bool forward)
+ControllerResult InputController::move_cursor(bool forward)
 {
     if (!has_composition() || candidates().empty())
     {
@@ -416,7 +539,7 @@ KeyResult InputController::move_cursor(bool forward)
     return {true, std::nullopt};
 }
 
-KeyResult InputController::move_page(bool forward)
+ControllerResult InputController::move_page(bool forward)
 {
     if (!has_composition() || candidates().empty())
     {
@@ -437,5 +560,12 @@ KeyResult InputController::move_page(bool forward)
 void InputController::reset_highlight()
 {
     highlighted_candidate_ = 0;
+}
+
+void InputController::clear_smart_punctuation_history()
+{
+    smart_punctuation_history_active_ = false;
+    smart_punctuation_history_key_ = 0;
+    smart_punctuation_history_time_ = {};
 }
 } // namespace metasequoia::linux_ime
