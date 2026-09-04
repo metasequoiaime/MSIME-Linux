@@ -1,5 +1,6 @@
 #include "InputController.h"
 #include "IBusKeyMapper.h"
+#include "SettingsStore.h"
 
 #include <ibus.h>
 
@@ -13,6 +14,8 @@ using metasequoia::linux_ime::IBusKeyDisposition;
 using metasequoia::linux_ime::IBusModeToggleTracker;
 using metasequoia::linux_ime::InputController;
 using metasequoia::linux_ime::InputMode;
+using metasequoia::linux_ime::InputSettings;
+using metasequoia::linux_ime::SettingsStore;
 using metasequoia::linux_ime::translate_ibus_key;
 
 struct _MetasequoiaEngine
@@ -20,6 +23,8 @@ struct _MetasequoiaEngine
     IBusEngine parent;
     InputController *controller = nullptr;
     IBusModeToggleTracker *mode_toggle = nullptr;
+    SettingsStore *settings_store = nullptr;
+    std::string *settings_warning = nullptr;
     IBusPropList *properties = nullptr;
     IBusProperty *mode_property = nullptr;
     IBusProperty *scheme_menu = nullptr;
@@ -134,6 +139,29 @@ void sync_properties(MetasequoiaEngine *engine)
     ibus_engine_update_property(IBUS_ENGINE(engine), engine->japanese_property);
 }
 
+void show_settings_warning(MetasequoiaEngine *engine)
+{
+    if (engine->settings_warning->empty())
+    {
+        ibus_engine_hide_auxiliary_text(IBUS_ENGINE(engine));
+        return;
+    }
+    ibus_engine_update_auxiliary_text(IBUS_ENGINE(engine), text(engine->settings_warning->c_str()), TRUE);
+}
+
+void save_settings(MetasequoiaEngine *engine)
+{
+    InputSettings settings;
+    settings.mode = engine->controller->mode();
+    settings.scheme = engine->controller->scheme();
+    settings.page_size = engine->controller->page_size();
+    if (engine->settings_store->save(settings, engine->settings_warning))
+    {
+        engine->settings_warning->clear();
+    }
+    show_settings_warning(engine);
+}
+
 void update_preedit(MetasequoiaEngine *engine)
 {
     const std::string &preedit = engine->controller->preedit();
@@ -193,7 +221,9 @@ gboolean process_key_event(IBusEngine *ibus_engine, guint keyval, guint keycode,
 
     if (engine->mode_toggle->observe(keyval, state))
     {
-        apply_result(engine, engine->controller->toggle_mode());
+        const auto result = engine->controller->toggle_mode();
+        apply_result(engine, result);
+        save_settings(engine);
         sync_properties(engine);
         return FALSE;
     }
@@ -226,6 +256,7 @@ void focus_in(IBusEngine *ibus_engine)
     ibus_engine_register_properties(ibus_engine, engine->properties);
     update_preedit(engine);
     update_lookup_table(engine);
+    show_settings_warning(engine);
 }
 
 void focus_out(IBusEngine *ibus_engine)
@@ -317,6 +348,10 @@ void property_activate(IBusEngine *ibus_engine, const gchar *property_name, guin
     }
 
     apply_result(engine, result);
+    if (result.handled)
+    {
+        save_settings(engine);
+    }
     sync_properties(engine);
 }
 
@@ -327,6 +362,10 @@ void finalize(GObject *object)
     engine->controller = nullptr;
     delete engine->mode_toggle;
     engine->mode_toggle = nullptr;
+    delete engine->settings_store;
+    engine->settings_store = nullptr;
+    delete engine->settings_warning;
+    engine->settings_warning = nullptr;
     g_clear_object(&engine->properties);
     G_OBJECT_CLASS(metasequoia_engine_parent_class)->finalize(object);
 }
@@ -349,7 +388,11 @@ void metasequoia_engine_class_init(MetasequoiaEngineClass *klass)
 
 void metasequoia_engine_init(MetasequoiaEngine *engine)
 {
-    engine->controller = new InputController(SchemeType::Quanpin);
+    engine->settings_store = new SettingsStore();
+    engine->settings_warning = new std::string();
+    const InputSettings settings = engine->settings_store->load(engine->settings_warning);
+    engine->controller = new InputController(settings.scheme, settings.page_size);
+    (void)engine->controller->set_mode(settings.mode);
     engine->mode_toggle = new IBusModeToggleTracker();
     initialize_properties(engine);
 }
