@@ -35,11 +35,6 @@ std::string trim(std::string_view value)
     return std::string(value.substr(first, last - first));
 }
 
-bool valid_token(std::string_view token)
-{
-    return token.size() <= 4096 && token.find_first_of("\r\n") == std::string_view::npos;
-}
-
 std::string upper_language(std::string_view language)
 {
     std::string result(language);
@@ -108,7 +103,7 @@ std::optional<std::string> TranslationProvider::lookup(std::string_view candidat
         }
     }
 
-    if (backend == TranslationBackend::Local || !endpoint_allowed(endpoint) || !valid_token(token) ||
+    if (backend == TranslationBackend::Local || !endpoint_allowed(endpoint) || !token_allowed(token) ||
         (cancelled && cancelled()))
     {
         return std::nullopt;

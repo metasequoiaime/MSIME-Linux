@@ -6,6 +6,7 @@
 namespace
 {
 using metasequoia::linux_ime::online::endpoint_allowed;
+using metasequoia::linux_ime::online::token_allowed;
 
 void require(bool condition, const char *message)
 {
@@ -61,6 +62,31 @@ void allows_loopback_only_when_asked()
     require(!endpoint_allowed("http://127.0.0.1.example.invalid/v1", true), "a lookalike host was accepted");
     require(!endpoint_allowed("http://localhost.example.invalid/v1", true), "a lookalike name was accepted");
 }
+// A token is concatenated into an Authorization header and handed to
+// curl_slist_append, and libcurl passes header values through verbatim: a
+// carriage return really does add a header to the request. Verified against a
+// listening socket rather than assumed.
+void rejects_a_token_that_could_add_a_header()
+{
+    require(!token_allowed("secret\r\nX-Injected: yes"), "a CRLF token was accepted");
+    require(!token_allowed("secret\nX-Injected: yes"), "a newline token was accepted");
+    require(!token_allowed(std::string("sec\0ret", 6)), "a NUL token was accepted");
+}
+
+// The voice provider used to have no limit here while the other two capped.
+void rejects_an_overlong_token()
+{
+    require(!token_allowed(std::string(4097, 'a')), "a token longer than the limit was accepted");
+    require(token_allowed(std::string(4096, 'a')), "a token at the limit was rejected");
+}
+
+// Emptiness is each provider's own decision: the translation provider sends no
+// Authorization header at all when there is no token.
+void leaves_emptiness_to_the_caller()
+{
+    require(token_allowed(""), "an empty token was rejected by the shape check");
+    require(token_allowed("sk-abcdefghijklmnop"), "an ordinary token was rejected");
+}
 } // namespace
 
 int main()
@@ -70,5 +96,8 @@ int main()
     rejects_an_overlong_endpoint();
     rejects_control_characters();
     allows_loopback_only_when_asked();
+    rejects_a_token_that_could_add_a_header();
+    rejects_an_overlong_token();
+    leaves_emptiness_to_the_caller();
     return 0;
 }

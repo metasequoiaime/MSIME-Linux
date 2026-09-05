@@ -5,6 +5,7 @@ namespace metasequoia::linux_ime::online
 namespace
 {
 constexpr std::size_t kMaximumEndpointLength = 2048;
+constexpr std::size_t kMaximumTokenLength = 4096;
 
 bool starts_with(std::string_view value, std::string_view prefix)
 {
@@ -40,6 +41,11 @@ bool is_loopback_http_endpoint(std::string_view endpoint)
     return false;
 }
 } // namespace
+
+bool token_allowed(std::string_view token)
+{
+    return token.size() <= kMaximumTokenLength && !contains_control_character(token);
+}
 
 bool endpoint_allowed(std::string_view endpoint, bool allow_loopback_for_tests)
 {
