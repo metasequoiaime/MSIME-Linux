@@ -1,0 +1,67 @@
+name: 缺陷报告
+description: 报告输入、设置、桌面工具或安装打包中的问题
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        疑似安全漏洞请不要在这里提交，按 [SECURITY.md](https://github.com/metasequoiaime/MSIME-Linux/blob/main/SECURITY.md) 私下上报。
+
+        组词结果本身的问题（选字顺序、词库缺词）属于 [MSIME-Engine](https://github.com/metasequoiaime/MSIME-Engine) 或 [MSIME-Dict](https://github.com/metasequoiaime/MSIME-Dict)，请提到对应仓库。
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 问题描述
+      description: 实际发生了什么，你期望发生什么。
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现步骤
+      description: 从一个干净的输入状态开始，逐步写出按了哪些键。请不要粘贴真实输入的隐私内容。
+      placeholder: |
+        1. 切换到全拼
+        2. 输入 nihao
+        3. 按空格
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: 版本
+      description: 安装包版本号，或构建所用的 commit。
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: 运行环境
+      description: 发行版与版本、桌面环境、X11 还是 Wayland、IBus 版本。
+      placeholder: Ubuntu 24.04, GNOME 46, Wayland, ibus 1.5.29
+    validations:
+      required: true
+  - type: dropdown
+    id: scheme
+    attributes:
+      label: 输入方案
+      options:
+        - 全拼
+        - 双拼
+        - 五笔
+        - 日语罗马音
+        - 与方案无关
+    validations:
+      required: true
+  - type: textarea
+    id: settings
+    attributes:
+      label: 相关设置
+      description: "`config.ini` 中的相关片段。请先删除任何端点地址之外的敏感信息；令牌存放在 Secret Service 中，不应出现在这个文件里。"
+      render: ini
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志或输出
+      description: 相关的终端输出，例如手动运行 `metasequoia-ime-ibus` 或 `metasequoia-ime-voice` 时的信息。
+      render: shell

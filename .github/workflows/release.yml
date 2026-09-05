@@ -1,0 +1,74 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to stamp into the packages, without the leading v"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: Ubuntu packages
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+      # The dispatch input is untrusted, so it is passed through the environment
+      # rather than interpolated into the script, and is validated before use.
+      - name: Resolve version
+        id: version
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          version=${REQUESTED_VERSION:-${GITHUB_REF_NAME#v}}
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+(\.[0-9]+)*([-.][0-9A-Za-z]+)*$'; then
+            echo "Refusing to build an unexpected version string: $version" >&2
+            exit 1
+          fi
+          echo "value=$version" >>"$GITHUB_OUTPUT"
+      - name: Materialize pinned dependencies
+        run: scripts/bootstrap_ci_dependencies.sh "$GITHUB_WORKSPACE"
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y build-essential cmake pkg-config libibus-1.0-dev libboost-dev libboost-json-dev libcurl4-openssl-dev libfmt-dev libspdlog-dev libsqlite3-dev libsecret-1-dev libgtk-3-dev tesseract-ocr tesseract-ocr-chi-sim gnome-keyring python3 python3-gi python3-pypinyin gir1.2-ibus-1.0 ibus dbus-x11 iso-codes rpm
+      - name: Build dictionary
+        run: python3 scripts/build_dictionary.py
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DMETASEQUOIA_IME_PACKAGE_VERSION=${{ steps.version.outputs.value }}
+      - name: Build
+        run: cmake --build build --parallel
+      - name: Test
+        run: ctest --test-dir build --output-on-failure --timeout 60
+      - name: Package
+        run: cpack --config build/CPackConfig.cmake -G "TGZ;DEB;RPM" -B build/packages
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: metasequoia-ime-linux-${{ steps.version.outputs.value }}
+          path: |
+            build/packages/*.tar.gz
+            build/packages/*.deb
+            build/packages/*.rpm
+          if-no-files-found: error
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            build/packages/*.tar.gz build/packages/*.deb build/packages/*.rpm
