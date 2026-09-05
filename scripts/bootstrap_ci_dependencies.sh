@@ -17,6 +17,14 @@ github_api_headers=(
     --header 'Accept: application/vnd.github+json'
     --header 'X-GitHub-Api-Version: 2022-11-28'
 )
+# Unauthenticated calls get 60 an hour counted per source address, and GitHub-hosted runners share their addresses between customers, so that budget is spent by unrelated jobs too and a run periodically fails with a 403. A token raises the ceiling by more than an order of magnitude.
+#
+# These headers only ever reach the api.github.com call below, whose host is a literal here, and never the codeload download, which takes no headers at all. Both use --location rather than --location-trusted, so curl will not forward credentials across a redirect to another host. tests/CiDependenciesTests.sh enforces all three of those properties.
+#
+# Optional on purpose: without the variable the script behaves exactly as it did before, which is how it runs outside CI.
+if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+    github_api_headers+=(--header "Authorization: Bearer $GITHUB_TOKEN")
+fi
 cleanup() {
     rm -rf "$temporary_root"
 }

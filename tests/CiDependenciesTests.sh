@@ -12,10 +12,19 @@ trap cleanup EXIT
 # shellcheck disable=SC2016  # Match the workflow's literal shell variable.
 grep -Fq 'run: tests/CiDependenciesTests.sh "$GITHUB_WORKSPACE"' \
     "$project_root/.github/workflows/ci.yml"
-if grep -Fq 'GITHUB_TOKEN' \
-    "$project_root/.github/workflows/ci.yml" \
-    "$project_root/scripts/bootstrap_ci_dependencies.sh"; then
-    echo "Dependency bootstrap must not receive the GitHub token." >&2
+# The bootstrap may authenticate against api.github.com, whose host is a literal in the script, because the unauthenticated ceiling of 60 an hour is shared with every other customer on the runner's address. What it must never do is let that credential reach a URL built from .gitmodules. These three checks are what make that true, so they replace an earlier blanket ban on the token appearing at all. Comments are stripped first so that prose about --location-trusted cannot trip the check that forbids it.
+bootstrap_code=$(grep -v '^[[:space:]]*#' "$project_root/scripts/bootstrap_ci_dependencies.sh")
+if grep -Fq -- '--location-trusted' <<<"$bootstrap_code"; then
+    echo "Dependency bootstrap must not let curl forward credentials across redirects." >&2
+    exit 1
+fi
+if ! grep -Fq 'https://api.github.com/repos/' <<<"$bootstrap_code"; then
+    echo "Dependency bootstrap must address the API by a literal host." >&2
+    exit 1
+fi
+if sed -n '/^download_archive()/,/^}/p' "$project_root/scripts/bootstrap_ci_dependencies.sh" \
+    | grep -Fq 'github_api_headers'; then
+    echo "The archive download must not receive the API headers, and so must never see the token." >&2
     exit 1
 fi
 
