@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.3](https://github.com/metasequoiaime/MSIME-Linux/compare/v0.4.2...v0.4.3) (2026-09-05)
+
+
+### Bug Fixes
+
+* **dictionary:** build the wubi86 table ([131bd44](https://github.com/metasequoiaime/MSIME-Linux/commit/131bd44e89e0b0aed686cd0e82dd277b0951cb47))
+
 ## [0.4.2](https://github.com/metasequoiaime/MSIME-Linux/compare/v0.4.1...v0.4.2) (2026-09-05)
 
 
