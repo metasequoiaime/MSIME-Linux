@@ -22,29 +22,73 @@ jobs:
     # Both architectures are covered because the published packages target both,
     # and GitHub's arm64 runners are free for public repositories, so the second
     # job runs in parallel and costs no extra wall-clock time.
-    name: Ubuntu IBus (${{ matrix.arch }})
+    #
+    # 26.04 is covered in a container because every defect found by testing there
+    # by hand came from distribution versions rather than architecture: ibus
+    # 1.5.34 dropping per-context engine activation, GCC 15 warnings, and gvfs
+    # mounting inside XDG_RUNTIME_DIR. A runner image alone cannot see any of it.
+    name: Ubuntu ${{ matrix.release }} (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
+    container: ${{ matrix.image }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - arch: amd64
+          - release: "24.04"
+            arch: amd64
             runner: ubuntu-24.04
-          - arch: arm64
+            image: ""
+          - release: "24.04"
+            arch: arm64
             runner: ubuntu-24.04-arm
+            image: ""
+          - release: "26.04"
+            arch: amd64
+            runner: ubuntu-24.04
+            image: "ubuntu:26.04"
+          - release: "26.04"
+            arch: arm64
+            runner: ubuntu-24.04-arm
+            image: "ubuntu:26.04"
+    defaults:
+      run:
+        # Container jobs otherwise default to sh, which has no shopt or arrays.
+        shell: bash
+    env:
+      # Container jobs run as root and have no sudo; runner jobs are not root.
+      SUDO: ${{ matrix.image == '' && 'sudo' || '' }}
+      DEBIAN_FRONTEND: noninteractive
     steps:
+      # The checked-out tree is only usable by the later steps if git is present,
+      # and the bare image has neither git nor the tools the scripts assume.
+      - name: Prepare the container
+        if: ${{ matrix.image != '' }}
+        run: |
+          apt-get update
+          apt-get install --no-install-recommends -y ca-certificates curl git python3 python3-venv sudo
+          # The workspace is owned by the runner user, not by root inside the
+          # container, and git refuses to read a repository it considers foreign.
+          git config --global --add safe.directory '*'
       - name: Check out source
         uses: actions/checkout@v7
+        with:
+          # The runner jobs exercise the archive bootstrap below, which is what
+          # that script is for. Repeating it in every job multiplied the
+          # unauthenticated GitHub API calls from one runner address until they
+          # started coming back 403, so the container jobs take the submodules
+          # over git instead.
+          submodules: ${{ matrix.image != '' && 'recursive' || '' }}
       # Cheap and runs before the build so a formatting slip fails in seconds
       # rather than after the full compile. Formatting is architecture
       # independent, so only one job needs to check it.
       - name: Check formatting
-        if: ${{ matrix.arch == 'amd64' }}
+        if: ${{ matrix.arch == 'amd64' && matrix.release == '24.04' }}
         run: scripts/format.sh --check
       - name: Bootstrap and test dependencies
+        if: ${{ matrix.image == '' }}
         run: tests/CiDependenciesTests.sh "$GITHUB_WORKSPACE"
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y build-essential cmake pkg-config libibus-1.0-dev libboost-dev libboost-json-dev libcurl4-openssl-dev libfmt-dev libspdlog-dev libsqlite3-dev libsecret-1-dev libgtk-3-dev tesseract-ocr tesseract-ocr-chi-sim gnome-keyring python3 python3-gi python3-pypinyin gir1.2-ibus-1.0 ibus dbus-x11 iso-codes
+        run: $SUDO apt-get update && $SUDO apt-get install --no-install-recommends -y build-essential cmake file pkg-config libibus-1.0-dev libboost-dev libboost-json-dev libcurl4-openssl-dev libfmt-dev libspdlog-dev libsqlite3-dev libsecret-1-dev libgtk-3-dev tesseract-ocr tesseract-ocr-chi-sim gnome-keyring python3 python3-gi python3-pypinyin gir1.2-ibus-1.0 ibus dbus-x11 iso-codes
       - name: Build dictionary
         run: python3 scripts/build_dictionary.py
       - name: Configure

@@ -49,18 +49,15 @@ IBus 只扫描自己的包数据目录（通常是 `/usr/share/ibus/component`�
 IBUS_COMPONENT_PATH=/usr/share/ibus/component:${XDG_DATA_HOME:-$HOME/.local/share}/ibus/component ibus-daemon -drx
 ```
 
-要卸载当前用户的安装，删除引擎以及 `${XDG_DATA_HOME:-$HOME/.local/share}` 下的组件和词库，然后重启 IBus：
+要卸载当前用户的安装：
 
 ```sh
-rm ~/.local/libexec/metasequoia-ime-ibus
-data_home=${XDG_DATA_HOME:-$HOME/.local/share}
-rm "$data_home/ibus/component/metasequoiaime.xml"
-rm "$data_home/metasequoiaime/msime.db"
-rm "$data_home/metasequoiaime/others.db"
-rm "$data_home/metasequoiaime/english.db"
-rm -r "$data_home/metasequoiaime/helpcodes"
-rm "${XDG_CONFIG_HOME:-$HOME/.config}/environment.d/10-metasequoiaime.conf"
+./scripts/uninstall.sh
 ```
+
+该脚本移除安装脚本写入的每一项——引擎、`~/.local/bin` 下的四个工具、四个 desktop 入口、IBus 组件、词库、辅助码，以及 `environment.d` 配置——但**保留学习到的词频**（`msime_user.db`），因为那是唯一无法从仓库重建的数据。要连同词库、设置、剪贴板历史和学习数据一并清除，用 `./scripts/uninstall.sh --purge`。
+
+卸载后重启 IBus，它才会停止提供“Metasequoia IME”。用发行版包安装的则用 `sudo apt remove metasequoia-ime-linux`（或对应的 rpm 命令）。
 
 ## 打包
 
@@ -72,7 +69,7 @@ cmake --build build --parallel
 cd build && cpack -G "TGZ;DEB"
 ```
 
-DEB 生成需要 `dpkg-dev`，RPM 生成需要 `rpm`（Debian／Ubuntu 上是 `rpm` 包）。CI 在每次构建中验证 TGZ 与 DEB 生成。
+DEB 生成需要 `dpkg-dev` 和 `file`（CPack 用它解析二进制以生成 shlibs 依赖），RPM 生成需要 `rpm`（Debian／Ubuntu 上是 `rpm` 包）。CI 在每次构建中验证 TGZ 与 DEB 生成。
 
 发布由 release-please 驱动，与 Apple 前端保持一致：合入 `main` 的 conventional commits 会自动生成版本 PR，合并该 PR 即打标签并创建草稿 Release，随后发布流水线从被打标签的提交构建 TGZ／DEB／RPM，附加到 Release 并将其转正。版本号记录在 `version.txt` 与 `CMakeLists.txt` 中，由 release-please 统一维护，不要手改。
 
