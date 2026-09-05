@@ -219,6 +219,12 @@ if(METASEQUOIA_IME_BUILD_IBUS)
         add_test(NAME ibus_smoke
                  COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/IBusSmoke.sh ${CMAKE_CURRENT_BINARY_DIR})
         set_tests_properties(ibus_smoke PROPERTIES TIMEOUT 15)
+
+        # Guards that install.sh and uninstall.sh stay symmetric. Copying the
+        # dictionaries takes a while, so this needs more than the default.
+        add_test(NAME uninstall_smoke
+                 COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/UninstallSmoke.sh ${CMAKE_CURRENT_BINARY_DIR})
+        set_tests_properties(uninstall_smoke PROPERTIES TIMEOUT 300)
     endif()
 
     add_executable(metasequoia-ime-ibus src/IBusEngine.cpp)
