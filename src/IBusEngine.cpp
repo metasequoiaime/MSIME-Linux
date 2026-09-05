@@ -44,6 +44,7 @@ struct _MetasequoiaEngine
     IBusEngine parent;
     InputController *controller = nullptr;
     IBusModeToggleTracker *mode_toggle = nullptr;
+    InputMode default_mode = InputMode::Ime;
     SettingsStore *settings_store = nullptr;
     metasequoia::linux_ime::LibsecretSecretStore *secret_store = nullptr;
     OnlineCandidateService *online_service = nullptr;
@@ -567,6 +568,15 @@ void reset(IBusEngine *ibus_engine)
 void enable(IBusEngine *ibus_engine)
 {
     auto *engine = METASEQUOIA_ENGINE(ibus_engine);
+    // enable fires when this input method is activated, including when the user switches back
+    // to it from another one, and not on window focus changes. That is the moment the Windows
+    // default_ime_mode describes, so the mode resets here rather than being carried over.
+    const auto mode_result = engine->controller->set_mode(engine->default_mode);
+    if (mode_result.handled)
+    {
+        apply_result(engine, mode_result);
+        sync_properties(engine);
+    }
     engine->controller->invalidate_context();
     ibus_engine_get_surrounding_text(ibus_engine, nullptr, nullptr, nullptr);
 }
@@ -761,6 +771,7 @@ void metasequoia_engine_init(MetasequoiaEngine *engine)
     // After set_mode, which early-returns when the mode is already the default and so would not
     // apply the lock itself.
     engine->controller->set_punctuation_lock(settings.punctuation_lock);
+    engine->default_mode = settings.default_mode;
     engine->mode_toggle = new IBusModeToggleTracker();
     engine->mode_toggle->configure(
         {settings.switch_language_shift, settings.switch_language_ctrl, settings.switch_language_ctrl_alt_space});

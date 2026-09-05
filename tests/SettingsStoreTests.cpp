@@ -146,7 +146,8 @@ int main()
 
     std::string warning;
     const InputSettings defaults = store.load(&warning);
-    require(defaults.mode == InputMode::Ime && defaults.scheme == SchemeType::Quanpin && defaults.page_size == 9 &&
+    require(defaults.mode == InputMode::Ime && defaults.default_mode == InputMode::Ime &&
+                defaults.scheme == SchemeType::Quanpin && defaults.page_size == 9 &&
                 defaults.punctuation_mode == PunctuationMode::Chinese &&
                 defaults.punctuation_lock == PunctuationLock::Follow &&
                 defaults.character_width == CharacterWidth::Half && defaults.comma_period_paging &&
@@ -178,6 +179,7 @@ int main()
 
     InputSettings saved;
     saved.mode = InputMode::Direct;
+    saved.default_mode = InputMode::Direct;
     saved.scheme = SchemeType::Wubi;
     saved.page_size = 3;
     saved.punctuation_mode = PunctuationMode::English;
@@ -242,8 +244,9 @@ int main()
     std::string error;
     require(store.save(saved, &error) && error.empty(), "Valid settings could not be saved.");
     const InputSettings round_trip = store.load(&warning);
-    require(round_trip.mode == saved.mode && round_trip.scheme == saved.scheme &&
-                round_trip.page_size == saved.page_size && round_trip.punctuation_mode == saved.punctuation_mode &&
+    require(round_trip.mode == saved.mode && round_trip.default_mode == saved.default_mode &&
+                round_trip.scheme == saved.scheme && round_trip.page_size == saved.page_size &&
+                round_trip.punctuation_mode == saved.punctuation_mode &&
                 round_trip.punctuation_lock == saved.punctuation_lock &&
                 round_trip.character_width == saved.character_width &&
                 round_trip.comma_period_paging == saved.comma_period_paging &&

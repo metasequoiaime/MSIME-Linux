@@ -286,8 +286,8 @@ bool valid_character_width(CharacterWidth width)
 
 bool valid_input_settings(const InputSettings &settings)
 {
-    return mode_name(settings.mode) != nullptr && scheme_name(settings.scheme) != nullptr &&
-           punctuation_name(settings.punctuation_mode) != nullptr &&
+    return mode_name(settings.mode) != nullptr && mode_name(settings.default_mode) != nullptr &&
+           scheme_name(settings.scheme) != nullptr && punctuation_name(settings.punctuation_mode) != nullptr &&
            punctuation_lock_name(settings.punctuation_lock) != nullptr &&
            preedit_style_name(settings.preedit_style) != nullptr &&
            frequency_adjustment_name(settings.frequency_adjustment_mode) != nullptr &&
@@ -377,6 +377,20 @@ InputSettings SettingsStore::load(std::string *warning) const
         if (value != nullptr && std::string_view(value) == "direct")
         {
             settings.mode = InputMode::Direct;
+        }
+        else if (value == nullptr || std::string_view(value) != "ime")
+        {
+            invalid = true;
+        }
+        g_free(value);
+    }
+
+    if (g_key_file_has_key(key_file, kGroup, "default-mode", nullptr))
+    {
+        gchar *value = g_key_file_get_string(key_file, kGroup, "default-mode", nullptr);
+        if (value != nullptr && std::string_view(value) == "direct")
+        {
+            settings.default_mode = InputMode::Direct;
         }
         else if (value == nullptr || std::string_view(value) != "ime")
         {
@@ -1022,6 +1036,7 @@ bool SettingsStore::save(const InputSettings &settings, std::string *error) cons
 {
     set_message(error, "");
     const char *mode = mode_name(settings.mode);
+    const char *default_mode = mode_name(settings.default_mode);
     const char *scheme = scheme_name(settings.scheme);
     const char *punctuation = punctuation_name(settings.punctuation_mode);
     const char *punctuation_lock = punctuation_lock_name(settings.punctuation_lock);
@@ -1055,6 +1070,7 @@ bool SettingsStore::save(const InputSettings &settings, std::string *error) cons
     g_clear_error(&load_error);
 
     g_key_file_set_string(key_file, kGroup, "mode", mode);
+    g_key_file_set_string(key_file, kGroup, "default-mode", default_mode);
     g_key_file_set_string(key_file, kGroup, "scheme", scheme);
     g_key_file_set_integer(key_file, kGroup, "page-size", static_cast<gint>(settings.page_size));
     g_key_file_set_string(key_file, kGroup, "punctuation", punctuation);
