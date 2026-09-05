@@ -39,7 +39,15 @@ ctest --test-dir build --output-on-failure
 ./scripts/install.sh
 ```
 
-安装脚本把引擎放到 `~/.local/libexec`，并把 IBus 组件描述文件、三个词库和五个辅助码数据文件安装到 `${XDG_DATA_HOME:-$HOME/.local/share}` 下。重启 IBus，然后在桌面的输入源设置中选择“Metasequoia IME”。
+安装脚本把引擎放到 `~/.local/libexec`，并把 IBus 组件描述文件、三个词库和五个辅助码数据文件安装到 `${XDG_DATA_HOME:-$HOME/.local/share}` 下。
+
+IBus 只扫描自己的包数据目录（通常是 `/usr/share/ibus/component`）与 `IBUS_COMPONENT_PATH`，**不会**扫描 `XDG_DATA_HOME`。因此安装脚本还会写一个 `${XDG_CONFIG_HOME:-$HOME/.config}/environment.d/10-metasequoiaime.conf`，把系统目录和当前用户目录一并列进 `IBUS_COMPONENT_PATH`（该变量是替换而非追加，所以系统目录必须显式写上，否则其他输入法会消失）。**注销后重新登录**该文件才会生效，然后重启 IBus，在桌面的输入源设置中选择“Metasequoia IME”。
+
+只想在当前会话里试一下、不注销，可以直接带着变量重启 IBus：
+
+```sh
+IBUS_COMPONENT_PATH=/usr/share/ibus/component:${XDG_DATA_HOME:-$HOME/.local/share}/ibus/component ibus-daemon -drx
+```
 
 要卸载当前用户的安装，删除引擎以及 `${XDG_DATA_HOME:-$HOME/.local/share}` 下的组件和词库，然后重启 IBus：
 
@@ -51,6 +59,7 @@ rm "$data_home/metasequoiaime/msime.db"
 rm "$data_home/metasequoiaime/others.db"
 rm "$data_home/metasequoiaime/english.db"
 rm -r "$data_home/metasequoiaime/helpcodes"
+rm "${XDG_CONFIG_HOME:-$HOME/.config}/environment.d/10-metasequoiaime.conf"
 ```
 
 ## 打包

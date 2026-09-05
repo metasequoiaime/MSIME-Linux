@@ -10,9 +10,30 @@ struct ToolbarState
     GtkWidget *window = nullptr;
 };
 
-void launch(const char *program)
+// The desktop tools live next to this executable, both in the build tree and
+// after scripts/install.sh puts them in the user prefix. Resolving them through
+// PATH breaks the current-user install, because the GNOME session and the
+// systemd user manager do not carry ~/.local/bin in PATH.
+std::string sibling_program(const char *program)
 {
-    gchar *argv[] = {const_cast<gchar *>(program), nullptr};
+    gchar *self = g_file_read_link("/proc/self/exe", nullptr);
+    if (self == nullptr)
+    {
+        return program;
+    }
+    gchar *directory = g_path_get_dirname(self);
+    gchar *candidate = g_build_filename(directory, program, nullptr);
+    std::string resolved = g_file_test(candidate, G_FILE_TEST_IS_EXECUTABLE) ? candidate : program;
+    g_free(candidate);
+    g_free(directory);
+    g_free(self);
+    return resolved;
+}
+
+void spawn(const char *program, const char *argument)
+{
+    const std::string executable = sibling_program(program);
+    gchar *argv[] = {const_cast<gchar *>(executable.c_str()), const_cast<gchar *>(argument), nullptr};
     GError *error = nullptr;
     if (!g_spawn_async(nullptr, argv, nullptr, G_SPAWN_SEARCH_PATH, nullptr, nullptr, nullptr, &error) &&
         error != nullptr)
@@ -20,6 +41,11 @@ void launch(const char *program)
         g_warning("Unable to launch %s: %s", program, error->message);
         g_error_free(error);
     }
+}
+
+void launch(const char *program)
+{
+    spawn(program, nullptr);
 }
 
 void launch_settings(GtkButton *, gpointer)
@@ -34,8 +60,9 @@ void launch_tools(GtkButton *, gpointer)
 
 void launch_voice(GtkButton *, gpointer)
 {
-    gchar *argv[] = {const_cast<gchar *>("metasequoia-ime-voice"), const_cast<gchar *>("--record"),
-                     const_cast<gchar *>("5"), nullptr};
+    const std::string executable = sibling_program("metasequoia-ime-voice");
+    gchar *argv[] = {const_cast<gchar *>(executable.c_str()), const_cast<gchar *>("--record"), const_cast<gchar *>("5"),
+                     nullptr};
     GError *error = nullptr;
     if (!g_spawn_async(nullptr, argv, nullptr, G_SPAWN_SEARCH_PATH, nullptr, nullptr, nullptr, &error) &&
         error != nullptr)
