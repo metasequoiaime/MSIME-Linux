@@ -116,15 +116,15 @@ for utility_executable in "$settings_executable" "$tools_executable" "$voice_exe
     fi
 done
 if [[ ! -f "$project_root/vendor/MetasequoiaImeDict/out/msime.db" ]]; then
-    echo "Dictionary is missing. Run scripts/build_dictionary.py first." >&2
+    echo "Dictionary is missing. Run scripts/fetch_dictionary.py first." >&2
     exit 1
 fi
 if [[ ! -f "$project_root/vendor/MetasequoiaImeDict/out/others.db" ]]; then
-    echo "Expressive dictionary is missing. Run scripts/build_dictionary.py first." >&2
+    echo "Expressive dictionary is missing. Run scripts/fetch_dictionary.py first." >&2
     exit 1
 fi
 if [[ ! -f "$project_root/vendor/MetasequoiaImeDict/out/english.db" ]]; then
-    echo "English dictionary is missing. Run scripts/build_dictionary.py first." >&2
+    echo "English dictionary is missing. Run scripts/fetch_dictionary.py first." >&2
     exit 1
 fi
 for helpcode_file in "${helpcode_files[@]}"; do

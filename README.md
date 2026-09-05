@@ -23,7 +23,7 @@ sudo apt install build-essential cmake pkg-config libibus-1.0-dev libboost-dev l
 ```sh
 git clone --recursive https://github.com/metasequoiaime/MSIME-Linux.git
 cd MSIME-Linux
-python3 scripts/build_dictionary.py
+python3 scripts/fetch_dictionary.py
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
