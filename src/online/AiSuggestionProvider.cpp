@@ -67,11 +67,6 @@ std::string trim_ascii(std::string_view value)
     return std::string(value.substr(begin, end - begin));
 }
 
-bool contains_header_separator(std::string_view value)
-{
-    return value.find('\r') != std::string_view::npos || value.find('\n') != std::string_view::npos;
-}
-
 bool contains_control_character(std::string_view value)
 {
     return std::any_of(value.begin(), value.end(),
@@ -115,7 +110,7 @@ std::optional<std::string> AiSuggestionProvider::fetch(const OnlineQuery &query,
                                                        const CancellationCheck &cancelled) const
 {
     if (!config.enabled || !query.ai_eligible || query.pinyin_segments.empty() || config.token.empty() ||
-        config.token.size() > 4096 || contains_header_separator(config.token) || (cancelled && cancelled()))
+        !token_allowed(config.token) || (cancelled && cancelled()))
     {
         return std::nullopt;
     }

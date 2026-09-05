@@ -111,7 +111,8 @@ std::optional<std::string> VoiceInputProvider::transcribe(std::string_view audio
         error->clear();
     }
     if (!transport_ || !config.enabled || audio.empty() || audio.size() > kMaximumAudioBytes || config.token.empty() ||
-        config.model.empty() || !online::endpoint_allowed(config.endpoint, allow_insecure_loopback_for_tests_))
+        !online::token_allowed(config.token) || config.model.empty() ||
+        !online::endpoint_allowed(config.endpoint, allow_insecure_loopback_for_tests_))
     {
         set_error(error, "Voice input configuration or audio was invalid.");
         return std::nullopt;
@@ -146,8 +147,8 @@ std::optional<std::string> VoiceInputProvider::polish(std::string_view text, con
     {
         error->clear();
     }
-    if (!transport_ || !config.polish_enabled || text.empty() || config.token.empty() || config.polish_model.empty() ||
-        config.polish_prompt.empty() ||
+    if (!transport_ || !config.polish_enabled || text.empty() || config.token.empty() ||
+        !online::token_allowed(config.token) || config.polish_model.empty() || config.polish_prompt.empty() ||
         !online::endpoint_allowed(config.polish_endpoint, allow_insecure_loopback_for_tests_))
     {
         set_error(error, "Voice polish configuration or text was invalid.");
