@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.4.0](https://github.com/metasequoiaime/MSIME-Linux/compare/v0.3.0...v0.4.0) (2026-09-05)
+
+
+### Features
+
+* say why there are no candidates when the dictionary is unusable ([083ca3e](https://github.com/metasequoiaime/MSIME-Linux/commit/083ca3e5d3cbebeb6403af16bfa5ae07e718e86d))
+* say why there are no candidates when the dictionary is unusable ([91fca47](https://github.com/metasequoiaime/MSIME-Linux/commit/91fca470e6ff92387d4d99da5260b7300096f8e8))
+
+
+### Bug Fixes
+
+* resolve the desktop tools next to the running program everywhere ([8ce9bfd](https://github.com/metasequoiaime/MSIME-Linux/commit/8ce9bfd55bcabbc9553c5146e674b9f5a743d585))
+* resolve the desktop tools next to the running program everywhere ([b0891e0](https://github.com/metasequoiaime/MSIME-Linux/commit/b0891e0d1834fe31e5cb440dace9c50b39e23bcc))
+
 ## [0.3.0](https://github.com/metasequoiaime/MSIME-Linux/compare/v0.2.3...v0.3.0) (2026-09-05)
 
 
