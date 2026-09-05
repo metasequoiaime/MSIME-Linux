@@ -245,6 +245,22 @@ bool ClipboardHistory::clear(std::string *error)
     return write_file_atomically(store_path(), "[]\n", error);
 }
 
+bool ClipboardHistory::marked_sensitive(const std::vector<std::string> &clipboard_target_names)
+{
+    static constexpr const char *kSensitiveTargets[] = {"x-kde-passwordManagerHint", "org.nspasteboard.ConcealedType"};
+    for (const std::string &name : clipboard_target_names)
+    {
+        for (const char *sensitive : kSensitiveTargets)
+        {
+            if (name == sensitive)
+            {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 std::string ClipboardHistory::normalize(std::string text)
 {
     while (!text.empty() && (text.back() == '\0' || text.back() == '\r'))

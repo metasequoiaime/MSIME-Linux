@@ -76,7 +76,31 @@ gboolean poll_clipboard(gpointer user_data)
     {
         return G_SOURCE_CONTINUE;
     }
-    gchar *text = gtk_clipboard_wait_for_text(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD));
+    GtkClipboard *clipboard = gtk_clipboard_get(GDK_SELECTION_CLIPBOARD);
+    // Ask what the owner is offering before asking for the text: a password
+    // manager marks its content so history tools leave it alone.
+    GdkAtom *targets = nullptr;
+    gint target_count = 0;
+    if (gtk_clipboard_wait_for_targets(clipboard, &targets, &target_count))
+    {
+        std::vector<std::string> names;
+        names.reserve(static_cast<std::size_t>(target_count));
+        for (gint index = 0; index < target_count; ++index)
+        {
+            gchar *name = gdk_atom_name(targets[index]);
+            if (name != nullptr)
+            {
+                names.emplace_back(name);
+                g_free(name);
+            }
+        }
+        g_free(targets);
+        if (metasequoia::linux_ime::ClipboardHistory::marked_sensitive(names))
+        {
+            return G_SOURCE_CONTINUE;
+        }
+    }
+    gchar *text = gtk_clipboard_wait_for_text(clipboard);
     if (text != nullptr)
     {
         std::string error;

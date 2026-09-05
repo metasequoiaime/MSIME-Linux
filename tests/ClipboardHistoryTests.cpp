@@ -17,6 +17,28 @@ void require(bool condition, const char *message)
         throw std::runtime_error(message);
     }
 }
+
+// A password copied from a manager must not reach the store. The manager marks
+// it on the clipboard; nothing else tells the two apart.
+void skips_content_a_password_manager_marked()
+{
+    require(ClipboardHistory::marked_sensitive({"UTF8_STRING", "text/plain", "x-kde-passwordManagerHint"}),
+            "the KDE password manager hint was not recognised");
+    require(ClipboardHistory::marked_sensitive({"org.nspasteboard.ConcealedType"}),
+            "the concealed type marker was not recognised");
+}
+
+void keeps_ordinary_clipboard_content()
+{
+    require(!ClipboardHistory::marked_sensitive({"UTF8_STRING", "text/plain;charset=utf-8", "TARGETS"}),
+            "ordinary clipboard targets were treated as sensitive");
+    require(!ClipboardHistory::marked_sensitive({}), "an empty target list was treated as sensitive");
+    // A prefix or suffix is a different target, not the marker.
+    require(!ClipboardHistory::marked_sensitive({"x-kde-passwordManagerHintExtra"}),
+            "a longer target name was treated as the marker");
+    require(!ClipboardHistory::marked_sensitive({"application/x-kde-passwordManagerHint"}),
+            "a namespaced lookalike was treated as the marker");
+}
 } // namespace
 
 int main()
@@ -49,6 +71,9 @@ int main()
         require(history.load(&error).empty(), "Clipboard history remained after clearing.");
         require(history.set_enabled(false, &error), "Clipboard history could not be disabled.");
         require(!history.add("disabled", &error), "Disabled clipboard history accepted a new item.");
+
+        skips_content_a_password_manager_marked();
+        keeps_ordinary_clipboard_content();
 
         std::filesystem::remove_all(root);
         std::cout << "Clipboard history tests passed.\n";

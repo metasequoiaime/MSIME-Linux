@@ -16,7 +16,7 @@ Only HTTPS endpoints are accepted at runtime. Every online request is asynchrono
 
 ## Local data
 
-Settings are stored in `${XDG_CONFIG_HOME:-$HOME/.config}/metasequoiaime/config.ini`. Learned word frequencies and English raw entries are journaled in `${XDG_DATA_HOME:-$HOME/.local/share}/metasequoiaime/msime_user.db` and replayed into the dictionaries when `scripts/install.sh` upgrades them. Clipboard history is disabled by default; when enabled, entries are stored locally under the same data directory. Handwriting recognition runs locally through Tesseract and sends no strokes or images anywhere.
+Settings are stored in `${XDG_CONFIG_HOME:-$HOME/.config}/metasequoiaime/config.ini`. Learned word frequencies and English raw entries are journaled in `${XDG_DATA_HOME:-$HOME/.local/share}/metasequoiaime/msime_user.db` and replayed into the dictionaries when `scripts/install.sh` upgrades them. Clipboard history is disabled by default; when enabled, entries are stored locally under the same data directory, in a file readable only by the current user. Content that a password manager marks as secret is skipped rather than stored: the panel checks the clipboard for the `x-kde-passwordManagerHint` and `org.nspasteboard.ConcealedType` markers that KeePassXC, Bitwarden, 1Password and Chromium set, and leaves such entries alone. Handwriting recognition runs locally through Tesseract and sends no strokes or images anywhere.
 
 All of these files live in the current user's home directory and are protected only by that account's permissions. Users should protect the account and its backups as they would other personal data.
 
