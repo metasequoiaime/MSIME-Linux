@@ -709,6 +709,13 @@ void metasequoia_engine_init(MetasequoiaEngine *engine)
     engine->settings_warning = new std::string();
     engine->secret_store = new metasequoia::linux_ime::LibsecretSecretStore();
     InputSettings settings = engine->settings_store->load(engine->settings_warning);
+    // Reuse the settings warning channel: without this a missing or empty
+    // dictionary just yields no candidates, which looks like the input method
+    // being broken rather than its data being absent.
+    if (engine->settings_warning->empty())
+    {
+        *engine->settings_warning = metasequoia::linux_ime::describe_unusable_dictionary();
+    }
     // Avoid synchronously waking Secret Service for the common offline configuration. If an
     // online provider is explicitly enabled, hydrate its credentials before starting workers.
     if (settings.online.ai.enabled ||

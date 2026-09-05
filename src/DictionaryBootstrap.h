@@ -20,4 +20,12 @@ std::size_t seed_user_data(const std::filesystem::path &user_directory,
                            const std::vector<std::filesystem::path> &system_directories, std::string *error = nullptr);
 
 std::size_t seed_user_data(std::string *error = nullptr);
+
+// Describes why the main dictionary cannot be used, or an empty string when it
+// can. The engine opens a database it cannot find by creating an empty one, so
+// without this a broken installation just produces no candidates and says
+// nothing about why.
+std::string describe_unusable_dictionary(const std::filesystem::path &user_directory);
+
+std::string describe_unusable_dictionary();
 } // namespace metasequoia::linux_ime

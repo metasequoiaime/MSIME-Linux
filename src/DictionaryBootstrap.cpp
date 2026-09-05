@@ -164,4 +164,28 @@ std::size_t seed_user_data(std::string *error)
 {
     return seed_user_data(user_data_directory(), system_data_directories(), error);
 }
+
+std::string describe_unusable_dictionary(const std::filesystem::path &user_directory)
+{
+    if (user_directory.empty())
+    {
+        return "No data directory: set HOME or XDG_DATA_HOME.";
+    }
+    const std::filesystem::path main_database = user_directory / kDatabases.front();
+    std::error_code code;
+    if (!std::filesystem::exists(main_database, code))
+    {
+        return "Dictionary missing: " + main_database.string();
+    }
+    if (!is_usable_file(main_database))
+    {
+        return "Dictionary is empty: " + main_database.string();
+    }
+    return {};
+}
+
+std::string describe_unusable_dictionary()
+{
+    return describe_unusable_dictionary(user_data_directory());
+}
 } // namespace metasequoia::linux_ime
