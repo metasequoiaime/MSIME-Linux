@@ -25,7 +25,7 @@ jobs:
       contents: write
     steps:
       - name: Check out source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       # The dispatch input is untrusted, so it is passed through the environment
       # rather than interpolated into the script, and is validated before use.
       - name: Resolve version
@@ -54,7 +54,7 @@ jobs:
       - name: Package
         run: cpack --config build/CPackConfig.cmake -G "TGZ;DEB;RPM" -B build/packages
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: metasequoia-ime-linux-${{ steps.version.outputs.value }}
           path: |
