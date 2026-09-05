@@ -24,6 +24,10 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v7
+      # Cheap and runs before the build so a formatting slip fails in seconds
+      # rather than after the full compile.
+      - name: Check formatting
+        run: scripts/format.sh --check
       - name: Bootstrap and test dependencies
         run: tests/CiDependenciesTests.sh "$GITHUB_WORKSPACE"
       - name: Install dependencies

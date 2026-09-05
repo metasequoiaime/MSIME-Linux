@@ -17,20 +17,20 @@
 
 namespace
 {
+using metasequoia::FrequencyAdjustmentMode;
+using metasequoia::linux_ime::CharacterWidth;
 using metasequoia::linux_ime::InputMode;
 using metasequoia::linux_ime::InputSettings;
-using metasequoia::linux_ime::CharacterWidth;
-using metasequoia::linux_ime::PunctuationMode;
-using metasequoia::linux_ime::PreeditStyle;
-using metasequoia::linux_ime::SettingsStore;
 using metasequoia::linux_ime::OnlineSettings;
+using metasequoia::linux_ime::PreeditStyle;
+using metasequoia::linux_ime::PunctuationMode;
 using metasequoia::linux_ime::SecretKind;
 using metasequoia::linux_ime::SecretLookupResult;
 using metasequoia::linux_ime::SecretStatus;
 using metasequoia::linux_ime::SecretStore;
+using metasequoia::linux_ime::SettingsStore;
 using metasequoia::linux_ime::TranslationProvider;
 using metasequoia::linux_ime::online::AiProvider;
-using metasequoia::FrequencyAdjustmentMode;
 
 class MemorySecretStore final : public SecretStore
 {
@@ -49,8 +49,7 @@ class MemorySecretStore final : public SecretStore
         return {SecretStatus::Found, found->second, {}};
     }
 
-    bool store(SecretKind kind, std::string_view provider, std::string_view secret,
-               std::string *diagnostic) override
+    bool store(SecretKind kind, std::string_view provider, std::string_view secret, std::string *diagnostic) override
     {
         if (diagnostic != nullptr)
         {
@@ -158,8 +157,7 @@ int main()
                 defaults.frequency_trigger_count == 1 && defaults.frequency_linear_step == 1 &&
                 defaults.unicode_mode_enabled && defaults.super_jianpin_mode_enabled &&
                 defaults.temporary_english_mode_enabled && defaults.temporary_japanese_mode_enabled &&
-                !defaults.mixed_english_candidates_enabled &&
-                defaults.mixed_english_minimum_prefix == 2 &&
+                !defaults.mixed_english_candidates_enabled && defaults.mixed_english_minimum_prefix == 2 &&
                 !defaults.mixed_emoji_candidates_enabled && !defaults.mixed_kaomoji_candidates_enabled,
             "Missing settings did not use defaults.");
     require(warning.empty(), "A missing optional settings file produced a warning.");
@@ -169,9 +167,9 @@ int main()
                 defaults.online.ai.prompt.empty() && defaults.online.ai.candidate_limit == 3 &&
                 defaults.online.candidate_translations_enabled &&
                 defaults.online.translation_provider == TranslationProvider::Local &&
-                defaults.online.translation_target_language == "en" &&
-                defaults.online.translation_endpoint.empty() && defaults.online.translation_token.empty() &&
-                defaults.online.connect_timeout.count() == 2500 && defaults.online.total_timeout.count() == 8000,
+                defaults.online.translation_target_language == "en" && defaults.online.translation_endpoint.empty() &&
+                defaults.online.translation_token.empty() && defaults.online.connect_timeout.count() == 2500 &&
+                defaults.online.total_timeout.count() == 8000,
             "Missing online settings did not use safe defaults.");
 
     InputSettings saved;
@@ -233,8 +231,7 @@ int main()
     require(store.save(saved, &error) && error.empty(), "Valid settings could not be saved.");
     const InputSettings round_trip = store.load(&warning);
     require(round_trip.mode == saved.mode && round_trip.scheme == saved.scheme &&
-                round_trip.page_size == saved.page_size &&
-                round_trip.punctuation_mode == saved.punctuation_mode &&
+                round_trip.page_size == saved.page_size && round_trip.punctuation_mode == saved.punctuation_mode &&
                 round_trip.character_width == saved.character_width &&
                 round_trip.comma_period_paging == saved.comma_period_paging &&
                 round_trip.word_to_character == saved.word_to_character &&
@@ -262,10 +259,11 @@ int main()
                 round_trip.floating_toolbar_enabled == saved.floating_toolbar_enabled &&
                 round_trip.voice.enabled == saved.voice.enabled && round_trip.voice.provider == saved.voice.provider &&
                 round_trip.voice.endpoint == saved.voice.endpoint && round_trip.voice.model == saved.voice.model &&
-                round_trip.voice.language == saved.voice.language && round_trip.voice.polish_enabled == saved.voice.polish_enabled &&
+                round_trip.voice.language == saved.voice.language &&
+                round_trip.voice.polish_enabled == saved.voice.polish_enabled &&
                 round_trip.voice.polish_endpoint == saved.voice.polish_endpoint &&
-                round_trip.voice.polish_model == saved.voice.polish_model && round_trip.voice.polish_prompt == saved.voice.polish_prompt &&
-                round_trip.voice.token.empty(),
+                round_trip.voice.polish_model == saved.voice.polish_model &&
+                round_trip.voice.polish_prompt == saved.voice.polish_prompt && round_trip.voice.token.empty(),
             "Settings did not survive a round trip.");
     require(round_trip.online.cloud_candidates_enabled == saved.online.cloud_candidates_enabled &&
                 round_trip.online.ai.enabled == saved.online.ai.enabled &&
@@ -289,60 +287,59 @@ int main()
             "An API token was written to config.ini.");
 
     const auto config_path = store.config_path();
-    write_file(config_path,
-               "[input]\n"
-               "mode=ime\n"
-               "scheme=shuangpin\n"
-               "page-size=5\n"
-               "punctuation=english\n"
-               "full-width=true\n"
-               "comma-period-paging=true\n"
-               "word-to-character=true\n"
-               "bracket-paging=false\n"
-               "smart-punctuation=false\n"
-               "smart-punctuation-repeat-to-chinese=false\n"
-               "paired-punctuation=false\n"
-               "preedit-style=pinyin\n"
-               "quanpin-helpcode=false\n"
-               "quanpin-helpcode-schema=xiaohe\n"
-               "shuangpin-helpcode=false\n"
-               "shuangpin-helpcode-schema=ziranma\n"
-               "frequency-adjustment=linear\n"
-               "frequency-trigger-count=6\n"
-               "frequency-linear-step=7\n"
-               "unicode-mode=false\n"
-               "super-jianpin-mode=false\n"
-               "temporary-english-mode=false\n"
-               "temporary-japanese-mode=false\n"
-               "mixed-english-candidates=true\n"
-               "mixed-english-minimum-prefix=4\n"
-               "mixed-emoji-candidates=true\n"
-               "mixed-kaomoji-candidates=true\n"
-               "future-option=keep-me\n"
-               "\n"
-               "[online]\n"
-               "cloud-enabled=false\n"
-               "connect-timeout-ms=1800\n"
-               "total-timeout-ms=7000\n"
-               "\n"
-               "[ai]\n"
-               "enabled=true\n"
-               "provider=groq\n"
-               "endpoint=https://api.groq.com/openai/v1/chat/completions\n"
-               "model=openai/gpt-oss-120b\n"
-               "prompt=Return one candidate.\n"
-               "candidate-limit=4\n"
-               "token=legacy-ai-plaintext-secret\n"
-               "\n"
-               "[translation]\n"
-               "enabled=true\n"
-               "provider=deeplx\n"
-               "target-language=fr\n"
-               "endpoint=https://translate.example.test/translate\n"
-               "api-key=legacy-translation-plaintext-secret\n"
-               "\n"
-               "[future]\n"
-               "value=preserve-me\n");
+    write_file(config_path, "[input]\n"
+                            "mode=ime\n"
+                            "scheme=shuangpin\n"
+                            "page-size=5\n"
+                            "punctuation=english\n"
+                            "full-width=true\n"
+                            "comma-period-paging=true\n"
+                            "word-to-character=true\n"
+                            "bracket-paging=false\n"
+                            "smart-punctuation=false\n"
+                            "smart-punctuation-repeat-to-chinese=false\n"
+                            "paired-punctuation=false\n"
+                            "preedit-style=pinyin\n"
+                            "quanpin-helpcode=false\n"
+                            "quanpin-helpcode-schema=xiaohe\n"
+                            "shuangpin-helpcode=false\n"
+                            "shuangpin-helpcode-schema=ziranma\n"
+                            "frequency-adjustment=linear\n"
+                            "frequency-trigger-count=6\n"
+                            "frequency-linear-step=7\n"
+                            "unicode-mode=false\n"
+                            "super-jianpin-mode=false\n"
+                            "temporary-english-mode=false\n"
+                            "temporary-japanese-mode=false\n"
+                            "mixed-english-candidates=true\n"
+                            "mixed-english-minimum-prefix=4\n"
+                            "mixed-emoji-candidates=true\n"
+                            "mixed-kaomoji-candidates=true\n"
+                            "future-option=keep-me\n"
+                            "\n"
+                            "[online]\n"
+                            "cloud-enabled=false\n"
+                            "connect-timeout-ms=1800\n"
+                            "total-timeout-ms=7000\n"
+                            "\n"
+                            "[ai]\n"
+                            "enabled=true\n"
+                            "provider=groq\n"
+                            "endpoint=https://api.groq.com/openai/v1/chat/completions\n"
+                            "model=openai/gpt-oss-120b\n"
+                            "prompt=Return one candidate.\n"
+                            "candidate-limit=4\n"
+                            "token=legacy-ai-plaintext-secret\n"
+                            "\n"
+                            "[translation]\n"
+                            "enabled=true\n"
+                            "provider=deeplx\n"
+                            "target-language=fr\n"
+                            "endpoint=https://translate.example.test/translate\n"
+                            "api-key=legacy-translation-plaintext-secret\n"
+                            "\n"
+                            "[future]\n"
+                            "value=preserve-me\n");
     const ino_t original_inode = inode(config_path);
 
     InputSettings updated;
@@ -387,7 +384,8 @@ int main()
     updated.online.connect_timeout = std::chrono::milliseconds(2200);
     updated.online.total_timeout = std::chrono::milliseconds(7500);
     require(store.save(updated, &error), "Existing settings could not be replaced.");
-    require(inode(config_path) != original_inode, "The settings file was modified in place instead of atomically replaced.");
+    require(inode(config_path) != original_inode,
+            "The settings file was modified in place instead of atomically replaced.");
     const std::string preserved = read_file(config_path);
     require(preserved.find("future-option=keep-me") != std::string::npos &&
                 preserved.find("[future]") != std::string::npos &&
@@ -401,54 +399,53 @@ int main()
         require(entry.path() == config_path, "An atomic settings temporary file was left behind.");
     }
 
-    write_file(config_path,
-               "[input]\n"
-               "mode=unexpected\n"
-               "scheme=unsupported\n"
-               "page-size=12\n"
-               "punctuation=unsupported\n"
-               "full-width=unexpected\n"
-               "comma-period-paging=unexpected\n"
-               "word-to-character=unexpected\n"
-               "bracket-paging=unexpected\n"
-               "smart-punctuation=unexpected\n"
-               "smart-punctuation-repeat-to-chinese=unexpected\n"
-               "paired-punctuation=unexpected\n"
-               "preedit-style=unexpected\n"
-               "quanpin-helpcode=unexpected\n"
-               "quanpin-helpcode-schema=unsupported\n"
-               "shuangpin-helpcode=unexpected\n"
-               "shuangpin-helpcode-schema=unsupported\n"
-               "frequency-adjustment=unexpected\n"
-               "frequency-trigger-count=0\n"
-               "frequency-linear-step=11\n"
-               "unicode-mode=unexpected\n"
-               "super-jianpin-mode=unexpected\n"
-               "temporary-english-mode=unexpected\n"
-               "temporary-japanese-mode=unexpected\n"
-               "mixed-english-candidates=unexpected\n"
-               "mixed-english-minimum-prefix=9\n"
-               "mixed-emoji-candidates=unexpected\n"
-               "mixed-kaomoji-candidates=unexpected\n"
-               "\n"
-               "[online]\n"
-               "cloud-enabled=unexpected\n"
-               "connect-timeout-ms=99\n"
-               "total-timeout-ms=30001\n"
-               "\n"
-               "[ai]\n"
-               "enabled=true\n"
-               "provider=unsupported\n"
-               "endpoint=http://insecure.example.test/chat\n"
-               "model=valid-model\n"
-               "prompt=valid prompt\n"
-               "candidate-limit=11\n"
-               "\n"
-               "[translation]\n"
-               "enabled=true\n"
-               "provider=unsupported\n"
-               "target-language=unsupported\n"
-               "endpoint=http://insecure.example.test/translate\n");
+    write_file(config_path, "[input]\n"
+                            "mode=unexpected\n"
+                            "scheme=unsupported\n"
+                            "page-size=12\n"
+                            "punctuation=unsupported\n"
+                            "full-width=unexpected\n"
+                            "comma-period-paging=unexpected\n"
+                            "word-to-character=unexpected\n"
+                            "bracket-paging=unexpected\n"
+                            "smart-punctuation=unexpected\n"
+                            "smart-punctuation-repeat-to-chinese=unexpected\n"
+                            "paired-punctuation=unexpected\n"
+                            "preedit-style=unexpected\n"
+                            "quanpin-helpcode=unexpected\n"
+                            "quanpin-helpcode-schema=unsupported\n"
+                            "shuangpin-helpcode=unexpected\n"
+                            "shuangpin-helpcode-schema=unsupported\n"
+                            "frequency-adjustment=unexpected\n"
+                            "frequency-trigger-count=0\n"
+                            "frequency-linear-step=11\n"
+                            "unicode-mode=unexpected\n"
+                            "super-jianpin-mode=unexpected\n"
+                            "temporary-english-mode=unexpected\n"
+                            "temporary-japanese-mode=unexpected\n"
+                            "mixed-english-candidates=unexpected\n"
+                            "mixed-english-minimum-prefix=9\n"
+                            "mixed-emoji-candidates=unexpected\n"
+                            "mixed-kaomoji-candidates=unexpected\n"
+                            "\n"
+                            "[online]\n"
+                            "cloud-enabled=unexpected\n"
+                            "connect-timeout-ms=99\n"
+                            "total-timeout-ms=30001\n"
+                            "\n"
+                            "[ai]\n"
+                            "enabled=true\n"
+                            "provider=unsupported\n"
+                            "endpoint=http://insecure.example.test/chat\n"
+                            "model=valid-model\n"
+                            "prompt=valid prompt\n"
+                            "candidate-limit=11\n"
+                            "\n"
+                            "[translation]\n"
+                            "enabled=true\n"
+                            "provider=unsupported\n"
+                            "target-language=unsupported\n"
+                            "endpoint=http://insecure.example.test/translate\n");
     const InputSettings invalid = store.load(&warning);
     require(invalid.mode == InputMode::Ime && invalid.scheme == SchemeType::Quanpin && invalid.page_size == 9 &&
                 invalid.punctuation_mode == PunctuationMode::Chinese &&
@@ -462,8 +459,7 @@ int main()
                 invalid.frequency_trigger_count == 1 && invalid.frequency_linear_step == 1 &&
                 invalid.unicode_mode_enabled && invalid.super_jianpin_mode_enabled &&
                 invalid.temporary_english_mode_enabled && invalid.temporary_japanese_mode_enabled &&
-                !invalid.mixed_english_candidates_enabled &&
-                invalid.mixed_english_minimum_prefix == 2 &&
+                !invalid.mixed_english_candidates_enabled && invalid.mixed_english_minimum_prefix == 2 &&
                 !invalid.mixed_emoji_candidates_enabled && !invalid.mixed_kaomoji_candidates_enabled,
             "Invalid settings did not fall back field by field.");
     require(invalid.online.cloud_candidates_enabled && invalid.online.ai.enabled &&
@@ -471,16 +467,14 @@ int main()
                 invalid.online.ai.model == "valid-model" && invalid.online.ai.prompt == "valid prompt" &&
                 invalid.online.ai.candidate_limit == 3 && invalid.online.candidate_translations_enabled &&
                 invalid.online.translation_provider == TranslationProvider::Local &&
-                invalid.online.translation_target_language == "en" &&
-                invalid.online.translation_endpoint.empty() && invalid.online.connect_timeout.count() == 2500 &&
-                invalid.online.total_timeout.count() == 8000,
+                invalid.online.translation_target_language == "en" && invalid.online.translation_endpoint.empty() &&
+                invalid.online.connect_timeout.count() == 2500 && invalid.online.total_timeout.count() == 8000,
             "Invalid online settings did not fall back field by field.");
     require(!warning.empty(), "Invalid settings did not produce a diagnostic warning.");
 
     InputSettings unsupported = saved;
     unsupported.quanpin_helpcode_schema = "unknown";
-    require(!store.save(unsupported, &error) && !error.empty(),
-            "An unsupported helpcode schema was written to disk.");
+    require(!store.save(unsupported, &error) && !error.empty(), "An unsupported helpcode schema was written to disk.");
     unsupported = saved;
     unsupported.frequency_adjustment_mode = static_cast<FrequencyAdjustmentMode>(99);
     require(!store.save(unsupported, &error) && !error.empty(),
@@ -541,9 +535,8 @@ int main()
     MemorySecretStore missing_translation_secrets;
     missing_translation_secrets.values[{SecretKind::AiApiToken, "openai"}] = saved.online.ai.token;
     const InputSettings missing_translation = store.load(missing_translation_secrets, &secret_diagnostic);
-    require(missing_translation.online.ai.enabled &&
-                !missing_translation.online.candidate_translations_enabled && !secret_diagnostic.empty() &&
-                secret_diagnostic.find(saved.online.ai.token) == std::string::npos &&
+    require(missing_translation.online.ai.enabled && !missing_translation.online.candidate_translations_enabled &&
+                !secret_diagnostic.empty() && secret_diagnostic.find(saved.online.ai.token) == std::string::npos &&
                 secret_diagnostic.find(saved.online.translation_token) == std::string::npos,
             "A missing translation credential did not disable only translation or leaked secret material.");
 
@@ -561,8 +554,7 @@ int main()
     rollback_secrets.fail_store_kind = SecretKind::TranslationApiToken;
     require(!store.save(saved, rollback_secrets, &secret_diagnostic) &&
                 rollback_secrets.values.at({SecretKind::AiApiToken, "openai"}) == "old-ai-secret" &&
-                rollback_secrets.values.at({SecretKind::TranslationApiToken, "deeplx"}) ==
-                    "old-translation-secret" &&
+                rollback_secrets.values.at({SecretKind::TranslationApiToken, "deeplx"}) == "old-translation-secret" &&
                 secret_diagnostic.find(saved.online.ai.token) == std::string::npos &&
                 secret_diagnostic.find(saved.online.translation_token) == std::string::npos,
             "A second credential failure did not roll back the first credential update.");
@@ -586,8 +578,7 @@ int main()
     std::filesystem::create_directory(config_path);
     require(!store.save(saved, rollback_secrets, &secret_diagnostic) &&
                 rollback_secrets.values.at({SecretKind::AiApiToken, "openai"}) == "old-ai-secret" &&
-                rollback_secrets.values.at({SecretKind::TranslationApiToken, "deeplx"}) ==
-                    "old-translation-secret" &&
+                rollback_secrets.values.at({SecretKind::TranslationApiToken, "deeplx"}) == "old-translation-secret" &&
                 secret_diagnostic.find(saved.online.ai.token) == std::string::npos &&
                 secret_diagnostic.find(saved.online.translation_token) == std::string::npos,
             "A config-file failure did not roll back credential updates.");

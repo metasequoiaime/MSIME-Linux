@@ -30,7 +30,17 @@ tests/InstallSmoke.sh build
 
 ## 代码风格
 
-沿用文件里已有的风格：四空格缩进，行宽 120，C++17，Allman 风格大括号，代码注释一律用英文。不要在本仓库跑 `clang-format` 全量格式化——当前代码与 `MSIME-Engine` 的 `.clang-format` 尚未对齐，全量格式化会淹没有意义的改动。
+格式由 `.clang-format` 强制，与 `MSIME-Engine` 用的是同一份配置：四空格缩进，行宽 120，Allman 风格大括号，不重排 include。提交前跑：
+
+```sh
+./scripts/format.sh
+```
+
+该脚本把 clang-format 固定在 **18.1.8** 并从 PyPI 安装到一个临时 venv 里，不使用系统上碰巧装着的版本——Apple、Debian 与 LLVM 上游在各版本间的默认值并不一致，不固定版本就会出现"本地过、CI 挂"。CI 用 `scripts/format.sh --check` 跑同一份逻辑，且排在构建之前，格式问题会在几秒内失败而不是等编译完。
+
+配置之外的约定：C++17，代码注释一律用英文。
+
+历史上有一次全量格式化提交，已登记在 `.git-blame-ignore-revs` 中。GitHub 会自动跳过它；本地执行一次 `git config blame.ignoreRevsFile .git-blame-ignore-revs` 即可让 `git blame` 也跳过。
 
 新增行为必须带测试。测试放在 `tests/` 下，并在 `CMakeLists.txt` 里用 `add_test` 注册，让它进入 CI 门禁。
 

@@ -43,16 +43,14 @@ int main(int argc, char **argv)
     const auto isolated = store.lookup(SecretKind::TranslationApiToken, ai_provider);
     require(ai.status == SecretStatus::Found && ai.value == ai_secret && ai.diagnostic.empty() &&
                 translation.status == SecretStatus::Found && translation.value == translation_secret &&
-                translation.diagnostic.empty() && isolated.status == SecretStatus::NotFound &&
-                isolated.value.empty(),
+                translation.diagnostic.empty() && isolated.status == SecretStatus::NotFound && isolated.value.empty(),
             "Secret Service did not preserve purpose/provider isolation.");
     require(ai.diagnostic.find(ai_secret) == std::string::npos &&
                 translation.diagnostic.find(translation_secret) == std::string::npos,
             "A Secret Service diagnostic exposed a credential.");
 
     require(store.erase(SecretKind::AiApiToken, ai_provider, &diagnostic) && diagnostic.empty() &&
-                store.erase(SecretKind::TranslationApiToken, translation_provider, &diagnostic) &&
-                diagnostic.empty(),
+                store.erase(SecretKind::TranslationApiToken, translation_provider, &diagnostic) && diagnostic.empty(),
             "Temporary Secret Service credentials could not be removed.");
     require(store.lookup(SecretKind::AiApiToken, ai_provider).status == SecretStatus::NotFound &&
                 store.lookup(SecretKind::TranslationApiToken, translation_provider).status == SecretStatus::NotFound,

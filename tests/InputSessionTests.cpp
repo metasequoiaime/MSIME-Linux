@@ -22,7 +22,10 @@ class Database
         }
     }
 
-    ~Database() { sqlite3_close(database_); }
+    ~Database()
+    {
+        sqlite3_close(database_);
+    }
 
     void execute(const char *sql)
     {

@@ -19,10 +19,10 @@ using metasequoia::linux_ime::online::HttpMethod;
 using metasequoia::linux_ime::online::HttpRequest;
 using metasequoia::linux_ime::online::HttpResponse;
 using metasequoia::linux_ime::online::HttpTransport;
+using metasequoia::linux_ime::online::TranslationBackend;
 using metasequoia::linux_ime::online::TranslationProvider;
 using metasequoia::linux_ime::online::TranslationRequest;
 using metasequoia::linux_ime::online::TranslationService;
-using metasequoia::linux_ime::online::TranslationBackend;
 
 void require(bool condition, const char *message)
 {

@@ -53,13 +53,20 @@ struct PageInfo
 };
 
 constexpr PageInfo kPages[] = {
-    {Page::Appearance, "外观"},       {Page::Input, "输入"},
-    {Page::Helpcode, "辅助码"},       {Page::Shortcuts, "快捷键"},
-    {Page::Dictionary, "词库"},       {Page::Skin, "皮肤"},
-    {Page::Voice, "语音输入"},        {Page::ScreenKeyboard, "屏幕键盘"},
-    {Page::Handwriting, "手写识别板"}, {Page::Utility, "实用功能"},
-    {Page::Online, "AI 辅助"},        {Page::FloatingToolbar, "悬浮工具栏"},
-    {Page::Help, "帮助"},             {Page::About, "关于"},
+    {Page::Appearance, "外观"},
+    {Page::Input, "输入"},
+    {Page::Helpcode, "辅助码"},
+    {Page::Shortcuts, "快捷键"},
+    {Page::Dictionary, "词库"},
+    {Page::Skin, "皮肤"},
+    {Page::Voice, "语音输入"},
+    {Page::ScreenKeyboard, "屏幕键盘"},
+    {Page::Handwriting, "手写识别板"},
+    {Page::Utility, "实用功能"},
+    {Page::Online, "AI 辅助"},
+    {Page::FloatingToolbar, "悬浮工具栏"},
+    {Page::Help, "帮助"},
+    {Page::About, "关于"},
     {Page::Feedback, "反馈"},
 };
 
@@ -77,9 +84,8 @@ const char *page_title(Page page)
 
 bool page_is_model_section(Page page)
 {
-    return page == Page::Appearance || page == Page::Input || page == Page::Helpcode ||
-           page == Page::Shortcuts || page == Page::Dictionary || page == Page::Voice || page == Page::Utility ||
-           page == Page::Online;
+    return page == Page::Appearance || page == Page::Input || page == Page::Helpcode || page == Page::Shortcuts ||
+           page == Page::Dictionary || page == Page::Voice || page == Page::Utility || page == Page::Online;
 }
 
 SettingsUiSection model_section_for_page(Page page)
@@ -109,65 +115,123 @@ SettingsUiSection model_section_for_page(Page page)
 
 const char *choice_label(const std::string &value)
 {
-    if (value == "ime") return "中文输入";
-    if (value == "direct") return "直接输入";
-    if (value == "quanpin") return "全拼";
-    if (value == "shuangpin") return "双拼";
-    if (value == "wubi") return "五笔";
-    if (value == "japanese") return "日文罗马字";
-    if (value == "chinese") return "中文";
-    if (value == "english") return "英文";
-    if (value == "half") return "半角";
-    if (value == "full") return "全角";
-    if (value == "raw") return "原始拼音";
-    if (value == "pinyin") return "分词拼音";
-    if (value == "hidden") return "隐藏";
-    if (value == "lantian") return "蓝天";
-    if (value == "ziranma") return "自然码";
-    if (value == "shouyou2_0") return "搜狗双拼 2.0";
-    if (value == "shouyouplus") return "搜狗双拼 Plus";
-    if (value == "xiaohe") return "小鹤";
-    if (value == "disabled") return "关闭";
-    if (value == "pin") return "固定";
-    if (value == "halve") return "减半";
-    if (value == "linear") return "线性";
-    if (value == "promote") return "提升";
-    if (value == "deepseek") return "DeepSeek";
-    if (value == "openai") return "OpenAI";
-    if (value == "siliconflow") return "SiliconFlow";
-    if (value == "groq") return "Groq";
-    if (value == "custom") return "自定义";
-    if (value == "local") return "本地";
-    if (value == "deeplx") return "DeepLX";
+    if (value == "ime")
+        return "中文输入";
+    if (value == "direct")
+        return "直接输入";
+    if (value == "quanpin")
+        return "全拼";
+    if (value == "shuangpin")
+        return "双拼";
+    if (value == "wubi")
+        return "五笔";
+    if (value == "japanese")
+        return "日文罗马字";
+    if (value == "chinese")
+        return "中文";
+    if (value == "english")
+        return "英文";
+    if (value == "half")
+        return "半角";
+    if (value == "full")
+        return "全角";
+    if (value == "raw")
+        return "原始拼音";
+    if (value == "pinyin")
+        return "分词拼音";
+    if (value == "hidden")
+        return "隐藏";
+    if (value == "lantian")
+        return "蓝天";
+    if (value == "ziranma")
+        return "自然码";
+    if (value == "shouyou2_0")
+        return "搜狗双拼 2.0";
+    if (value == "shouyouplus")
+        return "搜狗双拼 Plus";
+    if (value == "xiaohe")
+        return "小鹤";
+    if (value == "disabled")
+        return "关闭";
+    if (value == "pin")
+        return "固定";
+    if (value == "halve")
+        return "减半";
+    if (value == "linear")
+        return "线性";
+    if (value == "promote")
+        return "提升";
+    if (value == "deepseek")
+        return "DeepSeek";
+    if (value == "openai")
+        return "OpenAI";
+    if (value == "siliconflow")
+        return "SiliconFlow";
+    if (value == "groq")
+        return "Groq";
+    if (value == "custom")
+        return "自定义";
+    if (value == "local")
+        return "本地";
+    if (value == "deeplx")
+        return "DeepLX";
     return value.c_str();
 }
 
 const char *row_label(const SettingsUiRow &row)
 {
     static const std::unordered_map<std::string, const char *> labels = {
-        {"mode", "输入模式"}, {"scheme", "输入方案"}, {"page-size", "每页候选数"},
-        {"punctuation", "标点模式"}, {"width", "字符宽度"}, {"preedit-style", "预编辑样式"},
-        {"comma-period-paging", "逗号/句号翻页"}, {"word-to-character", "词转单字"},
-        {"bracket-paging", "方括号翻页"}, {"smart-punctuation", "智能标点"},
-        {"smart-punctuation-repeat-to-chinese", "重复标点切换中文"}, {"paired-punctuation", "成对标点"},
-        {"quanpin-helpcode", "全拼辅助码"}, {"quanpin-helpcode-schema", "全拼辅助码方案"},
-        {"shuangpin-helpcode", "双拼辅助码"}, {"shuangpin-helpcode-schema", "双拼辅助码方案"},
-        {"frequency-adjustment", "调频方式"}, {"frequency-trigger-count", "调频触发次数"},
-        {"frequency-linear-step", "线性调频步长"}, {"unicode-mode", "Unicode 模式"},
-        {"super-jianpin-mode", "超级简拼模式"}, {"temporary-english-mode", "临时英文模式"},
-        {"temporary-japanese-mode", "临时日文模式"}, {"mixed-english-candidates", "混合英文候选"},
-        {"mixed-english-minimum-prefix", "英文最短前缀"}, {"mixed-emoji-candidates", "混合 Emoji 候选"},
-        {"mixed-kaomoji-candidates", "混合颜文字候选"}, {"clipboard-history", "剪贴板历史"},
-        {"floating-toolbar", "悬浮工具栏"}, {"voice-enabled", "启用语音输入"},
-        {"voice-provider", "语音服务商"}, {"voice-endpoint", "语音服务地址"}, {"voice-model", "语音模型"},
-        {"voice-language", "语音语言"}, {"voice-polish-enabled", "启用语音文本润色"},
-        {"voice-polish-endpoint", "润色服务地址"}, {"voice-polish-model", "润色模型"},
-        {"voice-polish-prompt", "润色提示词"}, {"cloud-enabled", "云候选"},
-        {"connect-timeout-ms", "连接超时（毫秒）"}, {"total-timeout-ms", "总超时（毫秒）"},
-        {"ai-enabled", "AI 联想"}, {"ai-provider", "AI 服务商"}, {"ai-endpoint", "AI 服务地址"},
-        {"ai-model", "AI 模型"}, {"ai-prompt", "AI 提示词"}, {"ai-candidate-limit", "AI 候选数"},
-        {"translation-enabled", "候选翻译"}, {"translation-provider", "翻译服务商"},
-        {"translation-target-language", "翻译目标语言"}, {"translation-endpoint", "翻译服务地址"},
+        {"mode", "输入模式"},
+        {"scheme", "输入方案"},
+        {"page-size", "每页候选数"},
+        {"punctuation", "标点模式"},
+        {"width", "字符宽度"},
+        {"preedit-style", "预编辑样式"},
+        {"comma-period-paging", "逗号/句号翻页"},
+        {"word-to-character", "词转单字"},
+        {"bracket-paging", "方括号翻页"},
+        {"smart-punctuation", "智能标点"},
+        {"smart-punctuation-repeat-to-chinese", "重复标点切换中文"},
+        {"paired-punctuation", "成对标点"},
+        {"quanpin-helpcode", "全拼辅助码"},
+        {"quanpin-helpcode-schema", "全拼辅助码方案"},
+        {"shuangpin-helpcode", "双拼辅助码"},
+        {"shuangpin-helpcode-schema", "双拼辅助码方案"},
+        {"frequency-adjustment", "调频方式"},
+        {"frequency-trigger-count", "调频触发次数"},
+        {"frequency-linear-step", "线性调频步长"},
+        {"unicode-mode", "Unicode 模式"},
+        {"super-jianpin-mode", "超级简拼模式"},
+        {"temporary-english-mode", "临时英文模式"},
+        {"temporary-japanese-mode", "临时日文模式"},
+        {"mixed-english-candidates", "混合英文候选"},
+        {"mixed-english-minimum-prefix", "英文最短前缀"},
+        {"mixed-emoji-candidates", "混合 Emoji 候选"},
+        {"mixed-kaomoji-candidates", "混合颜文字候选"},
+        {"clipboard-history", "剪贴板历史"},
+        {"floating-toolbar", "悬浮工具栏"},
+        {"voice-enabled", "启用语音输入"},
+        {"voice-provider", "语音服务商"},
+        {"voice-endpoint", "语音服务地址"},
+        {"voice-model", "语音模型"},
+        {"voice-language", "语音语言"},
+        {"voice-polish-enabled", "启用语音文本润色"},
+        {"voice-polish-endpoint", "润色服务地址"},
+        {"voice-polish-model", "润色模型"},
+        {"voice-polish-prompt", "润色提示词"},
+        {"cloud-enabled", "云候选"},
+        {"connect-timeout-ms", "连接超时（毫秒）"},
+        {"total-timeout-ms", "总超时（毫秒）"},
+        {"ai-enabled", "AI 联想"},
+        {"ai-provider", "AI 服务商"},
+        {"ai-endpoint", "AI 服务地址"},
+        {"ai-model", "AI 模型"},
+        {"ai-prompt", "AI 提示词"},
+        {"ai-candidate-limit", "AI 候选数"},
+        {"translation-enabled", "候选翻译"},
+        {"translation-provider", "翻译服务商"},
+        {"translation-target-language", "翻译目标语言"},
+        {"translation-endpoint", "翻译服务地址"},
     };
     const auto found = labels.find(row.id);
     return found == labels.end() ? row.label.c_str() : found->second;
@@ -177,14 +241,12 @@ GtkWidget *make_editor(const SettingsUiRow &row)
 {
     switch (row.control)
     {
-    case SettingsControl::Boolean:
-    {
+    case SettingsControl::Boolean: {
         GtkWidget *button = gtk_check_button_new();
         gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(button), row.value == "true");
         return button;
     }
-    case SettingsControl::Choice:
-    {
+    case SettingsControl::Choice: {
         GtkWidget *combo = gtk_combo_box_text_new();
         for (const auto &choice : row.choices)
         {
@@ -193,15 +255,34 @@ GtkWidget *make_editor(const SettingsUiRow &row)
         gtk_combo_box_set_active_id(GTK_COMBO_BOX(combo), row.value.c_str());
         return combo;
     }
-    case SettingsControl::Integer:
-    {
+    case SettingsControl::Integer: {
         double minimum = 1;
         double maximum = 10;
-        if (row.id == "page-size") { minimum = 3; maximum = 9; }
-        else if (row.id == "connect-timeout-ms") { minimum = 100; maximum = 10000; }
-        else if (row.id == "total-timeout-ms") { minimum = 500; maximum = 30000; }
-        else if (row.id == "mixed-english-minimum-prefix") { minimum = 1; maximum = 8; }
-        else if (row.id == "ai-candidate-limit") { minimum = 1; maximum = 10; }
+        if (row.id == "page-size")
+        {
+            minimum = 3;
+            maximum = 9;
+        }
+        else if (row.id == "connect-timeout-ms")
+        {
+            minimum = 100;
+            maximum = 10000;
+        }
+        else if (row.id == "total-timeout-ms")
+        {
+            minimum = 500;
+            maximum = 30000;
+        }
+        else if (row.id == "mixed-english-minimum-prefix")
+        {
+            minimum = 1;
+            maximum = 8;
+        }
+        else if (row.id == "ai-candidate-limit")
+        {
+            minimum = 1;
+            maximum = 10;
+        }
         GtkWidget *spin = gtk_spin_button_new_with_range(minimum, maximum, 1);
         gtk_spin_button_set_value(GTK_SPIN_BUTTON(spin), std::strtod(row.value.c_str(), nullptr));
         return spin;
@@ -218,8 +299,7 @@ std::string editor_value(const SettingsUiRow &row, GtkWidget *editor)
     {
     case SettingsControl::Boolean:
         return gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(editor)) ? "true" : "false";
-    case SettingsControl::Choice:
-    {
+    case SettingsControl::Choice: {
         const gchar *value = gtk_combo_box_get_active_id(GTK_COMBO_BOX(editor));
         return value == nullptr ? std::string{} : value;
     }
@@ -241,7 +321,8 @@ void show_message(GtkWindow *parent, GtkMessageType type, const std::string &mes
 void clear_container(GtkWidget *container)
 {
     GList *children = gtk_container_get_children(GTK_CONTAINER(container));
-    for (GList *node = children; node != nullptr; node = node->next) gtk_widget_destroy(GTK_WIDGET(node->data));
+    for (GList *node = children; node != nullptr; node = node->next)
+        gtk_widget_destroy(GTK_WIDGET(node->data));
     g_list_free(children);
 }
 
@@ -309,7 +390,8 @@ void build_model_page(AppState &state, GtkWidget *container)
 
     if (state.page == Page::Appearance)
     {
-        gtk_box_pack_start(GTK_BOX(box), make_card("候选窗口预览", "ni'mf\n▌1 你们   2 你   3 泥   4 呢   5 拟"), FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(box), make_card("候选窗口预览", "ni'mf\n▌1 你们   2 你   3 泥   4 呢   5 拟"), FALSE,
+                           FALSE, 0);
     }
 
     GtkWidget *grid = gtk_grid_new();
@@ -318,7 +400,8 @@ void build_model_page(AppState &state, GtkWidget *container)
     gint row_index = 0;
     for (const auto &row : state.model.rows())
     {
-        if (settings_section_for_id(row.id) != section) continue;
+        if (settings_section_for_id(row.id) != section)
+            continue;
         GtkWidget *label = gtk_label_new(row_label(row));
         gtk_label_set_xalign(GTK_LABEL(label), 0.0F);
         GtkWidget *editor = make_editor(row);
@@ -362,16 +445,21 @@ void build_static_page(AppState &state, GtkWidget *container)
         gtk_box_pack_start(GTK_BOX(box), make_card("手写识别板", "使用桌面工具打开手写识别板。"), FALSE, FALSE, 0);
         break;
     case Page::Utility:
-        gtk_box_pack_start(GTK_BOX(box), make_card("实用功能", "剪贴板历史等桌面工具可在独立窗口中使用。"), FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(box), make_card("实用功能", "剪贴板历史等桌面工具可在独立窗口中使用。"), FALSE,
+                           FALSE, 0);
         break;
     case Page::FloatingToolbar:
-        gtk_box_pack_start(GTK_BOX(box), make_card("悬浮工具栏", "打开置顶悬浮工具栏，快速切换输入状态。"), FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(box), make_card("悬浮工具栏", "打开置顶悬浮工具栏，快速切换输入状态。"), FALSE,
+                           FALSE, 0);
         break;
     case Page::Help:
-        gtk_box_pack_start(GTK_BOX(box), make_card("帮助", "在输入法菜单中切换方案；候选窗口支持数字选择和翻页。"), FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(box), make_card("帮助", "在输入法菜单中切换方案；候选窗口支持数字选择和翻页。"),
+                           FALSE, FALSE, 0);
         break;
     case Page::About:
-        gtk_box_pack_start(GTK_BOX(box), make_card("关于水杉 IME", "水杉 IME Linux：全拼、双拼、五笔、日文及在线候选支持。"), FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(box),
+                           make_card("关于水杉 IME", "水杉 IME Linux：全拼、双拼、五笔、日文及在线候选支持。"), FALSE,
+                           FALSE, 0);
         break;
     case Page::Feedback:
         gtk_box_pack_start(GTK_BOX(box), make_card("反馈", "欢迎通过项目仓库提交问题和功能建议。"), FALSE, FALSE, 0);
@@ -396,12 +484,15 @@ void build_static_page(AppState &state, GtkWidget *container)
 
 void show_page(AppState &state, Page page)
 {
-    if (!flush_editors(state)) return;
+    if (!flush_editors(state))
+        return;
     state.page = page;
     state.editors.clear();
     clear_container(state.content);
-    if (page_is_model_section(page)) build_model_page(state, state.content);
-    else build_static_page(state, state.content);
+    if (page_is_model_section(page))
+        build_model_page(state, state.content);
+    else
+        build_static_page(state, state.content);
     gtk_widget_show_all(state.content);
 }
 
@@ -414,7 +505,8 @@ void sidebar_clicked(GtkButton *button, gpointer data)
 void save_clicked(GtkButton *, gpointer data)
 {
     auto &state = *static_cast<AppState *>(data);
-    if (!flush_editors(state)) return;
+    if (!flush_editors(state))
+        return;
     std::string error;
     if (!state.store.save(state.model.settings(), state.secrets, &error))
     {
@@ -427,15 +519,19 @@ void save_clicked(GtkButton *, gpointer data)
 void reset_clicked(GtkButton *, gpointer data)
 {
     auto &state = *static_cast<AppState *>(data);
-    if (!flush_editors(state)) return;
+    if (!flush_editors(state))
+        return;
     std::string warning;
     state.model = SettingsUiModel(state.store.load(state.secrets, &warning));
     state.editors.clear();
     clear_container(state.content);
-    if (page_is_model_section(state.page)) build_model_page(state, state.content);
-    else build_static_page(state, state.content);
+    if (page_is_model_section(state.page))
+        build_model_page(state, state.content);
+    else
+        build_static_page(state, state.content);
     gtk_widget_show_all(state.content);
-    if (!warning.empty()) show_message(GTK_WINDOW(state.window), GTK_MESSAGE_WARNING, warning);
+    if (!warning.empty())
+        show_message(GTK_WINDOW(state.window), GTK_MESSAGE_WARNING, warning);
 }
 
 GtkWidget *build_window(AppState &state)
@@ -501,7 +597,8 @@ int check_settings()
 
 int main(int argc, char **argv)
 {
-    if (argc > 1 && std::string(argv[1]) == "--check") return check_settings();
+    if (argc > 1 && std::string(argv[1]) == "--check")
+        return check_settings();
     if (!gtk_init_check(&argc, &argv))
     {
         g_printerr("Unable to initialize GTK; use --check for a headless configuration check.\n");
@@ -512,7 +609,8 @@ int main(int argc, char **argv)
     state.model = SettingsUiModel(state.store.load(state.secrets, &warning));
     GtkWidget *window = build_window(state);
     gtk_widget_show_all(window);
-    if (!warning.empty()) show_message(GTK_WINDOW(window), GTK_MESSAGE_WARNING, warning);
+    if (!warning.empty())
+        show_message(GTK_WINDOW(window), GTK_MESSAGE_WARNING, warning);
     gtk_main();
     return 0;
 }

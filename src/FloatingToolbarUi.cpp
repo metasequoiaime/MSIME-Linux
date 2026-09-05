@@ -14,7 +14,8 @@ void launch(const char *program)
 {
     gchar *argv[] = {const_cast<gchar *>(program), nullptr};
     GError *error = nullptr;
-    if (!g_spawn_async(nullptr, argv, nullptr, G_SPAWN_SEARCH_PATH, nullptr, nullptr, nullptr, &error) && error != nullptr)
+    if (!g_spawn_async(nullptr, argv, nullptr, G_SPAWN_SEARCH_PATH, nullptr, nullptr, nullptr, &error) &&
+        error != nullptr)
     {
         g_warning("Unable to launch %s: %s", program, error->message);
         g_error_free(error);
@@ -36,7 +37,8 @@ void launch_voice(GtkButton *, gpointer)
     gchar *argv[] = {const_cast<gchar *>("metasequoia-ime-voice"), const_cast<gchar *>("--record"),
                      const_cast<gchar *>("5"), nullptr};
     GError *error = nullptr;
-    if (!g_spawn_async(nullptr, argv, nullptr, G_SPAWN_SEARCH_PATH, nullptr, nullptr, nullptr, &error) && error != nullptr)
+    if (!g_spawn_async(nullptr, argv, nullptr, G_SPAWN_SEARCH_PATH, nullptr, nullptr, nullptr, &error) &&
+        error != nullptr)
     {
         g_warning("Unable to start voice recording: %s", error->message);
         g_error_free(error);

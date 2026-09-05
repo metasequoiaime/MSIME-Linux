@@ -42,8 +42,7 @@ int main()
     require(!toggle_tracker.observe(IBUS_Shift_L, 0), "Shift auto-repeat toggled mode.");
     require(toggle_tracker.observe(IBUS_Shift_L, IBUS_RELEASE_MASK | IBUS_SHIFT_MASK),
             "A bare Shift tap did not toggle mode on release.");
-    require(!toggle_tracker.observe(IBUS_Shift_L, IBUS_RELEASE_MASK),
-            "A repeated Shift release toggled mode twice.");
+    require(!toggle_tracker.observe(IBUS_Shift_L, IBUS_RELEASE_MASK), "A repeated Shift release toggled mode twice.");
 
     require(!toggle_tracker.observe(IBUS_Shift_R, 0), "Right Shift toggled mode on key-down.");
     require(!toggle_tracker.observe(IBUS_A, IBUS_SHIFT_MASK), "Shift plus a character toggled mode.");
@@ -118,8 +117,8 @@ int main()
             "An uppercase composition character mapped incorrectly.");
     const auto caps_lock_upper = translate_ibus_key(IBUS_U, IBUS_LOCK_MASK);
     require(caps_lock_upper.disposition == IBusKeyDisposition::Dispatch &&
-                caps_lock_upper.event.key == FrontendKey::Character &&
-                caps_lock_upper.event.character == 'U' && !caps_lock_upper.event.shift_only,
+                caps_lock_upper.event.key == FrontendKey::Character && caps_lock_upper.event.character == 'U' &&
+                !caps_lock_upper.event.shift_only,
             "Caps Lock was mistaken for the Shift-only local-mode modifier.");
     require_punctuation(IBUS_apostrophe, 0, '\'', "Apostrophe did not reach punctuation arbitration.");
     require_punctuation(IBUS_comma, 0, ',', "Comma did not reach punctuation arbitration.");
@@ -148,8 +147,8 @@ int main()
                 shifted_digit.event.shift_only,
             "A Shift-only digit lost the Unicode candidate-selection modifier.");
     const auto keypad_digit = translate_ibus_key(IBUS_KP_1, 0);
-    require(keypad_digit.disposition == IBusKeyDisposition::Dispatch &&
-                keypad_digit.event.key == FrontendKey::Digit && keypad_digit.event.digit == 1,
+    require(keypad_digit.disposition == IBusKeyDisposition::Dispatch && keypad_digit.event.key == FrontendKey::Digit &&
+                keypad_digit.event.digit == 1,
             "A keypad digit mapped incorrectly.");
     const auto zero = translate_ibus_key(IBUS_0, 0);
     require(zero.disposition == IBusKeyDisposition::Dispatch && zero.event.key == FrontendKey::Digit &&

@@ -18,11 +18,11 @@
 
 namespace
 {
+using metasequoia::linux_ime::CharacterWidth;
+using metasequoia::linux_ime::ControllerResult;
 using metasequoia::linux_ime::FrontendKey;
 using metasequoia::linux_ime::IBusKeyDisposition;
 using metasequoia::linux_ime::IBusModeToggleTracker;
-using metasequoia::linux_ime::CharacterWidth;
-using metasequoia::linux_ime::ControllerResult;
 using metasequoia::linux_ime::InputController;
 using metasequoia::linux_ime::InputMode;
 using metasequoia::linux_ime::InputOptions;
@@ -34,8 +34,8 @@ using metasequoia::linux_ime::online::AiSuggestionProvider;
 using metasequoia::linux_ime::online::CurlHttpTransport;
 using metasequoia::linux_ime::online::GoogleCloudProvider;
 using metasequoia::linux_ime::online::OnlineCandidateService;
-using metasequoia::linux_ime::online::TranslationProvider;
 using metasequoia::linux_ime::online::TranslationBackend;
+using metasequoia::linux_ime::online::TranslationProvider;
 using metasequoia::linux_ime::online::TranslationService;
 
 struct _MetasequoiaEngine
@@ -115,34 +115,32 @@ void initialize_properties(MetasequoiaEngine *engine)
     engine->properties = ibus_prop_list_new();
     g_object_ref_sink(engine->properties);
 
-    engine->mode_property = create_property("InputMode", PROP_TYPE_TOGGLE, "中", "切换中文/英文（Shift）",
-                                            PROP_STATE_CHECKED);
+    engine->mode_property =
+        create_property("InputMode", PROP_TYPE_TOGGLE, "中", "切换中文/英文（Shift）", PROP_STATE_CHECKED);
     append_property(engine->properties, engine->mode_property);
 
-    engine->punctuation_property = create_property("Punctuation", PROP_TYPE_TOGGLE, "中标",
-                                                   "切换中文/英文标点（Ctrl+.）", PROP_STATE_CHECKED);
+    engine->punctuation_property =
+        create_property("Punctuation", PROP_TYPE_TOGGLE, "中标", "切换中文/英文标点（Ctrl+.）", PROP_STATE_CHECKED);
     append_property(engine->properties, engine->punctuation_property);
 
-    engine->character_width_property = create_property("CharacterWidth", PROP_TYPE_TOGGLE, "半",
-                                                       "切换全角/半角（Ctrl+Shift+Space）");
+    engine->character_width_property =
+        create_property("CharacterWidth", PROP_TYPE_TOGGLE, "半", "切换全角/半角（Ctrl+Shift+Space）");
     append_property(engine->properties, engine->character_width_property);
 
     IBusPropList *schemes = ibus_prop_list_new();
     g_object_ref_sink(schemes);
     engine->quanpin_property =
         create_property("Scheme.Quanpin", PROP_TYPE_RADIO, "全拼", "使用全拼", PROP_STATE_CHECKED);
-    engine->shuangpin_property =
-        create_property("Scheme.Shuangpin", PROP_TYPE_RADIO, "双拼", "使用双拼");
+    engine->shuangpin_property = create_property("Scheme.Shuangpin", PROP_TYPE_RADIO, "双拼", "使用双拼");
     engine->wubi_property = create_property("Scheme.Wubi", PROP_TYPE_RADIO, "五笔", "使用五笔");
-    engine->japanese_property =
-        create_property("Scheme.Japanese", PROP_TYPE_RADIO, "日本語", "使用日语罗马字输入");
+    engine->japanese_property = create_property("Scheme.Japanese", PROP_TYPE_RADIO, "日本語", "使用日语罗马字输入");
     append_property(schemes, engine->quanpin_property);
     append_property(schemes, engine->shuangpin_property);
     append_property(schemes, engine->wubi_property);
     append_property(schemes, engine->japanese_property);
 
-    engine->scheme_menu = create_property("Scheme", PROP_TYPE_MENU, "全拼", "切换输入方案",
-                                          PROP_STATE_UNCHECKED, schemes);
+    engine->scheme_menu =
+        create_property("Scheme", PROP_TYPE_MENU, "全拼", "切换输入方案", PROP_STATE_UNCHECKED, schemes);
     g_object_unref(schemes);
     append_property(engine->properties, engine->scheme_menu);
 }
@@ -163,8 +161,7 @@ void update_property_values(MetasequoiaEngine *engine)
     const bool full_width = engine->controller->character_width() == CharacterWidth::Full;
     ibus_property_set_label(engine->character_width_property, text(full_width ? "全" : "半"));
     ibus_property_set_symbol(engine->character_width_property, text(full_width ? "全" : "半"));
-    ibus_property_set_state(engine->character_width_property,
-                            full_width ? PROP_STATE_CHECKED : PROP_STATE_UNCHECKED);
+    ibus_property_set_state(engine->character_width_property, full_width ? PROP_STATE_CHECKED : PROP_STATE_UNCHECKED);
 
     const SchemeType active_scheme = engine->controller->scheme();
     ibus_property_set_label(engine->scheme_menu, text(scheme_label(active_scheme)));
@@ -278,9 +275,9 @@ gboolean deliver_translation(gpointer user_data)
         engine->translation_glosses->clear();
         for (const auto &entry : delivery->results)
         {
-            const auto found = std::find_if(engine->controller->candidates().begin(),
-                                            engine->controller->candidates().end(),
-                                            [&](const WordItem &candidate) { return candidate.word == entry.first; });
+            const auto found =
+                std::find_if(engine->controller->candidates().begin(), engine->controller->candidates().end(),
+                             [&](const WordItem &candidate) { return candidate.word == entry.first; });
             if (found != engine->controller->candidates().end())
             {
                 (*engine->translation_glosses)[entry.first] = entry.second;
@@ -314,8 +311,7 @@ void save_settings(MetasequoiaEngine *engine)
     settings.word_to_character = engine->controller->word_to_character();
     settings.bracket_paging = engine->controller->bracket_paging();
     settings.smart_punctuation = engine->controller->smart_punctuation();
-    settings.smart_punctuation_repeat_to_chinese =
-        engine->controller->smart_punctuation_repeat_to_chinese();
+    settings.smart_punctuation_repeat_to_chinese = engine->controller->smart_punctuation_repeat_to_chinese();
     settings.paired_punctuation = engine->controller->paired_punctuation();
     settings.preedit_style = engine->controller->preedit_style();
     settings.quanpin_helpcode_enabled = engine->controller->quanpin_helpcode_enabled();
@@ -366,8 +362,7 @@ void update_lookup_table(MetasequoiaEngine *engine)
 
     if (!engine->controller->candidates().empty())
     {
-        (void)ibus_lookup_table_set_cursor_pos(
-            table, static_cast<guint>(engine->controller->highlighted_candidate()));
+        (void)ibus_lookup_table_set_cursor_pos(table, static_cast<guint>(engine->controller->highlighted_candidate()));
     }
 
     const gboolean visible = engine->controller->has_composition() && !engine->controller->candidates().empty();
@@ -394,10 +389,10 @@ void refresh_translation(MetasequoiaEngine *engine)
     metasequoia::linux_ime::online::TranslationRequest request;
     request.generation = engine->controller->online_generation();
     request.config.enabled = true;
-    request.config.backend = engine->online_settings->translation_provider ==
-                                     metasequoia::linux_ime::TranslationProvider::DeepLX
-                                 ? TranslationBackend::DeepLX
-                                 : TranslationBackend::Local;
+    request.config.backend =
+        engine->online_settings->translation_provider == metasequoia::linux_ime::TranslationProvider::DeepLX
+            ? TranslationBackend::DeepLX
+            : TranslationBackend::Local;
     request.config.endpoint = engine->online_settings->translation_endpoint;
     request.config.token = engine->online_settings->translation_token;
     request.config.target_language = engine->online_settings->translation_target_language;
@@ -421,8 +416,8 @@ void apply_result(MetasequoiaEngine *engine, const ControllerResult &result)
     }
     if (result.delete_before > 0)
     {
-        const auto count = static_cast<guint>(std::min<std::size_t>(
-            result.delete_before, static_cast<std::size_t>(std::numeric_limits<gint>::max())));
+        const auto count = static_cast<guint>(
+            std::min<std::size_t>(result.delete_before, static_cast<std::size_t>(std::numeric_limits<gint>::max())));
         ibus_engine_delete_surrounding_text(IBUS_ENGINE(engine), -static_cast<gint>(count), count);
     }
     if (result.commit.has_value())
@@ -469,8 +464,8 @@ std::optional<char32_t> preceding_character(IBusEngine *engine)
     {
         return std::nullopt;
     }
-    const gunichar value = g_utf8_get_char_validated(
-        previous_pointer, static_cast<gssize>(cursor_pointer - previous_pointer));
+    const gunichar value =
+        g_utf8_get_char_validated(previous_pointer, static_cast<gssize>(cursor_pointer - previous_pointer));
     if (value == static_cast<gunichar>(-1) || value == static_cast<gunichar>(-2))
     {
         return std::nullopt;
@@ -623,20 +618,18 @@ void property_activate(IBusEngine *ibus_engine, const gchar *property_name, guin
     ControllerResult result;
     if (std::strcmp(property_name, "InputMode") == 0)
     {
-        result = engine->controller->set_mode(property_state == PROP_STATE_CHECKED ? InputMode::Ime
-                                                                                   : InputMode::Direct);
+        result =
+            engine->controller->set_mode(property_state == PROP_STATE_CHECKED ? InputMode::Ime : InputMode::Direct);
     }
     else if (std::strcmp(property_name, "Punctuation") == 0)
     {
-        result = engine->controller->set_punctuation_mode(property_state == PROP_STATE_CHECKED
-                                                              ? PunctuationMode::Chinese
-                                                              : PunctuationMode::English);
+        result = engine->controller->set_punctuation_mode(
+            property_state == PROP_STATE_CHECKED ? PunctuationMode::Chinese : PunctuationMode::English);
     }
     else if (std::strcmp(property_name, "CharacterWidth") == 0)
     {
-        result = engine->controller->set_character_width(property_state == PROP_STATE_CHECKED
-                                                             ? CharacterWidth::Full
-                                                             : CharacterWidth::Half);
+        result = engine->controller->set_character_width(property_state == PROP_STATE_CHECKED ? CharacterWidth::Full
+                                                                                              : CharacterWidth::Half);
     }
     else if (property_state == PROP_STATE_CHECKED && std::strcmp(property_name, "Scheme.Quanpin") == 0)
     {
@@ -766,8 +759,7 @@ void metasequoia_engine_init(MetasequoiaEngine *engine)
     }
     engine->online_service = new OnlineCandidateService(
         cloud_provider,
-        [engine](const metasequoia::linux_ime::OnlineRequest &request, std::string candidate,
-                 CandidateSource source) {
+        [engine](const metasequoia::linux_ime::OnlineRequest &request, std::string candidate, CandidateSource source) {
             queue_online_result(engine, request, std::move(candidate), source);
         },
         std::chrono::milliseconds(500), ai_provider);

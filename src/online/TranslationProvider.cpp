@@ -47,9 +47,8 @@ bool valid_token(std::string_view token)
 std::string upper_language(std::string_view language)
 {
     std::string result(language);
-    std::transform(result.begin(), result.end(), result.begin(), [](unsigned char value) {
-        return static_cast<char>(std::toupper(value));
-    });
+    std::transform(result.begin(), result.end(), result.begin(),
+                   [](unsigned char value) { return static_cast<char>(std::toupper(value)); });
     return result;
 }
 
@@ -93,8 +92,7 @@ std::optional<std::string> TranslationProvider::lookup(std::string_view candidat
                                                        const CancellationCheck &cancelled,
                                                        TranslationBackend backend) const
 {
-    if (candidate.empty() || candidate.size() > 256 || target_language.empty() ||
-        (cancelled && cancelled()))
+    if (candidate.empty() || candidate.size() > 256 || target_language.empty() || (cancelled && cancelled()))
     {
         return std::nullopt;
     }
@@ -298,7 +296,10 @@ void TranslationService::worker_loop()
     struct Marker
     {
         const TranslationService *previous;
-        ~Marker() { active_translation_service = previous; }
+        ~Marker()
+        {
+            active_translation_service = previous;
+        }
     } marker{active_translation_service};
     active_translation_service = this;
 
@@ -313,9 +314,8 @@ void TranslationService::worker_loop()
         }
         observed_token = state_->token;
         auto deadline = state_->last_update + std::chrono::milliseconds(500);
-        while (state_->changed.wait_until(lock, deadline, [&] {
-                   return state_->stopping || state_->token != observed_token;
-               }))
+        while (state_->changed.wait_until(lock, deadline,
+                                          [&] { return state_->stopping || state_->token != observed_token; }))
         {
             if (state_->stopping)
             {
@@ -342,9 +342,8 @@ void TranslationService::worker_loop()
             {
                 break;
             }
-            const auto gloss = provider_->lookup(candidate, request->config.target_language,
-                                                 request->config.endpoint, request->config.token, cancelled,
-                                                 request->config.backend);
+            const auto gloss = provider_->lookup(candidate, request->config.target_language, request->config.endpoint,
+                                                 request->config.token, cancelled, request->config.backend);
             if (gloss.has_value())
             {
                 results.emplace_back(candidate, *gloss);

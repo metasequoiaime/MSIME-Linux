@@ -15,20 +15,19 @@ constexpr std::size_t kMaximumSecretBytes = 4096;
 constexpr const char *kUnavailableDiagnostic = "Credential service is unavailable; the affected provider was disabled.";
 constexpr const char *kInvalidDiagnostic = "Credential settings were invalid; the affected provider was disabled.";
 
-const SecretSchema kCredentialSchema = {
-    "org.metasequoiaime.OnlineCredential",
-    SECRET_SCHEMA_NONE,
-    {{"kind", SECRET_SCHEMA_ATTRIBUTE_STRING},
-     {"provider", SECRET_SCHEMA_ATTRIBUTE_STRING},
-     {nullptr, SECRET_SCHEMA_ATTRIBUTE_STRING}},
-    0,
-    nullptr,
-    nullptr,
-    nullptr,
-    nullptr,
-    nullptr,
-    nullptr,
-    nullptr};
+const SecretSchema kCredentialSchema = {"org.metasequoiaime.OnlineCredential",
+                                        SECRET_SCHEMA_NONE,
+                                        {{"kind", SECRET_SCHEMA_ATTRIBUTE_STRING},
+                                         {"provider", SECRET_SCHEMA_ATTRIBUTE_STRING},
+                                         {nullptr, SECRET_SCHEMA_ATTRIBUTE_STRING}},
+                                        0,
+                                        nullptr,
+                                        nullptr,
+                                        nullptr,
+                                        nullptr,
+                                        nullptr,
+                                        nullptr,
+                                        nullptr};
 
 const char *kind_name(SecretKind kind)
 {
@@ -68,8 +67,7 @@ bool valid_provider(std::string_view provider)
 
 bool valid_secret(std::string_view secret)
 {
-    return !secret.empty() && secret.size() <= kMaximumSecretBytes &&
-           secret.find('\0') == std::string_view::npos &&
+    return !secret.empty() && secret.size() <= kMaximumSecretBytes && secret.find('\0') == std::string_view::npos &&
            g_utf8_validate(secret.data(), static_cast<gssize>(secret.size()), nullptr);
 }
 
@@ -100,8 +98,8 @@ SecretLookupResult LibsecretSecretStore::lookup(SecretKind kind, std::string_vie
 
     const std::string provider_value(provider);
     GError *error = nullptr;
-    gchar *password = secret_password_lookup_sync(&kCredentialSchema, nullptr, &error, "kind", kind_value,
-                                                  "provider", provider_value.c_str(), nullptr);
+    gchar *password = secret_password_lookup_sync(&kCredentialSchema, nullptr, &error, "kind", kind_value, "provider",
+                                                  provider_value.c_str(), nullptr);
     if (error != nullptr)
     {
         g_clear_error(&error);
@@ -136,9 +134,9 @@ bool LibsecretSecretStore::store(SecretKind kind, std::string_view provider, std
     const std::string provider_value(provider);
     const std::string secret_value(secret);
     GError *error = nullptr;
-    const gboolean stored = secret_password_store_sync(
-        &kCredentialSchema, collection_.c_str(), label, secret_value.c_str(), nullptr, &error, "kind", kind_value,
-        "provider", provider_value.c_str(), nullptr);
+    const gboolean stored =
+        secret_password_store_sync(&kCredentialSchema, collection_.c_str(), label, secret_value.c_str(), nullptr,
+                                   &error, "kind", kind_value, "provider", provider_value.c_str(), nullptr);
     if (!stored || error != nullptr)
     {
         g_clear_error(&error);

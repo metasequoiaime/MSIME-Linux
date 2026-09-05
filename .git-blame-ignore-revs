@@ -1,0 +1,6 @@
+# Commits listed here are pure reformatting and are skipped by git blame.
+# GitHub honours this file automatically. Locally, enable it once with:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# style: adopt the engine clang-format configuration
+6b5d2dd8128a223977a1423bd9ec2fc08e4ce8c5

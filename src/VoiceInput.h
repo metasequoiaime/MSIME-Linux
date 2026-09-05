@@ -35,8 +35,7 @@ class VoiceInputProvider
                                           const online::CancellationCheck &cancelled,
                                           std::string *error = nullptr) const;
     std::optional<std::string> polish(std::string_view text, const VoiceInputConfig &config,
-                                      const online::CancellationCheck &cancelled,
-                                      std::string *error = nullptr) const;
+                                      const online::CancellationCheck &cancelled, std::string *error = nullptr) const;
     static std::optional<std::string> parse_transcription(std::string_view response);
 
   private:
