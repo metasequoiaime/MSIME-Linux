@@ -10,7 +10,7 @@ MSIME-Dict now publishes msime.db, others.db, english.db and SHA256SUMS.txt as r
 take them from there. Windows already does (MSIME-Server and MSIME-Windows), which means all three
 platforms ship byte-identical dictionaries.
 
-The release tag no longer lives here and cannot be overridden from the command line. product-lock.json names it and records the SHA256 of every asset, so a retagged release or a replaced database fails the build instead of shipping: rewriting the upstream SHA256SUMS.txt along with the data does not help, because that file is verified against a committed digest too. Move to a new release with `python3 scripts/product_lock.py refresh --dictionary-tag dict-YYYY.MM.DD` and review the resulting diff.
+The release tag no longer lives here and cannot be overridden from the command line. product-lock.json names it and records the SHA256 of every asset, so a retagged release or a replaced database fails the build instead of shipping: rewriting the upstream SHA256SUMS.txt along with the data does not help, because that file is verified against a committed digest too. Move to a new release with `python3 scripts/product_lock.py refresh --dictionary-tag dict-vX.Y.Z` and review the resulting diff.
 
     python3 scripts/fetch_dictionary.py
 """
