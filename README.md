@@ -13,7 +13,7 @@ Linux 桌面工具包含一个 GTK 设置程序、一个剪贴板历史存储与
 Debian／Ubuntu：
 
 ```sh
-sudo apt install build-essential cmake pkg-config libibus-1.0-dev libboost-dev libfmt-dev libspdlog-dev libsqlite3-dev libcurl4-openssl-dev libsecret-1-dev libgtk-3-dev gnome-keyring python3 python3-gi python3-pypinyin gir1.2-ibus-1.0 ibus dbus-x11 iso-codes
+sudo apt install build-essential cmake pkg-config libibus-1.0-dev libboost-dev libfmt-dev libspdlog-dev libsqlite3-dev libcurl4-openssl-dev nlohmann-json3-dev libsecret-1-dev libgtk-3-dev gnome-keyring python3 python3-gi python3-pypinyin gir1.2-ibus-1.0 ibus dbus-x11 iso-codes
 ```
 
 若需要本地中文手写识别，还需安装 `tesseract-ocr` 与 `tesseract-ocr-chi-sim`。缺少它们时桌面工具仍可使用，并会在状态栏说明缺失的后端。
@@ -143,13 +143,17 @@ DEB 生成需要 `dpkg-dev` 和 `file`（CPack 用它解析二进制以生成 sh
 
 水杉输入法 Linux 版依据 GNU 通用公共许可证第 3 版分发，见 [LICENSE](LICENSE)。本仓库的每个二进制产物都静态链接了 [`MSIME-Engine`](https://github.com/metasequoiaime/MSIME-Engine) 提供的共享引擎，而该引擎是 GPLv3，因此构建与再分发都受同样的条款约束。
 
-被编入二进制的第三方代码（googlepinyinime-rev、utfcpp，以及以 header-only 方式使用的 fmt、spdlog 与 Boost 头文件部分）及其各自的许可全文见 [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt)，该文件随包安装到 `share/licenses/metasequoia-ime-linux/`。只做动态链接的系统库（IBus、GTK、SQLite、libcurl、libsecret、Boost.JSON）保留发行版各自的许可，本仓库不对其进行再分发；手写识别调用的 Tesseract 是外部进程，不参与链接。
+被编入二进制的第三方代码（googlepinyinime-rev、utfcpp，以及以 header-only 方式使用的 fmt、spdlog、nlohmann/json 与 Boost 头文件部分）及其各自的许可全文见 [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt)，该文件随包安装到 `share/licenses/metasequoia-ime-linux/`。只做动态链接的系统库（IBus、GTK、SQLite、libcurl、libsecret、Boost.JSON）保留发行版各自的许可，本仓库不对其进行再分发；手写识别调用的 Tesseract 是外部进程，不参与链接。
 
 ## 隐私与安全
 
 转换、候选学习、剪贴板历史与手写识别都在本地完成。云候选默认开启，会把所敲的拼写发送给 Google 的输入工具服务；AI 建议、DeepLX 翻译与语音转写均为选择性开启，数据发往用户自行配置的端点。完整清单与各自的关闭方式见 [PRIVACY.md](PRIVACY.md)。疑似漏洞请按 [SECURITY.md](SECURITY.md) 的方式私下上报，不要通过公开 issue。
 
 参与贡献请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
+### 公共语音模块
+
+语音转写的 multipart 请求与识别／润色结果解析共用 Engine `voice/` 公共实现。Linux 继续负责录音工具、HTTPS／令牌策略、网络取消及用户界面；现有 120 秒录音范围和 20 MiB 上传限制保留，不启用 Engine 的录音设备或 Whisper 依赖。
 
 ### 词库产品格式
 

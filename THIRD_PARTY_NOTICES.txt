@@ -21,6 +21,7 @@ Components compiled into the binaries
   fmt                     MIT           https://github.com/fmtlib/fmt
   spdlog                  MIT           https://github.com/gabime/spdlog
   Boost (header-only)     BSL-1.0       https://www.boost.org/
+  nlohmann/json           MIT           https://github.com/nlohmann/json
 
 fmt and spdlog are used in header-only mode (FMT_HEADER_ONLY and the spdlog
 header-only target), and utfcpp and the Boost parts in use are header-only, so
@@ -448,3 +449,33 @@ that provide them. They are listed only to make the runtime surface explicit.
 Tesseract OCR is not linked. The handwriting workspace runs the tesseract
 executable as a separate process when it is installed, and reports the missing
 backend when it is not.
+
+
+------------------------------------------------------------------------------
+nlohmann/json - MIT License
+------------------------------------------------------------------------------
+
+Engine public voice request/response codecs compile this header-only JSON library
+into the voice executable. The build uses the distribution development package.
+
+MIT License
+
+Copyright (c) 2013-2025 Niels Lohmann
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
