@@ -203,8 +203,9 @@ SettingsUiSection settings_section_for_id(const std::string &id)
     {
         return SettingsUiSection::Appearance;
     }
-    if (id == "mode" || id == "scheme" || id == "comma-period-paging" || id == "mixed-english-candidates" ||
-        id == "mixed-english-minimum-prefix" || id == "mixed-emoji-candidates" || id == "mixed-kaomoji-candidates")
+    if (id == "mode" || id == "default-mode" || id == "scheme" || id == "comma-period-paging" ||
+        id == "mixed-english-candidates" || id == "mixed-english-minimum-prefix" || id == "mixed-emoji-candidates" ||
+        id == "mixed-kaomoji-candidates")
     {
         return SettingsUiSection::Input;
     }
@@ -277,6 +278,8 @@ void SettingsUiModel::rebuild_rows()
 {
     rows_.clear();
     add(rows_, "mode", "Input mode", mode_value(settings_.mode), SettingsControl::Choice, {"ime", "direct"});
+    add(rows_, "default-mode", "Mode on activation", mode_value(settings_.default_mode), SettingsControl::Choice,
+        {"ime", "direct"});
     add(rows_, "scheme", "Input scheme", scheme_value(settings_.scheme), SettingsControl::Choice,
         {"quanpin", "shuangpin", "wubi", "japanese"});
     add(rows_, "page-size", "Candidates per page", std::to_string(settings_.page_size), SettingsControl::Integer);
@@ -394,6 +397,15 @@ bool SettingsUiModel::set(const std::string &id, const std::string &value, std::
             candidate.mode = InputMode::Ime;
         else if (value == "direct")
             candidate.mode = InputMode::Direct;
+        else
+            parsed = false;
+    }
+    else if (id == "default-mode")
+    {
+        if (value == "ime")
+            candidate.default_mode = InputMode::Ime;
+        else if (value == "direct")
+            candidate.default_mode = InputMode::Direct;
         else
             parsed = false;
     }

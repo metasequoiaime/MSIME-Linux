@@ -34,6 +34,9 @@ struct OnlineSettings
 struct InputSettings
 {
     InputMode mode = InputMode::Ime;
+    // The mode the engine enters when the input method is activated, matching the Windows
+    // default_ime_mode. `mode` above stays the running state within an activation.
+    InputMode default_mode = InputMode::Ime;
     SchemeType scheme = SchemeType::Quanpin;
     std::size_t page_size = 9;
     PunctuationMode punctuation_mode = PunctuationMode::Chinese;
