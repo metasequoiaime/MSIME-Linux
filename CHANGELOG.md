@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.7.0](https://github.com/metasequoiaime/MSIME-Linux/compare/v0.6.2...v0.7.0) (2026-09-05)
+
+
+### Features
+
+* **dictionary:** validate shared product formats and package provenance ([d3bc406](https://github.com/metasequoiaime/MSIME-Linux/commit/d3bc406516ed3e37f294b0c7da6e001405091f48))
+
+
+### Bug Fixes
+
+* **dictionary:** keep fetch_dictionary.py parsable on Python 3.11 ([c2aa79f](https://github.com/metasequoiaime/MSIME-Linux/commit/c2aa79faf87b79f4f71ed52df3a95865d986d715))
+
 ## [0.6.2](https://github.com/metasequoiaime/MSIME-Linux/compare/v0.6.1...v0.6.2) (2026-09-05)
 
 
