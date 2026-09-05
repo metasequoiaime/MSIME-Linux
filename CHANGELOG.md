@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.5.0](https://github.com/metasequoiaime/MSIME-Linux/compare/v0.4.3...v0.5.0) (2026-09-05)
+
+
+### Features
+
+* **dictionary:** take the dictionaries from an MSIME-Dict release ([46d380a](https://github.com/metasequoiaime/MSIME-Linux/commit/46d380a3fc77a33b83ec1c43339cf42c24d14019))
+* **dictionary:** take the dictionaries from an MSIME-Dict release ([ef4b15b](https://github.com/metasequoiaime/MSIME-Linux/commit/ef4b15b8b79b4d02d317c70c1cdeec6644e78ef9))
+* skip clipboard content a password manager marked as secret ([b7b1c6a](https://github.com/metasequoiaime/MSIME-Linux/commit/b7b1c6afe5f0b5b598bb2092b5c7448d5621b976))
+* skip clipboard content a password manager marked as secret ([acbefe3](https://github.com/metasequoiaime/MSIME-Linux/commit/acbefe3cf1a8aae6080e5246dafface2197ebeac))
+
+
+### Bug Fixes
+
+* **dictionary:** move the Dict pin off the revision with real personal data ([b69bfcf](https://github.com/metasequoiaime/MSIME-Linux/commit/b69bfcf654f7b799df522489ae0e71a2bb48d121))
+* download over plain HTTPS instead of the GitHub CLI ([61f4985](https://github.com/metasequoiaime/MSIME-Linux/commit/61f49855a8fcc2f3c4c21b0c4a287657d65b9435))
+
 ## [0.4.3](https://github.com/metasequoiaime/MSIME-Linux/compare/v0.4.2...v0.4.3) (2026-09-05)
 
 
