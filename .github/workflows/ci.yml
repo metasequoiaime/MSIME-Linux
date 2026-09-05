@@ -19,14 +19,27 @@ concurrency:
 
 jobs:
   linux:
-    name: Ubuntu IBus
-    runs-on: ubuntu-24.04
+    # Both architectures are covered because the published packages target both,
+    # and GitHub's arm64 runners are free for public repositories, so the second
+    # job runs in parallel and costs no extra wall-clock time.
+    name: Ubuntu IBus (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
     steps:
       - name: Check out source
         uses: actions/checkout@v7
       # Cheap and runs before the build so a formatting slip fails in seconds
-      # rather than after the full compile.
+      # rather than after the full compile. Formatting is architecture
+      # independent, so only one job needs to check it.
       - name: Check formatting
+        if: ${{ matrix.arch == 'amd64' }}
         run: scripts/format.sh --check
       - name: Bootstrap and test dependencies
         run: tests/CiDependenciesTests.sh "$GITHUB_WORKSPACE"

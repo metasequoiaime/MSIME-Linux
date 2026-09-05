@@ -70,14 +70,25 @@ jobs:
           fi
           printf 'target_sha=%s\n' "$target_sha" >> "$GITHUB_OUTPUT"
 
-  publish:
-    name: Build and publish packages
+  package:
+    # Apple Silicon Linux VMs, Raspberry Pi and Ampere hosts cannot install an
+    # amd64 package, so both architectures are built. GitHub's arm64 runners are
+    # free for public repositories and run in parallel with the amd64 job.
+    name: Build packages (${{ matrix.arch }})
     needs: prepare
     if: ${{ needs.prepare.outputs.should_publish == 'true' }}
-    runs-on: ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     permissions:
       contents: write
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
     steps:
       - name: Check out release commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -151,7 +162,7 @@ jobs:
           release_json=$(gh release view "$TAG_NAME" --repo "$GH_REPO" --json isDraft,targetCommitish)
           test "$(jq -er .isDraft <<< "$release_json")" = true
           test "$(jq -er .targetCommitish <<< "$release_json")" = "$TARGET_SHA"
-      - name: Upload and publish release
+      - name: Upload architecture assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
@@ -159,4 +170,38 @@ jobs:
         run: |
           gh release upload "$TAG_NAME" --repo "$GH_REPO" --clobber \
             build/packages/*.tar.gz build/packages/*.deb build/packages/*.rpm
+
+  publish:
+    # Promotion happens once, after every architecture has uploaded, so a
+    # published release never carries only half of its assets.
+    name: Publish release
+    needs: [prepare, package]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Confirm both architectures are attached
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+        run: |
+          assets=$(gh release view "$TAG_NAME" --repo "$GH_REPO" --json assets --jq '.assets[].name')
+          printf '%s\n' "$assets"
+          for expected in amd64.deb arm64.deb x86_64.rpm aarch64.rpm linux-x86_64.tar.gz linux-aarch64.tar.gz; do
+            if ! grep -q -- "$expected" <<< "$assets"; then
+              echo "Release is missing an asset matching $expected." >&2
+              exit 1
+            fi
+          done
+      - name: Promote the draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+          TARGET_SHA: ${{ needs.prepare.outputs.target_sha }}
+        run: |
+          release_json=$(gh release view "$TAG_NAME" --repo "$GH_REPO" --json isDraft,targetCommitish)
+          test "$(jq -er .isDraft <<< "$release_json")" = true
+          test "$(jq -er .targetCommitish <<< "$release_json")" = "$TARGET_SHA"
           gh release edit "$TAG_NAME" --repo "$GH_REPO" --draft=false --latest
