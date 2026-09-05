@@ -936,6 +936,10 @@ InputSettings SettingsStore::load(std::string *warning) const
     load_string(kTranslationGroup, "target-language", settings.online.translation_target_language,
                 valid_translation_language);
     load_string(kTranslationGroup, "endpoint", settings.online.translation_endpoint, valid_https_endpoint);
+    load_boolean(kUtilityGroup, "quick-phrase-mode", settings.quick_phrase_mode_enabled);
+    load_boolean(kUtilityGroup, "date-time-mode", settings.date_time_mode_enabled);
+    load_boolean(kUtilityGroup, "emoji-mode", settings.emoji_mode_enabled);
+    load_boolean(kUtilityGroup, "kaomoji-mode", settings.kaomoji_mode_enabled);
     load_boolean(kUtilityGroup, "clipboard-history", settings.clipboard_history_enabled);
     load_boolean(kUtilityGroup, "floating-toolbar", settings.floating_toolbar_enabled);
     load_boolean(kKeybindingsGroup, "switch-language-shift", settings.switch_language_shift);
@@ -1081,6 +1085,10 @@ bool SettingsStore::save(const InputSettings &settings, std::string *error) cons
     g_key_file_set_boolean(key_file, kGroup, "mixed-emoji-candidates", settings.mixed_emoji_candidates_enabled);
     g_key_file_set_boolean(key_file, kGroup, "mixed-kaomoji-candidates", settings.mixed_kaomoji_candidates_enabled);
     g_key_file_set_boolean(key_file, kUtilityGroup, "clipboard-history", settings.clipboard_history_enabled);
+    g_key_file_set_boolean(key_file, kUtilityGroup, "quick-phrase-mode", settings.quick_phrase_mode_enabled);
+    g_key_file_set_boolean(key_file, kUtilityGroup, "date-time-mode", settings.date_time_mode_enabled);
+    g_key_file_set_boolean(key_file, kUtilityGroup, "emoji-mode", settings.emoji_mode_enabled);
+    g_key_file_set_boolean(key_file, kUtilityGroup, "kaomoji-mode", settings.kaomoji_mode_enabled);
     g_key_file_set_boolean(key_file, kUtilityGroup, "floating-toolbar", settings.floating_toolbar_enabled);
     g_key_file_set_boolean(key_file, kKeybindingsGroup, "switch-language-shift", settings.switch_language_shift);
     g_key_file_set_boolean(key_file, kKeybindingsGroup, "switch-language-ctrl", settings.switch_language_ctrl);

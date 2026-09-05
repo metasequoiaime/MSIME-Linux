@@ -746,6 +746,10 @@ void metasequoia_engine_init(MetasequoiaEngine *engine)
     options.frequency_linear_step = settings.frequency_linear_step;
     options.local_modes.unicode = settings.unicode_mode_enabled;
     options.local_modes.super_jianpin = settings.super_jianpin_mode_enabled;
+    options.local_modes.quick_phrase = settings.quick_phrase_mode_enabled;
+    options.local_modes.date_time = settings.date_time_mode_enabled;
+    options.local_modes.emoji = settings.emoji_mode_enabled;
+    options.local_modes.kaomoji = settings.kaomoji_mode_enabled;
     options.local_modes.temporary_english = settings.temporary_english_mode_enabled;
     options.local_modes.temporary_japanese = settings.temporary_japanese_mode_enabled;
     options.english_input.mixed_candidates = settings.mixed_english_candidates_enabled;

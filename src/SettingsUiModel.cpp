@@ -226,7 +226,8 @@ SettingsUiSection settings_section_for_id(const std::string &id)
     {
         return SettingsUiSection::Voice;
     }
-    if (id == "clipboard-history" || id == "floating-toolbar")
+    if (id == "clipboard-history" || id == "floating-toolbar" || id == "quick-phrase-mode" || id == "date-time-mode" ||
+        id == "emoji-mode" || id == "kaomoji-mode")
     {
         return SettingsUiSection::DesktopTools;
     }
@@ -334,6 +335,14 @@ void SettingsUiModel::rebuild_rows()
     add(rows_, "mixed-kaomoji-candidates", "Mixed kaomoji candidates",
         bool_value(settings_.mixed_kaomoji_candidates_enabled), SettingsControl::Boolean);
     add(rows_, "clipboard-history", "Clipboard history", bool_value(settings_.clipboard_history_enabled),
+        SettingsControl::Boolean);
+    add(rows_, "quick-phrase-mode", "Quick phrase mode (Shift+K)", bool_value(settings_.quick_phrase_mode_enabled),
+        SettingsControl::Boolean);
+    add(rows_, "date-time-mode", "Date and time mode (Shift+T)", bool_value(settings_.date_time_mode_enabled),
+        SettingsControl::Boolean);
+    add(rows_, "emoji-mode", "Emoji mode (Shift+E)", bool_value(settings_.emoji_mode_enabled),
+        SettingsControl::Boolean);
+    add(rows_, "kaomoji-mode", "Kaomoji mode (Shift+M)", bool_value(settings_.kaomoji_mode_enabled),
         SettingsControl::Boolean);
     add(rows_, "floating-toolbar", "Floating toolbar", bool_value(settings_.floating_toolbar_enabled),
         SettingsControl::Boolean);
@@ -453,6 +462,7 @@ bool SettingsUiModel::set(const std::string &id, const std::string &value, std::
              id == "super-jianpin-mode" || id == "temporary-english-mode" || id == "temporary-japanese-mode" ||
              id == "mixed-english-candidates" || id == "mixed-emoji-candidates" || id == "mixed-kaomoji-candidates" ||
              id == "clipboard-history" || id == "floating-toolbar" || id == "voice-enabled" ||
+             id == "quick-phrase-mode" || id == "date-time-mode" || id == "emoji-mode" || id == "kaomoji-mode" ||
              id.rfind("switch-language-", 0) == 0 || id == "voice-polish-enabled" || id == "cloud-enabled" ||
              id == "ai-enabled" || id == "translation-enabled")
     {
@@ -496,6 +506,14 @@ bool SettingsUiModel::set(const std::string &id, const std::string &value, std::
                 candidate.mixed_emoji_candidates_enabled = value_as_bool;
             else if (id == "mixed-kaomoji-candidates")
                 candidate.mixed_kaomoji_candidates_enabled = value_as_bool;
+            else if (id == "quick-phrase-mode")
+                candidate.quick_phrase_mode_enabled = value_as_bool;
+            else if (id == "date-time-mode")
+                candidate.date_time_mode_enabled = value_as_bool;
+            else if (id == "emoji-mode")
+                candidate.emoji_mode_enabled = value_as_bool;
+            else if (id == "kaomoji-mode")
+                candidate.kaomoji_mode_enabled = value_as_bool;
             else if (id == "clipboard-history")
                 candidate.clipboard_history_enabled = value_as_bool;
             else if (id == "floating-toolbar")
