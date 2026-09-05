@@ -23,6 +23,7 @@ jobs:
     name: Prepare release metadata
     runs-on: ubuntu-24.04
     permissions:
+      actions: write
       contents: write
       issues: write
       pull-requests: write
@@ -39,6 +40,27 @@ jobs:
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+      # release-please opens its pull request as github-actions[bot], which this
+      # repository treats as a first-time contributor, so the pull_request run is
+      # created but held until a human approves it. Every release so far has
+      # waited on that click. workflow_dispatch is exempt from the rule that
+      # GITHUB_TOKEN raises no events, so ask for the run directly.
+      - name: Start CI on the release branch
+        if: ${{ github.event_name == 'push' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          branch=$(gh api "repos/$GH_REPO/git/matching-refs/heads/release-please--" \
+            --jq '.[0].ref // empty' | sed 's|^refs/heads/||')
+          if [ -z "$branch" ]; then
+            echo "No release branch to build yet."
+            exit 0
+          fi
+          echo "Starting CI on $branch"
+          gh workflow run CI --repo "$GH_REPO" --ref "$branch"
+
       # A dispatched run publishes an existing draft rather than creating one, so
       # everything it will build has to be pinned and checked up front.
       - name: Validate requested draft release
