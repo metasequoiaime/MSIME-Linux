@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.2](https://github.com/metasequoiaime/MSIME-Linux/compare/v0.2.1...v0.2.2) (2026-09-05)
+
+
+### Bug Fixes
+
+* give the release archive an architecture-specific name ([ad09e4f](https://github.com/metasequoiaime/MSIME-Linux/commit/ad09e4fba61ce26d28054a36a7ff1b0367f11de6))
+* give the release archive an architecture-specific name ([be1a987](https://github.com/metasequoiaime/MSIME-Linux/commit/be1a987f0975150a763ee99edd65b85e617ef062))
+
 ## [0.2.1](https://github.com/metasequoiaime/MSIME-Linux/compare/v0.2.0...v0.2.1) (2026-09-05)
 
 
