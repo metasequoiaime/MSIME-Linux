@@ -254,6 +254,12 @@ set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "ibus")
 set(CPACK_DEBIAN_PACKAGE_SUGGESTS "tesseract-ocr, tesseract-ocr-chi-sim")
 set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
 set(CPACK_RPM_PACKAGE_LICENSE "GPL-3.0-only")
+# Only the DEB name carried the architecture by default; the archive and the RPM
+# were both named after CPACK_SYSTEM_NAME alone, so amd64 and arm64 builds would
+# produce colliding file names and overwrite each other as release assets.
+set(CPACK_RPM_FILE_NAME RPM-DEFAULT)
+set(CPACK_ARCHIVE_FILE_NAME
+    "${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION}-linux-${CMAKE_SYSTEM_PROCESSOR}")
 set(CPACK_RPM_PACKAGE_GROUP "Applications/Input Methods")
 include(CPack)
 
