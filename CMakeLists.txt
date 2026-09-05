@@ -103,6 +103,16 @@ if(BUILD_TESTING)
     target_compile_options(MetasequoiaImeLinuxVoiceInputTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
     add_test(NAME voice_input COMMAND MetasequoiaImeLinuxVoiceInputTests)
 
+    # The product lock is data rather than code, but what it rejects is what keeps a release
+    # reproducible, so it belongs in the same gate as everything else. Hosts without python3 keep
+    # the rest of the suite; the workflow installs it explicitly.
+    find_program(METASEQUOIA_IME_PYTHON3 python3)
+    if(METASEQUOIA_IME_PYTHON3)
+        add_test(NAME product_lock
+                 COMMAND ${METASEQUOIA_IME_PYTHON3} -m unittest discover
+                         -s ${CMAKE_CURRENT_SOURCE_DIR}/tests -p test_product_lock.py)
+    endif()
+
 endif()
 
 option(METASEQUOIA_IME_BUILD_IBUS "Build the IBus engine" ON)
@@ -118,6 +128,8 @@ set(METASEQUOIA_IME_ENGLISH_DICTIONARY "${CMAKE_CURRENT_SOURCE_DIR}/vendor/Metas
 set(METASEQUOIA_IME_HELPCODE_DIRECTORY
     "${CMAKE_CURRENT_SOURCE_DIR}/vendor/MetasequoiaImeHelpCode/helpcodes"
     CACHE PATH "Path to the Metasequoia helpcode data directory")
+# Written by scripts/product_lock.py during a release so the installed package can say which source commit, which gitlinks and which dictionary release it was built from. Empty by default: a local build has nothing to attest, and a stale manifest would be worse than none.
+set(METASEQUOIA_IME_PRODUCT_MANIFEST "" CACHE FILEPATH "Path to the generated product manifest to install")
 
 if(METASEQUOIA_IME_BUILD_IBUS)
     find_package(PkgConfig REQUIRED)
@@ -272,6 +284,15 @@ endif()
 # same terms. Ship the license text with them and declare it in the metadata.
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/LICENSE ${CMAKE_CURRENT_SOURCE_DIR}/THIRD_PARTY_NOTICES.txt
         DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/metasequoia-ime-linux)
+
+if(METASEQUOIA_IME_PRODUCT_MANIFEST)
+    if(NOT EXISTS "${METASEQUOIA_IME_PRODUCT_MANIFEST}")
+        message(FATAL_ERROR "METASEQUOIA_IME_PRODUCT_MANIFEST is set to a file that does not exist: "
+                            "${METASEQUOIA_IME_PRODUCT_MANIFEST}")
+    endif()
+    install(FILES "${METASEQUOIA_IME_PRODUCT_MANIFEST}"
+            DESTINATION ${CMAKE_INSTALL_DATADIR}/metasequoiaime RENAME product-manifest.json)
+endif()
 
 # CPack gives downstreams a reproducible baseline package. Debian and RPM
 # generators consume the same install manifest; TGZ remains available on

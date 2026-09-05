@@ -147,10 +147,22 @@ jobs:
         run: scripts/bootstrap_ci_dependencies.sh "$GITHUB_WORKSPACE"
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install --no-install-recommends -y build-essential cmake file pkg-config libibus-1.0-dev libboost-dev libboost-json-dev libcurl4-openssl-dev libfmt-dev libspdlog-dev libsqlite3-dev libsecret-1-dev libgtk-3-dev tesseract-ocr tesseract-ocr-chi-sim gnome-keyring python3 python3-gi python3-pypinyin gir1.2-ibus-1.0 ibus dbus-x11 iso-codes rpm
-      - name: Build dictionary
+      # Takes the release named in product-lock.json and holds every file to the digest committed
+      # there, so a retagged upstream release cannot change what this version ships.
+      - name: Fetch the locked dictionaries
         run: python3 scripts/fetch_dictionary.py
+      # Recorded before anything is built, from the commit being released and the gitlinks it
+      # carries, so the packages and the release carry the same statement of what went into them.
+      - name: Record the product manifest
+        env:
+          TARGET_SHA: ${{ needs.prepare.outputs.target_sha }}
+        run: |
+          python3 scripts/product_lock.py manifest \
+            --source-commit "$TARGET_SHA" \
+            --output product-manifest.json
+          cat product-manifest.json
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DMETASEQUOIA_IME_PACKAGE_VERSION=${{ steps.version.outputs.value }}
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DMETASEQUOIA_IME_PACKAGE_VERSION=${{ steps.version.outputs.value }} -DMETASEQUOIA_IME_PRODUCT_MANIFEST="$GITHUB_WORKSPACE/product-manifest.json"
       - name: Build
         run: cmake --build build --parallel
       - name: Test
@@ -163,7 +175,7 @@ jobs:
       # prefix the packages actually install into, so the component's exec path
       # matches where the binary lands rather than /usr/local or a temp path.
       - name: Configure for packaging
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr -DMETASEQUOIA_IME_PACKAGE_VERSION=${{ steps.version.outputs.value }}
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr -DMETASEQUOIA_IME_PACKAGE_VERSION=${{ steps.version.outputs.value }} -DMETASEQUOIA_IME_PRODUCT_MANIFEST="$GITHUB_WORKSPACE/product-manifest.json"
       - name: Package
         run: cpack --config build/CPackConfig.cmake -G "TGZ;DEB;RPM" -B build/packages
       - name: Verify package versions
@@ -194,6 +206,13 @@ jobs:
             echo "The packaged IBus component points at $engine, which the package does not ship." >&2
             exit 1
           fi
+          # An installed package that cannot say what it was built from is not traceable, and the
+          # manifest is only installed when the configure step was given one.
+          packaged_manifest=$(find build/debcheck -name product-manifest.json | head -1)
+          if [[ -z "$packaged_manifest" ]] || ! diff -q "$packaged_manifest" product-manifest.json; then
+            echo "The package does not ship the product manifest this build recorded." >&2
+            exit 1
+          fi
       # The draft could have been retargeted while the build ran, so confirm it
       # still points at the commit that produced these packages.
       - name: Revalidate draft release target
@@ -214,6 +233,15 @@ jobs:
         run: |
           gh release upload "$TAG_NAME" --repo "$GH_REPO" --clobber \
             build/packages/*.tar.gz build/packages/*.deb build/packages/*.rpm
+      # The manifest describes the source and data both architectures were built from, so it is
+      # attached once rather than raced for by two jobs writing the same bytes.
+      - name: Attach the product manifest
+        if: ${{ matrix.arch == 'amd64' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+        run: gh release upload "$TAG_NAME" --repo "$GH_REPO" --clobber product-manifest.json
 
   publish:
     # Promotion happens once, after every architecture has uploaded, so a
@@ -232,7 +260,7 @@ jobs:
         run: |
           assets=$(gh release view "$TAG_NAME" --repo "$GH_REPO" --json assets --jq '.assets[].name')
           printf '%s\n' "$assets"
-          for expected in amd64.deb arm64.deb x86_64.rpm aarch64.rpm linux-x86_64.tar.gz linux-aarch64.tar.gz; do
+          for expected in amd64.deb arm64.deb x86_64.rpm aarch64.rpm linux-x86_64.tar.gz linux-aarch64.tar.gz product-manifest.json; do
             if ! grep -q -- "$expected" <<< "$assets"; then
               echo "Release is missing an asset matching $expected." >&2
               exit 1

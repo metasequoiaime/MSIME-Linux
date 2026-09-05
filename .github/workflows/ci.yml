@@ -25,6 +25,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The inputs the packages are built from are checked once, independently of the build matrix.
+  product:
+    uses: ./.github/workflows/product-ci.yml
+
   linux:
     # Both architectures are covered because the published packages target both,
     # and GitHub's arm64 runners are free for public repositories, so the second
