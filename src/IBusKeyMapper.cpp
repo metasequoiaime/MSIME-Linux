@@ -33,8 +33,8 @@ IBusKeyTranslation punctuation(char character, bool shift_only)
 
 bool is_ascii_punctuation(guint keyval)
 {
-    return (keyval >= '!' && keyval <= '/') || (keyval >= ':' && keyval <= '@') ||
-           (keyval >= '[' && keyval <= '`') || (keyval >= '{' && keyval <= '~');
+    return (keyval >= '!' && keyval <= '/') || (keyval >= ':' && keyval <= '@') || (keyval >= '[' && keyval <= '`') ||
+           (keyval >= '{' && keyval <= '~');
 }
 } // namespace
 

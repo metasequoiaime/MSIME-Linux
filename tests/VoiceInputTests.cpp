@@ -80,8 +80,7 @@ int main()
         std::string recording_error;
         require(!recorder.record({}, 5, &recording_error) && !recording_error.empty(),
                 "Voice recorder accepted an empty output path.");
-        require(!recorder.record("/tmp/metasequoia-voice-test.wav", 0, &recording_error) &&
-                    !recording_error.empty(),
+        require(!recorder.record("/tmp/metasequoia-voice-test.wav", 0, &recording_error) && !recording_error.empty(),
                 "Voice recorder accepted an invalid duration.");
 
         std::cout << "Voice input tests passed.\n";

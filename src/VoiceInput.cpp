@@ -87,7 +87,8 @@ std::string make_multipart(std::string_view audio, std::string_view boundary, st
     append(language);
     append("\r\n--");
     append(boundary);
-    append("\r\nContent-Disposition: form-data; name=\"file\"; filename=\"audio.wav\"\r\nContent-Type: audio/wav\r\n\r\n");
+    append(
+        "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"audio.wav\"\r\nContent-Type: audio/wav\r\n\r\n");
     append(audio);
     append("\r\n--");
     append(boundary);
@@ -120,8 +121,8 @@ std::optional<std::string> VoiceInputProvider::transcribe(std::string_view audio
     {
         error->clear();
     }
-    if (!transport_ || !config.enabled || audio.empty() || audio.size() > kMaximumAudioBytes || config.token.empty() || config.model.empty() ||
-        !endpoint_allowed(config.endpoint, allow_insecure_loopback_for_tests_))
+    if (!transport_ || !config.enabled || audio.empty() || audio.size() > kMaximumAudioBytes || config.token.empty() ||
+        config.model.empty() || !endpoint_allowed(config.endpoint, allow_insecure_loopback_for_tests_))
     {
         set_error(error, "Voice input configuration or audio was invalid.");
         return std::nullopt;
@@ -266,16 +267,18 @@ bool VoiceInputRecorder::record(const std::filesystem::path &output, int seconds
 #if defined(__linux__)
     const std::string duration = std::to_string(seconds);
     const std::string output_path = output.string();
-    const char *arecord_arguments[] = {"arecord", "-q", "-f", "S16_LE", "-r", "16000", "-c", "1", "-d",
-                                       duration.c_str(), output_path.c_str(), nullptr};
+    const char *arecord_arguments[] = {
+        "arecord",           "-q",   "-f", "S16_LE", "-r", "16000", "-c", "1", "-d", duration.c_str(),
+        output_path.c_str(), nullptr};
     int status = 0;
     if (run_recorder("arecord", arecord_arguments, &status) && WIFEXITED(status) && WEXITSTATUS(status) == 0)
     {
         return true;
     }
 
-    const char *pw_record_arguments[] = {"pw-record", "--format", "s16", "--rate", "16000", "--channels", "1",
-                                         "--limit", duration.c_str(), output_path.c_str(), nullptr};
+    const char *pw_record_arguments[] = {"pw-record",      "--format",          "s16",  "--rate",
+                                         "16000",          "--channels",        "1",    "--limit",
+                                         duration.c_str(), output_path.c_str(), nullptr};
     if (run_recorder("pw-record", pw_record_arguments, &status) && WIFEXITED(status) && WEXITSTATUS(status) == 0)
     {
         return true;

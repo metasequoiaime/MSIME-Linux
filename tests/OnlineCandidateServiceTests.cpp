@@ -138,7 +138,10 @@ class Database
         }
     }
 
-    ~Database() { sqlite3_close(database_); }
+    ~Database()
+    {
+        sqlite3_close(database_);
+    }
 
     void execute(const char *sql)
     {
@@ -263,7 +266,7 @@ OnlineQuery ai_query(std::string text, std::uint64_t generation = 1)
 {
     OnlineQuery result = query(SchemeType::Quanpin, std::move(text), generation);
     result.pinyin_segments = result.query_text == "nihao" ? std::vector<std::string>{"ni", "hao"}
-                                                           : std::vector<std::string>{result.query_text};
+                                                          : std::vector<std::string>{result.query_text};
     result.ai_eligible = true;
     return result;
 }
@@ -334,8 +337,7 @@ int main()
     require(provider.fetch(query(SchemeType::JapaneseRomaji, "ka"), [] { return false; }) == "你",
             "The Google provider did not parse a Japanese cloud candidate.");
     const auto japanese_requests = transport->requests();
-    require(japanese_requests.size() == 2 &&
-                japanese_requests[1].url.find("itc=ja-t-i0-und") != std::string::npos,
+    require(japanese_requests.size() == 2 && japanese_requests[1].url.find("itc=ja-t-i0-und") != std::string::npos,
             "The Japanese Google request used the wrong input tool code.");
 
     transport->queue({{500, kSuccess, {}}});
@@ -370,9 +372,9 @@ int main()
         require(debounce_deliveries->wait_for_size(1, 1s), "The debounced cloud result was not delivered.");
         const auto calls = debounce_transport->requests();
         const auto deliveries = debounce_deliveries->values();
-        require(calls.size() == 1 && calls[0].url.find("text=nihao") != std::string::npos &&
-                    deliveries.size() == 1 && deliveries[0].request.generation == 11 &&
-                    deliveries[0].candidate == "你" && deliveries[0].source == CandidateSource::CloudSuggestion,
+        require(calls.size() == 1 && calls[0].url.find("text=nihao") != std::string::npos && deliveries.size() == 1 &&
+                    deliveries[0].request.generation == 11 && deliveries[0].candidate == "你" &&
+                    deliveries[0].source == CandidateSource::CloudSuggestion,
                 "Debounce did not replace the older online request.");
     }
 
@@ -430,8 +432,7 @@ int main()
     {
         OnlineCandidateService service(
             destroyed_provider,
-            [destroyed_deliveries](const OnlineRequest &online_request, std::string candidate,
-                                   CandidateSource source) {
+            [destroyed_deliveries](const OnlineRequest &online_request, std::string candidate, CandidateSource source) {
                 destroyed_deliveries->append(online_request, std::move(candidate), source);
             },
             0ms);
@@ -449,16 +450,14 @@ int main()
     {
         OnlineCandidateService service(
             throwing_provider,
-            [recovered_deliveries](const OnlineRequest &online_request, std::string candidate,
-                                   CandidateSource source) {
+            [recovered_deliveries](const OnlineRequest &online_request, std::string candidate, CandidateSource source) {
                 recovered_deliveries->append(online_request, std::move(candidate), source);
             },
             0ms);
         service.submit(request(50, SchemeType::Quanpin, "ni"));
         require(throwing_transport->wait_for_calls(1, 1s), "The throwing transport request never started.");
         service.submit(request(51, SchemeType::Quanpin, "nihao"));
-        require(throwing_transport->wait_for_calls(2, 1s),
-                "The online worker stopped after a transport exception.");
+        require(throwing_transport->wait_for_calls(2, 1s), "The online worker stopped after a transport exception.");
         require(recovered_deliveries->wait_for_size(1, 1s),
                 "The online worker did not recover from a transport exception.");
         require(recovered_deliveries->values()[0].request.generation == 51,
@@ -473,16 +472,14 @@ int main()
     {
         OnlineCandidateService service(
             callback_provider,
-            [callback_deliveries](const OnlineRequest &online_request, std::string candidate,
-                                  CandidateSource source) {
+            [callback_deliveries](const OnlineRequest &online_request, std::string candidate, CandidateSource source) {
                 callback_deliveries->append(online_request, std::move(candidate), source);
             },
             0ms);
         service.submit(request(60, SchemeType::Quanpin, "ni"));
         require(callback_deliveries->wait_for_attempts(1, 1s), "The throwing callback was not invoked.");
         service.submit(request(61, SchemeType::Quanpin, "nihao"));
-        require(callback_deliveries->wait_for_attempts(2, 1s),
-                "The online worker stopped after a callback exception.");
+        require(callback_deliveries->wait_for_attempts(2, 1s), "The online worker stopped after a callback exception.");
         const auto deliveries = callback_deliveries->values();
         require(deliveries.size() == 1 && deliveries[0].request.generation == 61,
                 "The worker did not recover from a callback exception.");
@@ -496,8 +493,8 @@ int main()
         OnlineCandidateService *service_pointer = nullptr;
         OnlineCandidateService service(
             reentrant_stop_provider,
-            [&service_pointer, reentrant_stop_deliveries](const OnlineRequest &online_request,
-                                                          std::string candidate, CandidateSource source) {
+            [&service_pointer, reentrant_stop_deliveries](const OnlineRequest &online_request, std::string candidate,
+                                                          CandidateSource source) {
                 service_pointer->stop();
                 reentrant_stop_deliveries->append(online_request, std::move(candidate), source);
             },
@@ -533,8 +530,7 @@ int main()
     const auto ai_requests = ai_transport->requests();
     require(ai_requests.size() == 1 && ai_requests[0].method == metasequoia::linux_ime::online::HttpMethod::Post &&
                 ai_requests[0].url == "https://api.deepseek.com/chat/completions" &&
-                ai_requests[0].headers.size() == 2 &&
-                ai_requests[0].headers[0] == "Content-Type: application/json" &&
+                ai_requests[0].headers.size() == 2 && ai_requests[0].headers[0] == "Content-Type: application/json" &&
                 ai_requests[0].headers[1] == "Authorization: Bearer sk-test-secret",
             "The AI provider did not build the expected authenticated POST request.");
     const auto ai_body = boost::json::parse(ai_requests[0].body).as_object();
@@ -549,8 +545,8 @@ int main()
                 ai_input.at("segmented_pinyin").as_array().size() == 2 &&
                 ai_input.at("context").as_string() == "前文" && ai_input.at("candidate_limit").as_int64() == 2,
             "The AI request JSON lost its deterministic generation contract.");
-    require(AiSuggestionProvider::cache_key(ai_query("nihao"), "前文", deepseek_config)
-                    .find(deepseek_config.token) == std::string::npos,
+    require(AiSuggestionProvider::cache_key(ai_query("nihao"), "前文", deepseek_config).find(deepseek_config.token) ==
+                std::string::npos,
             "The AI cache key exposed an API token.");
 
     auto invalid_ai_transport = std::make_shared<FakeTransport>();
@@ -604,8 +600,8 @@ int main()
     cache_transport->queue({{200, ai_response("第二账号"), {}}});
     require(cache_provider.fetch(ai_query("ni"), "甲", changed_config, [] { return false; }) == "第二账号" &&
                 cache_transport->requests().size() == 7 &&
-                AiSuggestionProvider::cache_key(ai_query("ni"), "甲", changed_config)
-                        .find(changed_config.token) == std::string::npos,
+                AiSuggestionProvider::cache_key(ai_query("ni"), "甲", changed_config).find(changed_config.token) ==
+                    std::string::npos,
             "Changing AI credentials reused another account's cached candidate or exposed the token.");
 
     auto eviction_transport = std::make_shared<FakeTransport>();
@@ -618,8 +614,7 @@ int main()
                 "The bounded AI cache fixture failed before reaching capacity.");
     }
     eviction_transport->queue({{200, ai_response("重新获取"), {}}});
-    require(eviction_provider.fetch(ai_query("ni"), "上下文-0", cached_config, [] { return false; }) ==
-                    "重新获取" &&
+    require(eviction_provider.fetch(ai_query("ni"), "上下文-0", cached_config, [] { return false; }) == "重新获取" &&
                 eviction_transport->requests().size() == 130,
             "The AI cache did not evict its oldest entry at the configured bound.");
 
@@ -629,8 +624,8 @@ int main()
     auto bounded_config = ai_config(AiProvider::OpenAI);
     bounded_config.prompt.assign(9000, 'p');
     bounded_config.candidate_limit = 999;
-    require(bounded_ai_provider.fetch(ai_query("ni"), std::string(3000, 'c'), bounded_config,
-                                      [] { return false; }) == "有界",
+    require(bounded_ai_provider.fetch(ai_query("ni"), std::string(3000, 'c'), bounded_config, [] { return false; }) ==
+                "有界",
             "A bounded AI request did not complete.");
     const auto bounded_body = boost::json::parse(bounded_ai_transport->requests()[0].body).as_object();
     const auto &bounded_messages = bounded_body.at("messages").as_array();
@@ -701,19 +696,17 @@ int main()
                 ordered_controller.candidates()[1].source == CandidateSource::CloudSuggestion &&
                 ordered_controller.candidates()[2].source == CandidateSource::AiSuggestion,
             "Cloud and AI candidates did not keep slots 2 and 3 regardless of arrival order.");
-    require(!ordered_controller.apply_online_candidate(ordered_request->generation, ordered_request->query,
-                                                       "云候选", CandidateSource::AiSuggestion) &&
-                !ordered_controller.apply_online_candidate(ordered_request->generation - 1,
-                                                           ordered_request->query, "过期智能候选",
-                                                           CandidateSource::AiSuggestion),
+    require(!ordered_controller.apply_online_candidate(ordered_request->generation, ordered_request->query, "云候选",
+                                                       CandidateSource::AiSuggestion) &&
+                !ordered_controller.apply_online_candidate(ordered_request->generation - 1, ordered_request->query,
+                                                           "过期智能候选", CandidateSource::AiSuggestion),
             "AI candidate deduplication or generation rejection was bypassed.");
 
     auto ai_replacement_cloud_transport = std::make_shared<FakeTransport>();
     auto ai_replacement_transport = std::make_shared<FakeTransport>();
     ai_replacement_transport->queue({{200, ai_response("旧智能候选"), {}}, true});
     ai_replacement_transport->queue({{200, ai_response("新智能候选"), {}}});
-    auto ai_replacement_cloud_provider =
-        std::make_shared<GoogleCloudProvider>(ai_replacement_cloud_transport);
+    auto ai_replacement_cloud_provider = std::make_shared<GoogleCloudProvider>(ai_replacement_cloud_transport);
     auto ai_replacement_provider = std::make_shared<AiSuggestionProvider>(ai_replacement_transport);
     auto ai_replacement_deliveries = std::make_shared<DeliveryLog>();
     {
@@ -731,8 +724,7 @@ int main()
         require(ai_replacement_deliveries->wait_for_size(1, 1s), "The replacement AI result was not delivered.");
         const auto deliveries = ai_replacement_deliveries->values();
         require(ai_replacement_transport->cancelled_call_count() == 1 && deliveries.size() == 1 &&
-                    deliveries[0].request.generation == 91 &&
-                    deliveries[0].source == CandidateSource::AiSuggestion,
+                    deliveries[0].request.generation == 91 && deliveries[0].source == CandidateSource::AiSuggestion,
                 "A newer generation did not cancel and replace the active AI request.");
     }
 

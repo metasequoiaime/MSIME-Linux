@@ -107,7 +107,8 @@ bool write_file_atomically(const std::filesystem::path &path, const std::string 
     ssize_t written = 0;
     while (written < expected)
     {
-        const ssize_t result = write(descriptor, payload.data() + written, static_cast<std::size_t>(expected - written));
+        const ssize_t result =
+            write(descriptor, payload.data() + written, static_cast<std::size_t>(expected - written));
         if (result <= 0)
         {
             const int truncate_result = ftruncate(descriptor, 0);
@@ -119,7 +120,8 @@ bool write_file_atomically(const std::filesystem::path &path, const std::string 
         }
         written += result;
     }
-    if (fsync(descriptor) != 0 || !close_descriptor() || rename(writable.data(), metasequoia::path_to_utf8(path).c_str()) != 0)
+    if (fsync(descriptor) != 0 || !close_descriptor() ||
+        rename(writable.data(), metasequoia::path_to_utf8(path).c_str()) != 0)
     {
         unlink(writable.data());
         set_error(error, "Unable to atomically replace clipboard history.");
@@ -134,9 +136,13 @@ std::filesystem::path default_data_directory()
 }
 } // namespace
 
-ClipboardHistory::ClipboardHistory() : data_directory_(default_data_directory()) {}
+ClipboardHistory::ClipboardHistory() : data_directory_(default_data_directory())
+{
+}
 
-ClipboardHistory::ClipboardHistory(std::filesystem::path data_directory) : data_directory_(std::move(data_directory)) {}
+ClipboardHistory::ClipboardHistory(std::filesystem::path data_directory) : data_directory_(std::move(data_directory))
+{
+}
 
 std::filesystem::path ClipboardHistory::store_path() const
 {

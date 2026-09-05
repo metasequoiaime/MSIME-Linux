@@ -42,15 +42,13 @@ class AiSuggestionProvider
                                   bool allow_insecure_loopback_for_tests = false);
 
     std::optional<std::string> fetch(const OnlineQuery &query, std::string_view context,
-                                     const AiSuggestionConfig &config,
-                                     const CancellationCheck &cancelled) const;
+                                     const AiSuggestionConfig &config, const CancellationCheck &cancelled) const;
 
     static std::string default_endpoint(AiProvider provider);
     static std::string default_model(AiProvider provider);
     static std::string default_prompt();
     static std::optional<std::string> parse_candidate(std::string_view response);
-    static std::string cache_key(const OnlineQuery &query, std::string_view context,
-                                 const AiSuggestionConfig &config);
+    static std::string cache_key(const OnlineQuery &query, std::string_view context, const AiSuggestionConfig &config);
 
   private:
     std::shared_ptr<HttpTransport> transport_;

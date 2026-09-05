@@ -8,10 +8,10 @@
 
 namespace
 {
-using metasequoia::linux_ime::PunctuationFormatter;
-using metasequoia::linux_ime::paired_punctuation_closing;
-using metasequoia::linux_ime::should_keep_ascii_punctuation;
 using metasequoia::linux_ime::is_punctuation;
+using metasequoia::linux_ime::paired_punctuation_closing;
+using metasequoia::linux_ime::PunctuationFormatter;
+using metasequoia::linux_ime::should_keep_ascii_punctuation;
 using metasequoia::linux_ime::to_full_width;
 
 void require(bool condition, const char *message)
@@ -27,9 +27,9 @@ int main()
 {
     PunctuationFormatter formatter;
     constexpr std::array<std::pair<char, const char *>, 25> mappings{{
-        {'`', "·"}, {'~', "~"}, {'!', "！"}, {'@', "@"}, {'#', "#"}, {'$', "￥"}, {'%', "%"},
-        {'^', "……"}, {'&', "&"}, {'*', "*"}, {'(', "（"}, {')', "）"}, {'_', "——"}, {'[', "【"},
-        {']', "】"}, {'{', "{"}, {'}', "}"}, {'\\', "、"}, {';', "；"}, {':', "："}, {',', "，"},
+        {'`', "·"},  {'~', "~"},  {'!', "！"}, {'@', "@"},   {'#', "#"},  {'$', "￥"}, {'%', "%"},
+        {'^', "……"}, {'&', "&"},  {'*', "*"},  {'(', "（"},  {')', "）"}, {'_', "——"}, {'[', "【"},
+        {']', "】"}, {'{', "{"},  {'}', "}"},  {'\\', "、"}, {';', "；"}, {':', "："}, {',', "，"},
         {'<', "《"}, {'.', "。"}, {'>', "》"}, {'?', "？"},
     }};
     for (const auto &[ascii, expected] : mappings)
@@ -47,8 +47,8 @@ int main()
     formatter.reset();
     require(formatter.chinese('"') == "“" && formatter.chinese('\'') == "‘",
             "Reset did not restore opening quotation marks.");
-    require(formatter.chinese('<') == "《" && formatter.chinese('<') == "〈" &&
-                formatter.chinese('>') == "〉" && formatter.chinese('>') == "》",
+    require(formatter.chinese('<') == "《" && formatter.chinese('<') == "〈" && formatter.chinese('>') == "〉" &&
+                formatter.chinese('>') == "》",
             "Nested book-title marks did not follow the Windows punctuation stack.");
     formatter.reset();
     require(formatter.chinese('<') == "《", "Reset did not restore the outer book-title mark.");
@@ -67,14 +67,13 @@ int main()
 
     for (const char punctuation : {',', '.', ':'})
     {
-        require(should_keep_ascii_punctuation(punctuation, U'A') &&
-                    should_keep_ascii_punctuation(punctuation, U'z') &&
+        require(should_keep_ascii_punctuation(punctuation, U'A') && should_keep_ascii_punctuation(punctuation, U'z') &&
                     should_keep_ascii_punctuation(punctuation, U'0') &&
                     should_keep_ascii_punctuation(punctuation, U'9'),
                 "Smart punctuation did not preserve ASCII after an ASCII letter or digit.");
     }
-    require(!should_keep_ascii_punctuation(',', std::nullopt) &&
-                !should_keep_ascii_punctuation('.', U'中') && !should_keep_ascii_punctuation('!', U'A'),
+    require(!should_keep_ascii_punctuation(',', std::nullopt) && !should_keep_ascii_punctuation('.', U'中') &&
+                !should_keep_ascii_punctuation('!', U'A'),
             "Smart punctuation escaped its documented key or context boundary.");
 
     require(paired_punctuation_closing("“") == "”" && paired_punctuation_closing("‘") == "’" &&

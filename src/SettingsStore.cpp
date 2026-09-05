@@ -148,9 +148,8 @@ bool valid_utf8_text(std::string_view value, std::size_t maximum_bytes, bool all
 
 bool valid_https_endpoint(std::string_view endpoint)
 {
-    return endpoint.empty() ||
-           (endpoint.size() <= kMaximumEndpointBytes && endpoint.rfind("https://", 0) == 0 &&
-            valid_utf8_text(endpoint, kMaximumEndpointBytes, false));
+    return endpoint.empty() || (endpoint.size() <= kMaximumEndpointBytes && endpoint.rfind("https://", 0) == 0 &&
+                                valid_utf8_text(endpoint, kMaximumEndpointBytes, false));
 }
 
 bool valid_translation_language(std::string_view language)
@@ -307,7 +306,9 @@ bool write_all(int descriptor, const char *data, std::size_t size)
 }
 } // namespace
 
-SettingsStore::SettingsStore() : SettingsStore(metasequoia::path_from_utf8(g_get_user_config_dir())) {}
+SettingsStore::SettingsStore() : SettingsStore(metasequoia::path_from_utf8(g_get_user_config_dir()))
+{
+}
 
 SettingsStore::SettingsStore(std::filesystem::path config_home)
     : config_path_(std::move(config_home) / "metasequoiaime" / "config.ini")
@@ -792,8 +793,7 @@ InputSettings SettingsStore::load(std::string *warning) const
         }
         g_clear_error(&value_error);
     };
-    const auto load_string = [&](const char *group, const char *key, std::string &destination,
-                                 const auto &validator) {
+    const auto load_string = [&](const char *group, const char *key, std::string &destination, const auto &validator) {
         if (!g_key_file_has_key(key_file, group, key, nullptr))
         {
             return;
@@ -926,9 +926,8 @@ InputSettings SettingsStore::load(const SecretStore &secret_store, std::string *
     if (settings.online.ai.enabled)
     {
         const char *provider = ai_provider_name(settings.online.ai.provider);
-        const SecretLookupResult result =
-            provider == nullptr ? SecretLookupResult{SecretStatus::Unavailable, {}, {}}
-                                : secret_store.lookup(SecretKind::AiApiToken, provider);
+        const SecretLookupResult result = provider == nullptr ? SecretLookupResult{SecretStatus::Unavailable, {}, {}}
+                                                              : secret_store.lookup(SecretKind::AiApiToken, provider);
         if (result.status == SecretStatus::Found)
         {
             settings.online.ai.token = result.value;
@@ -943,9 +942,8 @@ InputSettings SettingsStore::load(const SecretStore &secret_store, std::string *
     if (settings.online.candidate_translations_enabled &&
         settings.online.translation_provider == TranslationProvider::DeepLX)
     {
-        const SecretLookupResult result =
-            secret_store.lookup(SecretKind::TranslationApiToken,
-                                translation_provider_name(settings.online.translation_provider));
+        const SecretLookupResult result = secret_store.lookup(
+            SecretKind::TranslationApiToken, translation_provider_name(settings.online.translation_provider));
         if (result.status == SecretStatus::Found)
         {
             settings.online.translation_token = result.value;
@@ -1021,11 +1019,9 @@ bool SettingsStore::save(const InputSettings &settings, std::string *error) cons
     g_key_file_set_boolean(key_file, kGroup, "paired-punctuation", settings.paired_punctuation);
     g_key_file_set_string(key_file, kGroup, "preedit-style", preedit_style);
     g_key_file_set_boolean(key_file, kGroup, "quanpin-helpcode", settings.quanpin_helpcode_enabled);
-    g_key_file_set_string(key_file, kGroup, "quanpin-helpcode-schema",
-                          settings.quanpin_helpcode_schema.c_str());
+    g_key_file_set_string(key_file, kGroup, "quanpin-helpcode-schema", settings.quanpin_helpcode_schema.c_str());
     g_key_file_set_boolean(key_file, kGroup, "shuangpin-helpcode", settings.shuangpin_helpcode_enabled);
-    g_key_file_set_string(key_file, kGroup, "shuangpin-helpcode-schema",
-                          settings.shuangpin_helpcode_schema.c_str());
+    g_key_file_set_string(key_file, kGroup, "shuangpin-helpcode-schema", settings.shuangpin_helpcode_schema.c_str());
     g_key_file_set_string(key_file, kGroup, "frequency-adjustment", frequency_adjustment);
     g_key_file_set_integer(key_file, kGroup, "frequency-trigger-count", settings.frequency_trigger_count);
     g_key_file_set_integer(key_file, kGroup, "frequency-linear-step", settings.frequency_linear_step);
@@ -1033,14 +1029,11 @@ bool SettingsStore::save(const InputSettings &settings, std::string *error) cons
     g_key_file_set_boolean(key_file, kGroup, "super-jianpin-mode", settings.super_jianpin_mode_enabled);
     g_key_file_set_boolean(key_file, kGroup, "temporary-english-mode", settings.temporary_english_mode_enabled);
     g_key_file_set_boolean(key_file, kGroup, "temporary-japanese-mode", settings.temporary_japanese_mode_enabled);
-    g_key_file_set_boolean(key_file, kGroup, "mixed-english-candidates",
-                           settings.mixed_english_candidates_enabled);
+    g_key_file_set_boolean(key_file, kGroup, "mixed-english-candidates", settings.mixed_english_candidates_enabled);
     g_key_file_set_integer(key_file, kGroup, "mixed-english-minimum-prefix",
                            static_cast<gint>(settings.mixed_english_minimum_prefix));
-    g_key_file_set_boolean(key_file, kGroup, "mixed-emoji-candidates",
-                           settings.mixed_emoji_candidates_enabled);
-    g_key_file_set_boolean(key_file, kGroup, "mixed-kaomoji-candidates",
-                           settings.mixed_kaomoji_candidates_enabled);
+    g_key_file_set_boolean(key_file, kGroup, "mixed-emoji-candidates", settings.mixed_emoji_candidates_enabled);
+    g_key_file_set_boolean(key_file, kGroup, "mixed-kaomoji-candidates", settings.mixed_kaomoji_candidates_enabled);
     g_key_file_set_boolean(key_file, kUtilityGroup, "clipboard-history", settings.clipboard_history_enabled);
     g_key_file_set_boolean(key_file, kUtilityGroup, "floating-toolbar", settings.floating_toolbar_enabled);
 
@@ -1056,14 +1049,12 @@ bool SettingsStore::save(const InputSettings &settings, std::string *error) cons
     g_key_file_set_string(key_file, kAiGroup, "prompt", settings.online.ai.prompt.c_str());
     g_key_file_set_integer(key_file, kAiGroup, "candidate-limit",
                            static_cast<gint>(settings.online.ai.candidate_limit));
-    g_key_file_set_boolean(key_file, kTranslationGroup, "enabled",
-                           settings.online.candidate_translations_enabled);
+    g_key_file_set_boolean(key_file, kTranslationGroup, "enabled", settings.online.candidate_translations_enabled);
     g_key_file_set_string(key_file, kTranslationGroup, "provider",
                           translation_provider_name(settings.online.translation_provider));
     g_key_file_set_string(key_file, kTranslationGroup, "target-language",
                           settings.online.translation_target_language.c_str());
-    g_key_file_set_string(key_file, kTranslationGroup, "endpoint",
-                          settings.online.translation_endpoint.c_str());
+    g_key_file_set_string(key_file, kTranslationGroup, "endpoint", settings.online.translation_endpoint.c_str());
     g_key_file_set_boolean(key_file, kVoiceGroup, "enabled", settings.voice.enabled);
     g_key_file_set_string(key_file, kVoiceGroup, "provider", settings.voice.provider.c_str());
     g_key_file_set_string(key_file, kVoiceGroup, "endpoint", settings.voice.endpoint.c_str());
@@ -1156,12 +1147,10 @@ bool SettingsStore::save(const InputSettings &settings, SecretStore &secret_stor
         const char *provider = translation_provider_name(settings.online.translation_provider);
         if (provider == nullptr)
         {
-            set_message(error,
-                        "Unable to store the translation credential; the provider configuration was not saved.");
+            set_message(error, "Unable to store the translation credential; the provider configuration was not saved.");
             return false;
         }
-        pending.push_back(
-            {SecretKind::TranslationApiToken, provider, settings.online.translation_token, {}});
+        pending.push_back({SecretKind::TranslationApiToken, provider, settings.online.translation_token, {}});
     }
     if (settings.voice.enabled)
     {
@@ -1194,9 +1183,9 @@ bool SettingsStore::save(const InputSettings &settings, SecretStore &secret_stor
             }
             if (secret->previous.status == SecretStatus::Found)
             {
-                restored = secret_store.store(secret->kind, secret->provider, secret->previous.value,
-                                               &ignored_diagnostic) &&
-                           restored;
+                restored =
+                    secret_store.store(secret->kind, secret->provider, secret->previous.value, &ignored_diagnostic) &&
+                    restored;
             }
             else
             {

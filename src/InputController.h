@@ -55,12 +55,10 @@ struct FrontendKeyEvent
 
     FrontendKeyEvent() = default;
     FrontendKeyEvent(FrontendKey key_value, char character_value = 0, unsigned digit_value = 0,
-                     bool host_shortcut_value = false,
-                     std::optional<char32_t> preceding_character_value = std::nullopt,
+                     bool host_shortcut_value = false, std::optional<char32_t> preceding_character_value = std::nullopt,
                      bool shift_only_value = false)
-        : key(key_value), character(character_value), digit(digit_value),
-          host_shortcut(host_shortcut_value), preceding_character(preceding_character_value),
-          shift_only(shift_only_value)
+        : key(key_value), character(character_value), digit(digit_value), host_shortcut(host_shortcut_value),
+          preceding_character(preceding_character_value), shift_only(shift_only_value)
     {
     }
 };

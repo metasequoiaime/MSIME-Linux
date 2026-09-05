@@ -29,8 +29,8 @@ struct ToolState
 
 void show_error(GtkWindow *parent, const std::string &message)
 {
-    GtkWidget *dialog = gtk_message_dialog_new(parent, GTK_DIALOG_MODAL, GTK_MESSAGE_ERROR, GTK_BUTTONS_OK, "%s",
-                                               message.c_str());
+    GtkWidget *dialog =
+        gtk_message_dialog_new(parent, GTK_DIALOG_MODAL, GTK_MESSAGE_ERROR, GTK_BUTTONS_OK, "%s", message.c_str());
     gtk_dialog_run(GTK_DIALOG(dialog));
     gtk_widget_destroy(dialog);
 }
@@ -56,13 +56,14 @@ void refresh_clipboard_list(ToolState &state)
         gtk_widget_set_tooltip_text(button, item.c_str());
         g_object_set_data_full(G_OBJECT(button), "clipboard-text", g_strdup(item.c_str()), g_free);
         g_signal_connect(button, "clicked", G_CALLBACK(+[](GtkButton *button, gpointer) {
-                           const auto *text = static_cast<const char *>(g_object_get_data(G_OBJECT(button), "clipboard-text"));
-                           if (text != nullptr)
-                           {
-                               gtk_clipboard_set_text(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD), text, -1);
-                           }
-                       }),
-                       nullptr);
+                             const auto *text =
+                                 static_cast<const char *>(g_object_get_data(G_OBJECT(button), "clipboard-text"));
+                             if (text != nullptr)
+                             {
+                                 gtk_clipboard_set_text(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD), text, -1);
+                             }
+                         }),
+                         nullptr);
         gtk_box_pack_start(GTK_BOX(state.clipboard_list), button, FALSE, FALSE, 2);
     }
     gtk_widget_show_all(state.clipboard_list);
@@ -139,7 +140,8 @@ void keyboard_key_clicked(GtkButton *button, gpointer user_data)
 void copy_keyboard_text(GtkButton *, gpointer user_data)
 {
     auto &state = *static_cast<ToolState *>(user_data);
-    gtk_clipboard_set_text(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD), gtk_entry_get_text(GTK_ENTRY(state.keyboard_entry)), -1);
+    gtk_clipboard_set_text(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD),
+                           gtk_entry_get_text(GTK_ENTRY(state.keyboard_entry)), -1);
 }
 
 gboolean handwriting_draw(GtkWidget *widget, cairo_t *context, gpointer user_data)
@@ -189,13 +191,14 @@ void refresh_handwriting_candidates(ToolState &state, const std::vector<std::str
         GtkWidget *button = gtk_button_new_with_label(candidate.c_str());
         g_object_set_data_full(G_OBJECT(button), "handwriting-text", g_strdup(candidate.c_str()), g_free);
         g_signal_connect(button, "clicked", G_CALLBACK(+[](GtkButton *button, gpointer) {
-                           const auto *text = static_cast<const char *>(g_object_get_data(G_OBJECT(button), "handwriting-text"));
-                           if (text != nullptr)
-                           {
-                               gtk_clipboard_set_text(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD), text, -1);
-                           }
-                       }),
-                       nullptr);
+                             const auto *text =
+                                 static_cast<const char *>(g_object_get_data(G_OBJECT(button), "handwriting-text"));
+                             if (text != nullptr)
+                             {
+                                 gtk_clipboard_set_text(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD), text, -1);
+                             }
+                         }),
+                         nullptr);
         gtk_box_pack_start(GTK_BOX(state.handwriting_candidates), button, FALSE, FALSE, 2);
     }
     gtk_widget_show_all(state.handwriting_candidates);
@@ -351,8 +354,8 @@ GtkWidget *build_handwriting_tab(ToolState &state)
     gtk_widget_set_margin_top(box, 16);
     state.handwriting_canvas = gtk_drawing_area_new();
     gtk_widget_set_size_request(state.handwriting_canvas, 400, 240);
-    gtk_widget_add_events(state.handwriting_canvas, GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK |
-                                                     GDK_POINTER_MOTION_MASK);
+    gtk_widget_add_events(state.handwriting_canvas,
+                          GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK | GDK_POINTER_MOTION_MASK);
     g_signal_connect(state.handwriting_canvas, "draw", G_CALLBACK(handwriting_draw), &state);
     g_signal_connect(state.handwriting_canvas, "button-press-event", G_CALLBACK(handwriting_button_press), &state);
     g_signal_connect(state.handwriting_canvas, "motion-notify-event", G_CALLBACK(handwriting_motion), &state);
@@ -400,11 +403,12 @@ int main(int argc, char **argv)
     gtk_window_set_title(GTK_WINDOW(state.window), "Metasequoia IME Desktop Tools");
     gtk_window_set_default_size(GTK_WINDOW(state.window), 620, 560);
     g_signal_connect(state.window, "destroy", G_CALLBACK(+[](GtkWidget *, gpointer user_data) {
-                       auto &state = *static_cast<ToolState *>(user_data);
-                       if (state.clipboard_poll_id != 0) g_source_remove(state.clipboard_poll_id);
-                       gtk_main_quit();
-                   }),
-                   &state);
+                         auto &state = *static_cast<ToolState *>(user_data);
+                         if (state.clipboard_poll_id != 0)
+                             g_source_remove(state.clipboard_poll_id);
+                         gtk_main_quit();
+                     }),
+                     &state);
     GtkWidget *notebook = gtk_notebook_new();
     GtkWidget *clipboard = build_clipboard_tab(state);
     gtk_notebook_append_page(GTK_NOTEBOOK(notebook), clipboard, gtk_label_new("Clipboard"));

@@ -47,10 +47,9 @@ int main(int argc, char **argv)
         return 2;
     }
 
-    const auto result = user_dictionary::replay(
-        metasequoia::path_to_utf8(data_directory / "msime_user.db"),
-        metasequoia::path_to_utf8(main_database),
-        metasequoia::path_to_utf8(english_database));
+    const auto result =
+        user_dictionary::replay(metasequoia::path_to_utf8(data_directory / "msime_user.db"),
+                                metasequoia::path_to_utf8(main_database), metasequoia::path_to_utf8(english_database));
     if (!result.error.empty())
     {
         std::cerr << "Unable to replay user dictionary operations: " << result.error << '\n';

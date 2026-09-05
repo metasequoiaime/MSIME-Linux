@@ -30,8 +30,7 @@ int main()
         std::string error;
         require(recognizer.recognize({}, 400, 300, &error).empty() && !error.empty(),
                 "Empty handwriting strokes were accepted.");
-        require(recognizer.recognize({{{{10.0, 10.0}, {100.0, 100.0}}}}, 16, 16, &error).empty() &&
-                    !error.empty(),
+        require(recognizer.recognize({{{{10.0, 10.0}, {100.0, 100.0}}}}, 16, 16, &error).empty() && !error.empty(),
                 "An undersized handwriting canvas was accepted.");
 
         std::cout << "Handwriting recognizer tests passed.\n";

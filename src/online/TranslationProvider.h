@@ -56,7 +56,7 @@ class TranslationProvider
 class TranslationService
 {
   public:
-    using Callback = std::function<void(std::uint64_t, std::vector<std::pair<std::string, std::string>>) >;
+    using Callback = std::function<void(std::uint64_t, std::vector<std::pair<std::string, std::string>>)>;
 
     TranslationService(std::shared_ptr<TranslationProvider> provider, Callback callback);
     ~TranslationService();

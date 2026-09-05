@@ -58,14 +58,11 @@ int main()
                 "A valid voice polish prompt could not be applied.");
         require(model.settings().voice.polish_enabled && model.settings().voice.polish_prompt == "请整理并补充标点。",
                 "Voice polish settings were not applied.");
-        require(!model.set("page-size", "99", &error) && !error.empty(),
-                "An out-of-range page size was accepted.");
-        require(!model.set("unknown-setting", "x", &error) && !error.empty(),
-                "An unknown setting was accepted.");
+        require(!model.set("page-size", "99", &error) && !error.empty(), "An out-of-range page size was accepted.");
+        require(!model.set("unknown-setting", "x", &error) && !error.empty(), "An unknown setting was accepted.");
         require(!model.set("ai-endpoint", "http://insecure.example", &error) && !error.empty(),
                 "An insecure AI endpoint was accepted by the settings UI model.");
-        require(model.set("ai-endpoint", "https://secure.example", &error),
-                "A valid HTTPS AI endpoint was rejected.");
+        require(model.set("ai-endpoint", "https://secure.example", &error), "A valid HTTPS AI endpoint was rejected.");
         require(model.settings().online.ai.token == "must-not-be-exposed", "Editing discarded the in-memory token.");
 
         std::cout << "Settings UI model tests passed.\n";

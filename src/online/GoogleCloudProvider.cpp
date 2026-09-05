@@ -16,8 +16,7 @@ std::string url_encode(const std::string &input)
     encoded.reserve(input.size() * 3);
     for (const unsigned char character : input)
     {
-        const bool unreserved = (character >= 'a' && character <= 'z') ||
-                                (character >= 'A' && character <= 'Z') ||
+        const bool unreserved = (character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z') ||
                                 (character >= '0' && character <= '9') || character == '-' || character == '_' ||
                                 character == '.' || character == '~';
         if (unreserved)

@@ -72,9 +72,8 @@ bool contains_header_separator(std::string_view value)
 
 bool contains_control_character(std::string_view value)
 {
-    return std::any_of(value.begin(), value.end(), [](unsigned char character) {
-        return character < 0x20U || character == 0x7fU;
-    });
+    return std::any_of(value.begin(), value.end(),
+                       [](unsigned char character) { return character < 0x20U || character == 0x7fU; });
 }
 
 bool starts_with(std::string_view value, std::string_view prefix)
@@ -340,8 +339,7 @@ std::optional<std::string> AiSuggestionProvider::parse_candidate(std::string_vie
             continue;
         }
         const std::string candidate = trim_ascii(text->as_string());
-        if (!candidate.empty() && candidate.size() <= kMaximumCandidateBytes &&
-            !contains_control_character(candidate))
+        if (!candidate.empty() && candidate.size() <= kMaximumCandidateBytes && !contains_control_character(candidate))
         {
             return candidate;
         }

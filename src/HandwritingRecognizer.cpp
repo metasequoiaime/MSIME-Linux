@@ -35,12 +35,14 @@ void set_error(std::string *error, const char *message)
 std::string trim(std::string_view value)
 {
     std::size_t first = 0;
-    while (first < value.size() && (value[first] == ' ' || value[first] == '\t' || value[first] == '\r' || value[first] == '\n'))
+    while (first < value.size() &&
+           (value[first] == ' ' || value[first] == '\t' || value[first] == '\r' || value[first] == '\n'))
     {
         ++first;
     }
     std::size_t last = value.size();
-    while (last > first && (value[last - 1] == ' ' || value[last - 1] == '\t' || value[last - 1] == '\r' || value[last - 1] == '\n'))
+    while (last > first &&
+           (value[last - 1] == ' ' || value[last - 1] == '\t' || value[last - 1] == '\r' || value[last - 1] == '\n'))
     {
         --last;
     }
@@ -249,9 +251,10 @@ std::vector<std::string> HandwritingRecognizer::recognize(const std::vector<Hand
     std::filesystem::remove(input_path, ignored);
     if (!succeeded)
     {
-        set_error(error, exit_code == 127
-                           ? "Tesseract handwriting backend is unavailable; install tesseract-ocr and tesseract-ocr-chi-sim."
-                           : "Tesseract handwriting recognition failed.");
+        set_error(error,
+                  exit_code == 127
+                      ? "Tesseract handwriting backend is unavailable; install tesseract-ocr and tesseract-ocr-chi-sim."
+                      : "Tesseract handwriting recognition failed.");
         return {};
     }
     const auto candidates = parse_candidates(output);

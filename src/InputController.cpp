@@ -47,22 +47,20 @@ InputController::InputController(SchemeType scheme_type, InputOptions options)
       word_to_character_(options.word_to_character), bracket_paging_(options.bracket_paging),
       smart_punctuation_(options.smart_punctuation),
       smart_punctuation_repeat_to_chinese_(options.smart_punctuation_repeat_to_chinese),
-      paired_punctuation_(options.paired_punctuation),
-      preedit_style_(options.preedit_style), quanpin_helpcode_enabled_(options.quanpin_helpcode_enabled),
+      paired_punctuation_(options.paired_punctuation), preedit_style_(options.preedit_style),
+      quanpin_helpcode_enabled_(options.quanpin_helpcode_enabled),
       quanpin_helpcode_schema_(std::move(options.quanpin_helpcode_schema)),
       shuangpin_helpcode_enabled_(options.shuangpin_helpcode_enabled),
       shuangpin_helpcode_schema_(std::move(options.shuangpin_helpcode_schema)),
       frequency_adjustment_mode_(options.frequency_adjustment_mode),
-      frequency_trigger_count_(options.frequency_trigger_count),
-      frequency_linear_step_(options.frequency_linear_step),
+      frequency_trigger_count_(options.frequency_trigger_count), frequency_linear_step_(options.frequency_linear_step),
       now_(options.now ? std::move(options.now) : [] { return std::chrono::steady_clock::now(); })
 {
     if (page_size_ == 0)
     {
         throw std::invalid_argument("Candidate page size must be greater than zero.");
     }
-    if (!valid_preedit_style(preedit_style_) ||
-        !InputSession::is_supported_helpcode_schema(quanpin_helpcode_schema_) ||
+    if (!valid_preedit_style(preedit_style_) || !InputSession::is_supported_helpcode_schema(quanpin_helpcode_schema_) ||
         !InputSession::is_supported_helpcode_schema(shuangpin_helpcode_schema_))
     {
         throw std::invalid_argument("Preedit or helpcode options were outside the supported range.");
@@ -175,11 +173,11 @@ ControllerResult InputController::handle_key(const FrontendKeyEvent &event)
                 {
                     return move_page(event.character == ']');
                 }
-                if (word_to_character_ && !bracket_paging_ &&
-                    (event.character == '[' || event.character == ']'))
+                if (word_to_character_ && !bracket_paging_ && (event.character == '[' || event.character == ']'))
                 {
-                    result = session_.select_candidate_edge(
-                        highlighted_candidate_, event.character == '[' ? CandidateEdge::FirstHan : CandidateEdge::LastHan);
+                    result = session_.select_candidate_edge(highlighted_candidate_, event.character == '['
+                                                                                        ? CandidateEdge::FirstHan
+                                                                                        : CandidateEdge::LastHan);
                     if (result.handled)
                     {
                         return finish_composition_mutation(std::move(result));
@@ -232,8 +230,7 @@ ControllerResult InputController::handle_key(const FrontendKeyEvent &event)
             {
                 return {true, std::nullopt};
             }
-            if (const std::size_t absolute_index = page_start() + event.digit - 1;
-                absolute_index < candidates().size())
+            if (const std::size_t absolute_index = page_start() + event.digit - 1; absolute_index < candidates().size())
             {
                 return select_candidate(absolute_index);
             }
@@ -350,8 +347,7 @@ ControllerResult InputController::set_character_width(CharacterWidth width)
 
 ControllerResult InputController::toggle_character_width()
 {
-    return set_character_width(character_width_ == CharacterWidth::Half ? CharacterWidth::Full
-                                                                         : CharacterWidth::Half);
+    return set_character_width(character_width_ == CharacterWidth::Half ? CharacterWidth::Full : CharacterWidth::Half);
 }
 
 ControllerResult InputController::toggle_dedicated_english_mode()
@@ -403,8 +399,8 @@ std::optional<OnlineRequest> InputController::online_request() const
     return OnlineRequest{online_generation_, *query};
 }
 
-bool InputController::apply_online_candidate(std::uint64_t generation, const OnlineQuery &query,
-                                             std::string candidate, CandidateSource source)
+bool InputController::apply_online_candidate(std::uint64_t generation, const OnlineQuery &query, std::string candidate,
+                                             CandidateSource source)
 {
     if (generation != online_generation_)
     {
@@ -628,8 +624,7 @@ ControllerResult InputController::commit_highlighted()
     return select_candidate(highlighted_candidate_);
 }
 
-ControllerResult InputController::commit_punctuation(char ascii,
-                                                     std::optional<char32_t> preceding_character)
+ControllerResult InputController::commit_punctuation(char ascii, std::optional<char32_t> preceding_character)
 {
     const bool had_composition = has_composition();
     ControllerResult result = commit_highlighted();
@@ -642,10 +637,9 @@ ControllerResult InputController::commit_punctuation(char ascii,
 
     const auto now = now_();
     const bool can_replace_recent_ascii =
-        punctuation_mode_ == PunctuationMode::Chinese && smart_punctuation_ &&
-        smart_punctuation_repeat_to_chinese_ && !had_composition && smart_punctuation_history_active_ &&
-        smart_punctuation_history_key_ == ascii && preceding_character == static_cast<char32_t>(ascii) &&
-        now >= smart_punctuation_history_time_ &&
+        punctuation_mode_ == PunctuationMode::Chinese && smart_punctuation_ && smart_punctuation_repeat_to_chinese_ &&
+        !had_composition && smart_punctuation_history_active_ && smart_punctuation_history_key_ == ascii &&
+        preceding_character == static_cast<char32_t>(ascii) && now >= smart_punctuation_history_time_ &&
         now - smart_punctuation_history_time_ <= std::chrono::seconds(2);
     if (can_replace_recent_ascii)
     {

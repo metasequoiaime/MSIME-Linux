@@ -13,7 +13,9 @@ namespace
 {
 struct CurlGlobalState
 {
-    CurlGlobalState() : initialized(curl_global_init(CURL_GLOBAL_DEFAULT) == CURLE_OK) {}
+    CurlGlobalState() : initialized(curl_global_init(CURL_GLOBAL_DEFAULT) == CURLE_OK)
+    {
+    }
     ~CurlGlobalState()
     {
         if (initialized)
@@ -74,7 +76,10 @@ int transfer_progress(void *user_data, curl_off_t, curl_off_t, curl_off_t, curl_
 
 struct CurlHandleDeleter
 {
-    void operator()(CURL *handle) const { curl_easy_cleanup(handle); }
+    void operator()(CURL *handle) const
+    {
+        curl_easy_cleanup(handle);
+    }
 };
 } // namespace
 
@@ -99,20 +104,19 @@ HttpResponse CurlHttpTransport::perform(const HttpRequest &request, const Cancel
     ResponseBuffer response_buffer{{}, request.max_response_bytes, false, false};
     const long connect_timeout = static_cast<long>(request.connect_timeout.count());
     const long total_timeout = static_cast<long>(request.total_timeout.count());
-    const bool configured =
-        curl_easy_setopt(handle.get(), CURLOPT_URL, request.url.c_str()) == CURLE_OK &&
-        curl_easy_setopt(handle.get(), CURLOPT_PROTOCOLS_STR, "HTTPS") == CURLE_OK &&
-        curl_easy_setopt(handle.get(), CURLOPT_CONNECTTIMEOUT_MS, connect_timeout) == CURLE_OK &&
-        curl_easy_setopt(handle.get(), CURLOPT_TIMEOUT_MS, total_timeout) == CURLE_OK &&
-        curl_easy_setopt(handle.get(), CURLOPT_NOSIGNAL, 1L) == CURLE_OK &&
-        curl_easy_setopt(handle.get(), CURLOPT_SSL_VERIFYPEER, 1L) == CURLE_OK &&
-        curl_easy_setopt(handle.get(), CURLOPT_SSL_VERIFYHOST, 2L) == CURLE_OK &&
-        curl_easy_setopt(handle.get(), CURLOPT_USERAGENT, "MetasequoiaImeLinux/0.1") == CURLE_OK &&
-        curl_easy_setopt(handle.get(), CURLOPT_WRITEFUNCTION, write_response) == CURLE_OK &&
-        curl_easy_setopt(handle.get(), CURLOPT_WRITEDATA, &response_buffer) == CURLE_OK &&
-        curl_easy_setopt(handle.get(), CURLOPT_NOPROGRESS, 0L) == CURLE_OK &&
-        curl_easy_setopt(handle.get(), CURLOPT_XFERINFOFUNCTION, transfer_progress) == CURLE_OK &&
-        curl_easy_setopt(handle.get(), CURLOPT_XFERINFODATA, &cancelled) == CURLE_OK;
+    const bool configured = curl_easy_setopt(handle.get(), CURLOPT_URL, request.url.c_str()) == CURLE_OK &&
+                            curl_easy_setopt(handle.get(), CURLOPT_PROTOCOLS_STR, "HTTPS") == CURLE_OK &&
+                            curl_easy_setopt(handle.get(), CURLOPT_CONNECTTIMEOUT_MS, connect_timeout) == CURLE_OK &&
+                            curl_easy_setopt(handle.get(), CURLOPT_TIMEOUT_MS, total_timeout) == CURLE_OK &&
+                            curl_easy_setopt(handle.get(), CURLOPT_NOSIGNAL, 1L) == CURLE_OK &&
+                            curl_easy_setopt(handle.get(), CURLOPT_SSL_VERIFYPEER, 1L) == CURLE_OK &&
+                            curl_easy_setopt(handle.get(), CURLOPT_SSL_VERIFYHOST, 2L) == CURLE_OK &&
+                            curl_easy_setopt(handle.get(), CURLOPT_USERAGENT, "MetasequoiaImeLinux/0.1") == CURLE_OK &&
+                            curl_easy_setopt(handle.get(), CURLOPT_WRITEFUNCTION, write_response) == CURLE_OK &&
+                            curl_easy_setopt(handle.get(), CURLOPT_WRITEDATA, &response_buffer) == CURLE_OK &&
+                            curl_easy_setopt(handle.get(), CURLOPT_NOPROGRESS, 0L) == CURLE_OK &&
+                            curl_easy_setopt(handle.get(), CURLOPT_XFERINFOFUNCTION, transfer_progress) == CURLE_OK &&
+                            curl_easy_setopt(handle.get(), CURLOPT_XFERINFODATA, &cancelled) == CURLE_OK;
     if (!configured)
     {
         return {0, {}, "libcurl request configuration failed"};
@@ -139,8 +143,8 @@ HttpResponse CurlHttpTransport::perform(const HttpRequest &request, const Cancel
     if (request.method == HttpMethod::Post &&
         (curl_easy_setopt(handle.get(), CURLOPT_POST, 1L) != CURLE_OK ||
          curl_easy_setopt(handle.get(), CURLOPT_POSTFIELDS, request.body.data()) != CURLE_OK ||
-         curl_easy_setopt(handle.get(), CURLOPT_POSTFIELDSIZE_LARGE,
-                          static_cast<curl_off_t>(request.body.size())) != CURLE_OK))
+         curl_easy_setopt(handle.get(), CURLOPT_POSTFIELDSIZE_LARGE, static_cast<curl_off_t>(request.body.size())) !=
+             CURLE_OK))
     {
         free_headers();
         return {0, {}, "libcurl POST configuration failed"};

@@ -10,15 +10,16 @@ namespace
 thread_local const OnlineCandidateService *active_worker_service = nullptr;
 }
 
-OnlineCandidateService::OnlineCandidateService(std::shared_ptr<GoogleCloudProvider> cloud_provider,
-                                               Callback callback, std::chrono::milliseconds debounce,
+OnlineCandidateService::OnlineCandidateService(std::shared_ptr<GoogleCloudProvider> cloud_provider, Callback callback,
+                                               std::chrono::milliseconds debounce,
                                                std::shared_ptr<AiSuggestionProvider> ai_provider)
-    : cloud_provider_(std::move(cloud_provider)), ai_provider_(std::move(ai_provider)),
-      callback_(std::move(callback)), debounce_(debounce)
+    : cloud_provider_(std::move(cloud_provider)), ai_provider_(std::move(ai_provider)), callback_(std::move(callback)),
+      debounce_(debounce)
 {
     if (!cloud_provider_ || !callback_ || debounce_ < std::chrono::milliseconds::zero())
     {
-        throw std::invalid_argument("Online candidate service requires a provider, callback, and non-negative debounce.");
+        throw std::invalid_argument(
+            "Online candidate service requires a provider, callback, and non-negative debounce.");
     }
     try
     {
@@ -120,7 +121,10 @@ void OnlineCandidateService::worker_loop(CandidateSource source)
     struct WorkerMarker
     {
         const OnlineCandidateService *previous;
-        ~WorkerMarker() { active_worker_service = previous; }
+        ~WorkerMarker()
+        {
+            active_worker_service = previous;
+        }
     } marker{active_worker_service};
     active_worker_service = this;
 
@@ -154,8 +158,8 @@ void OnlineCandidateService::worker_loop(CandidateSource source)
         }
         const bool eligible = source == CandidateSource::CloudSuggestion
                                   ? pending->request.query.cloud_eligible
-                                  : ai_provider_ && pending->ai_config.has_value() &&
-                                        pending->ai_config->enabled && pending->request.query.ai_eligible;
+                                  : ai_provider_ && pending->ai_config.has_value() && pending->ai_config->enabled &&
+                                        pending->request.query.ai_eligible;
         if (!eligible)
         {
             continue;
@@ -174,8 +178,8 @@ void OnlineCandidateService::worker_loop(CandidateSource source)
             }
             else
             {
-                candidate = ai_provider_->fetch(pending->request.query, pending->context, *pending->ai_config,
-                                                cancelled);
+                candidate =
+                    ai_provider_->fetch(pending->request.query, pending->context, *pending->ai_config, cancelled);
             }
         }
         catch (...)

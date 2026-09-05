@@ -15,16 +15,16 @@
 
 namespace
 {
+using metasequoia::FrequencyAdjustmentMode;
+using metasequoia::LocalInputMode;
+using metasequoia::linux_ime::CharacterWidth;
 using metasequoia::linux_ime::FrontendKey;
 using metasequoia::linux_ime::FrontendKeyEvent;
-using metasequoia::linux_ime::CharacterWidth;
 using metasequoia::linux_ime::InputController;
 using metasequoia::linux_ime::InputMode;
 using metasequoia::linux_ime::InputOptions;
-using metasequoia::linux_ime::PunctuationMode;
 using metasequoia::linux_ime::PreeditStyle;
-using metasequoia::FrequencyAdjustmentMode;
-using metasequoia::LocalInputMode;
+using metasequoia::linux_ime::PunctuationMode;
 
 class Database
 {
@@ -37,7 +37,10 @@ class Database
         }
     }
 
-    ~Database() { sqlite3_close(database_); }
+    ~Database()
+    {
+        sqlite3_close(database_);
+    }
 
     void execute(const std::string &sql)
     {
@@ -139,8 +142,8 @@ int main()
         database.execute("CREATE TABLE tbl_2_n(key TEXT, jp TEXT, value TEXT, weight INTEGER)");
         for (int index = 0; index < 12; ++index)
         {
-            database.execute("INSERT INTO tbl_2_n VALUES('ni''hao', 'nh', 'candidate-" +
-                             std::to_string(index) + "', " + std::to_string(120 - index) + ")");
+            database.execute("INSERT INTO tbl_2_n VALUES('ni''hao', 'nh', 'candidate-" + std::to_string(index) + "', " +
+                             std::to_string(120 - index) + ")");
         }
         database.execute("INSERT INTO tbl_2_n VALUES('ni''men', 'nm', '你们', 200)");
         database.execute("INSERT INTO tbl_2_n VALUES('ni''men', 'nm', '君好', 100)");
@@ -161,14 +164,12 @@ int main()
         others_database.execute("CREATE TABLE emoji_pinyin(key TEXT,emoji TEXT,sort_order INTEGER)");
         others_database.execute("INSERT INTO emoji_pinyin VALUES('xi','✨',0)");
         others_database.execute("INSERT INTO emoji_pinyin VALUES('xiaolian','😀',10)");
-        others_database.execute(
-            "CREATE TABLE kaomoji(pinyin TEXT,jianpin TEXT,kaomoji TEXT,sort_order INTEGER)");
+        others_database.execute("CREATE TABLE kaomoji(pinyin TEXT,jianpin TEXT,kaomoji TEXT,sort_order INTEGER)");
         others_database.execute("INSERT INTO kaomoji VALUES('xi','x','(^_^)',0)");
         others_database.execute("INSERT INTO kaomoji VALUES('haixiu','hx','(*/ω＼*)',10)");
         Database english_database(data_directory / "english.db");
-        english_database.execute(
-            "CREATE TABLE english_words(word TEXT COLLATE BINARY NOT NULL,display TEXT NOT NULL,"
-            "weight INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(word,display)) WITHOUT ROWID");
+        english_database.execute("CREATE TABLE english_words(word TEXT COLLATE BINARY NOT NULL,display TEXT NOT NULL,"
+                                 "weight INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(word,display)) WITHOUT ROWID");
         english_database.execute("CREATE TABLE en_zh_glosses(english TEXT PRIMARY KEY,chinese_gloss TEXT NOT NULL)");
         english_database.execute("CREATE TABLE zh_en_glosses(chinese TEXT PRIMARY KEY,english_gloss TEXT NOT NULL)");
         english_database.execute("INSERT INTO english_words VALUES('xi','Xi',100)");
@@ -198,8 +199,8 @@ int main()
                 "Candidate navigation invalidated an otherwise current online request.");
         const std::size_t highlighted_before_online = online_controller.highlighted_candidate();
         const std::size_t candidate_count_before_online = online_controller.candidates().size();
-        require(online_controller.apply_online_candidate(online_request->generation, online_request->query,
-                                                         "云候选", CandidateSource::CloudSuggestion),
+        require(online_controller.apply_online_candidate(online_request->generation, online_request->query, "云候选",
+                                                         CandidateSource::CloudSuggestion),
                 "The controller rejected a current cloud result.");
         require(online_controller.candidates().size() == candidate_count_before_online + 1 &&
                     online_controller.candidates()[1].word == "云候选" &&
@@ -208,8 +209,8 @@ int main()
                 "Applying a new cloud row reset the cursor or advanced the composition generation.");
 
         const std::size_t candidate_count_before_replacement = online_controller.candidates().size();
-        require(online_controller.apply_online_candidate(online_request->generation, online_request->query,
-                                                         "新云候选", CandidateSource::CloudSuggestion),
+        require(online_controller.apply_online_candidate(online_request->generation, online_request->query, "新云候选",
+                                                         CandidateSource::CloudSuggestion),
                 "The controller rejected a replacement cloud result.");
         require(online_controller.candidates().size() == candidate_count_before_replacement &&
                     online_controller.highlighted_candidate() == highlighted_before_online,
@@ -221,8 +222,8 @@ int main()
         require(online_controller.handle_key(key(FrontendKey::Backspace)).handled &&
                     online_controller.online_generation() > before_backspace,
                 "Backspace did not advance the online generation.");
-        require(!online_controller.apply_online_candidate(stale_request->generation, stale_request->query,
-                                                          "过期候选", CandidateSource::CloudSuggestion),
+        require(!online_controller.apply_online_candidate(stale_request->generation, stale_request->query, "过期候选",
+                                                          CandidateSource::CloudSuggestion),
                 "A cloud result survived a composition edit.");
 
         const std::uint64_t before_cancel = online_controller.online_generation();
@@ -231,8 +232,7 @@ int main()
                 "Cancel did not advance the online generation.");
         const std::uint64_t before_reset = online_controller.online_generation();
         online_controller.reset();
-        require(online_controller.online_generation() > before_reset,
-                "Reset did not advance the online generation.");
+        require(online_controller.online_generation() > before_reset, "Reset did not advance the online generation.");
 
         const std::uint64_t before_direct = online_controller.online_generation();
         require(online_controller.set_mode(InputMode::Direct).handled &&
@@ -374,7 +374,8 @@ int main()
 
         type(controller, "nihao");
         const auto clicked = controller.select_candidate(8);
-        require(clicked.handled && clicked.commit == "candidate-8", "Absolute candidate selection committed wrong text.");
+        require(clicked.handled && clicked.commit == "candidate-8",
+                "Absolute candidate selection committed wrong text.");
 
         InputController punctuation_controller(SchemeType::Quanpin, 3);
         const auto plain_comma = punctuation_controller.handle_key(punctuation(','));
@@ -514,8 +515,7 @@ int main()
         require(candidate_smart_comma.commit == "candidate-0,",
                 "Candidate commit did not use its ASCII tail for smart punctuation.");
         now += std::chrono::seconds(1);
-        const auto repeated_candidate_comma =
-            candidate_smart_controller.handle_key(punctuation(',', U','));
+        const auto repeated_candidate_comma = candidate_smart_controller.handle_key(punctuation(',', U','));
         require(repeated_candidate_comma.commit == "，" && repeated_candidate_comma.delete_before == 1,
                 "Repeated smart punctuation did not replace ASCII punctuation committed with a candidate.");
 
@@ -531,8 +531,7 @@ int main()
         pair_options.paired_punctuation = true;
         InputController pair_controller(SchemeType::Quanpin, pair_options);
         const auto double_quote_pair = pair_controller.handle_key(punctuation('"'));
-        require(double_quote_pair.handled && double_quote_pair.commit == "“”" &&
-                    double_quote_pair.cursor_left == 1,
+        require(double_quote_pair.handled && double_quote_pair.commit == "“”" && double_quote_pair.cursor_left == 1,
                 "Double quote pair did not request one cursor-left event.");
         const auto repeated_double_quote_pair = pair_controller.handle_key(punctuation('"'));
         require(repeated_double_quote_pair.commit == "“”" && repeated_double_quote_pair.cursor_left == 1,
@@ -549,8 +548,7 @@ int main()
         require(pair_controller.handle_key(punctuation('<')).commit == "《》",
                 "Context invalidation left stale book-title nesting.");
         pair_controller.reset();
-        require(pair_controller.handle_key(punctuation('<')).commit == "《》",
-                "Reset left stale book-title nesting.");
+        require(pair_controller.handle_key(punctuation('<')).commit == "《》", "Reset left stale book-title nesting.");
         FrontendKeyEvent document_navigation;
         document_navigation.host_shortcut = true;
         pair_controller.handle_key(document_navigation);
@@ -566,8 +564,7 @@ int main()
                     quanpin_pinyin_controller.shuangpin_helpcode_schema() == "lantian",
                 "Windows-compatible helpcode defaults were not retained by the controller.");
         type(quanpin_pinyin_controller, "nimenC");
-        require(quanpin_pinyin_controller.preedit() == "ni'men'C" &&
-                    !quanpin_pinyin_controller.candidates().empty() &&
+        require(quanpin_pinyin_controller.preedit() == "ni'men'C" && !quanpin_pinyin_controller.candidates().empty() &&
                     quanpin_pinyin_controller.candidates().front().word == "君好",
                 "Quanpin pinyin preedit or Lantian helpcode selection was not applied.");
 
@@ -575,8 +572,7 @@ int main()
         ziranma_options.quanpin_helpcode_schema = "ziranma";
         InputController ziranma_controller(SchemeType::Quanpin, ziranma_options);
         type(ziranma_controller, "nimenA");
-        require(!ziranma_controller.candidates().empty() &&
-                    ziranma_controller.candidates().front().word == "君好",
+        require(!ziranma_controller.candidates().empty() && ziranma_controller.candidates().front().word == "君好",
                 "The independent Quanpin helpcode schema was not selected before input.");
         ziranma_controller.reset();
         type(ziranma_controller, "nimenAG");
@@ -592,8 +588,7 @@ int main()
         shuangpin_pinyin_options.shuangpin_helpcode_schema = "lantian";
         InputController shuangpin_pinyin_controller(SchemeType::Shuangpin, shuangpin_pinyin_options);
         type(shuangpin_pinyin_controller, "nihcc");
-        require(shuangpin_pinyin_controller.preedit() == "ni'hao'c" &&
-                    shuangpin_pinyin_controller.has_composition(),
+        require(shuangpin_pinyin_controller.preedit() == "ni'hao'c" && shuangpin_pinyin_controller.has_composition(),
                 "Shuangpin pinyin preedit did not expose normalized segmentation.");
 
         InputOptions hidden_options;
@@ -633,8 +628,7 @@ int main()
                     !learned_frequency.diagnostic.has_value(),
                 "Frequency learning changed a successful controller commit.");
         type(frequency_controller, "xi");
-        require(!frequency_controller.candidates().empty() &&
-                    frequency_controller.candidates().front().word == "己频",
+        require(!frequency_controller.candidates().empty() && frequency_controller.candidates().front().word == "己频",
                 "The controller did not expose the shared Engine's learned candidate order.");
 
         InputController unicode_controller(SchemeType::Quanpin, 3);
@@ -644,14 +638,11 @@ int main()
                     unicode_controller.local_input_mode() == LocalInputMode::Unicode &&
                     unicode_controller.preedit() == "U",
                 "The controller did not enter Unicode mode from Shift+U.");
-        require(unicode_controller.handle_key(digit(4)).handled,
-                "A bare digit did not extend Unicode composition.");
+        require(unicode_controller.handle_key(digit(4)).handled, "A bare digit did not extend Unicode composition.");
         require(unicode_controller.handle_key({FrontendKey::Character, 'e'}).handled,
                 "A hexadecimal letter did not extend Unicode composition.");
-        require(unicode_controller.handle_key(digit(0)).handled &&
-                    unicode_controller.handle_key(digit(0)).handled &&
-                    unicode_controller.candidates().size() == 1 &&
-                    unicode_controller.candidates().front().word == "一",
+        require(unicode_controller.handle_key(digit(0)).handled && unicode_controller.handle_key(digit(0)).handled &&
+                    unicode_controller.candidates().size() == 1 && unicode_controller.candidates().front().word == "一",
                 "The controller did not expose the generated Unicode candidate.");
         const auto unicode_space = unicode_controller.handle_key(key(FrontendKey::Space));
         require(unicode_space.handled && unicode_space.commit == "一" &&
@@ -664,8 +655,8 @@ int main()
         for (const char character : std::string("1f600"))
         {
             const auto result = character >= '0' && character <= '9'
-                ? unicode_controller.handle_key(digit(static_cast<unsigned>(character - '0')))
-                : unicode_controller.handle_key({FrontendKey::Character, character});
+                                    ? unicode_controller.handle_key(digit(static_cast<unsigned>(character - '0')))
+                                    : unicode_controller.handle_key({FrontendKey::Character, character});
             require(result.handled, "The controller rejected Unicode hexadecimal input.");
         }
         const auto unicode_shift_digit = unicode_controller.handle_key(digit(1, true));
@@ -678,8 +669,8 @@ int main()
         for (const char character : std::string("4e00"))
         {
             const auto result = character >= '0' && character <= '9'
-                ? unicode_controller.handle_key(digit(static_cast<unsigned>(character - '0')))
-                : unicode_controller.handle_key({FrontendKey::Character, character});
+                                    ? unicode_controller.handle_key(digit(static_cast<unsigned>(character - '0')))
+                                    : unicode_controller.handle_key({FrontendKey::Character, character});
             require(result.handled, "The controller rejected Unicode input before shifted punctuation selection.");
         }
         FrontendKeyEvent shifted_exclamation = punctuation('!');
@@ -914,8 +905,7 @@ int main()
         temporary_english_paging.handle_key(key(FrontendKey::Escape));
         InputOptions temporary_english_punctuation_options;
         temporary_english_punctuation_options.punctuation_mode = PunctuationMode::English;
-        InputController temporary_english_punctuation(SchemeType::Quanpin,
-                                                      temporary_english_punctuation_options);
+        InputController temporary_english_punctuation(SchemeType::Quanpin, temporary_english_punctuation_options);
         temporary_english_punctuation.handle_key(temporary_english_prefix);
         type(temporary_english_punctuation, "he");
         temporary_english_punctuation.handle_key(key(FrontendKey::Down));
@@ -949,8 +939,7 @@ int main()
                 "Backspace on the bare R prefix did not restore Quanpin.");
         require(temporary_japanese_controller.handle_key(temporary_japanese_prefix).handled,
                 "Temporary Japanese could not start before a bare-prefix scheme switch.");
-        const auto bare_japanese_scheme_switch =
-            temporary_japanese_controller.switch_scheme(SchemeType::Shuangpin);
+        const auto bare_japanese_scheme_switch = temporary_japanese_controller.switch_scheme(SchemeType::Shuangpin);
         require(bare_japanese_scheme_switch.handled && !bare_japanese_scheme_switch.commit.has_value() &&
                     temporary_japanese_controller.local_input_mode() == LocalInputMode::None &&
                     temporary_japanese_controller.scheme() == SchemeType::Shuangpin,
@@ -966,8 +955,7 @@ int main()
                 "Reselecting the original scheme did not finish temporary Japanese mode.");
         InputOptions temporary_japanese_punctuation_options;
         temporary_japanese_punctuation_options.punctuation_mode = PunctuationMode::English;
-        InputController temporary_japanese_punctuation(SchemeType::Quanpin,
-                                                       temporary_japanese_punctuation_options);
+        InputController temporary_japanese_punctuation(SchemeType::Quanpin, temporary_japanese_punctuation_options);
         temporary_japanese_punctuation.handle_key(temporary_japanese_prefix);
         type(temporary_japanese_punctuation, "ka");
         const auto temporary_japanese_comma = temporary_japanese_punctuation.handle_key(punctuation(','));
