@@ -1,5 +1,7 @@
 #include "TranslationProvider.h"
 
+#include "EndpointPolicy.h"
+
 #include "../../vendor/MetasequoiaImeEngine/english/english_dictionary.h"
 
 #include <boost/json.hpp>
@@ -31,12 +33,6 @@ std::string trim(std::string_view value)
         --last;
     }
     return std::string(value.substr(first, last - first));
-}
-
-bool valid_endpoint(std::string_view endpoint)
-{
-    return endpoint.rfind("https://", 0) == 0 && endpoint.size() <= 2048 &&
-           endpoint.find_first_of("\r\n") == std::string_view::npos;
 }
 
 bool valid_token(std::string_view token)
@@ -112,7 +108,7 @@ std::optional<std::string> TranslationProvider::lookup(std::string_view candidat
         }
     }
 
-    if (backend == TranslationBackend::Local || !valid_endpoint(endpoint) || !valid_token(token) ||
+    if (backend == TranslationBackend::Local || !endpoint_allowed(endpoint) || !valid_token(token) ||
         (cancelled && cancelled()))
     {
         return std::nullopt;

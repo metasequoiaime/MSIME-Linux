@@ -1,5 +1,7 @@
 #include "AiSuggestionProvider.h"
 
+#include "EndpointPolicy.h"
+
 #include <boost/json.hpp>
 
 #include <algorithm>
@@ -76,25 +78,6 @@ bool contains_control_character(std::string_view value)
                        [](unsigned char character) { return character < 0x20U || character == 0x7fU; });
 }
 
-bool starts_with(std::string_view value, std::string_view prefix)
-{
-    return value.size() >= prefix.size() && value.substr(0, prefix.size()) == prefix;
-}
-
-bool is_loopback_http_endpoint(std::string_view endpoint)
-{
-    constexpr std::string_view prefixes[]{"http://127.0.0.1", "http://localhost", "http://[::1]"};
-    for (const auto prefix : prefixes)
-    {
-        if (starts_with(endpoint, prefix) &&
-            (endpoint.size() == prefix.size() || endpoint[prefix.size()] == ':' || endpoint[prefix.size()] == '/'))
-        {
-            return true;
-        }
-    }
-    return false;
-}
-
 std::size_t bounded_candidate_limit(std::size_t limit)
 {
     return std::clamp<std::size_t>(limit, 1, 10);
@@ -139,9 +122,7 @@ std::optional<std::string> AiSuggestionProvider::fetch(const OnlineQuery &query,
 
     const std::string endpoint = resolved_endpoint(config);
     const std::string model = resolved_model(config);
-    const bool allowed_endpoint = starts_with(endpoint, "https://") ||
-                                  (allow_insecure_loopback_for_tests_ && is_loopback_http_endpoint(endpoint));
-    if (!allowed_endpoint || endpoint.size() > 2048 || model.empty() || model.size() > 256)
+    if (!endpoint_allowed(endpoint, allow_insecure_loopback_for_tests_) || model.empty() || model.size() > 256)
     {
         return std::nullopt;
     }

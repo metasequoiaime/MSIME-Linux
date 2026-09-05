@@ -1,5 +1,7 @@
 #include "VoiceInput.h"
 
+#include "online/EndpointPolicy.h"
+
 #include <boost/json.hpp>
 
 #include <algorithm>
@@ -58,19 +60,6 @@ bool run_recorder(const char *program, const char *const arguments[], int *statu
 }
 #endif
 
-bool endpoint_allowed(std::string_view endpoint, bool allow_loopback)
-{
-    if (endpoint.rfind("https://", 0) == 0)
-    {
-        return true;
-    }
-    if (!allow_loopback || endpoint.rfind("http://127.0.0.1:", 0) != 0)
-    {
-        return false;
-    }
-    return endpoint.find('/', 7) != std::string_view::npos;
-}
-
 std::string make_multipart(std::string_view audio, std::string_view boundary, std::string_view model,
                            std::string_view language)
 {
@@ -122,7 +111,7 @@ std::optional<std::string> VoiceInputProvider::transcribe(std::string_view audio
         error->clear();
     }
     if (!transport_ || !config.enabled || audio.empty() || audio.size() > kMaximumAudioBytes || config.token.empty() ||
-        config.model.empty() || !endpoint_allowed(config.endpoint, allow_insecure_loopback_for_tests_))
+        config.model.empty() || !online::endpoint_allowed(config.endpoint, allow_insecure_loopback_for_tests_))
     {
         set_error(error, "Voice input configuration or audio was invalid.");
         return std::nullopt;
@@ -158,7 +147,8 @@ std::optional<std::string> VoiceInputProvider::polish(std::string_view text, con
         error->clear();
     }
     if (!transport_ || !config.polish_enabled || text.empty() || config.token.empty() || config.polish_model.empty() ||
-        config.polish_prompt.empty() || !endpoint_allowed(config.polish_endpoint, allow_insecure_loopback_for_tests_))
+        config.polish_prompt.empty() ||
+        !online::endpoint_allowed(config.polish_endpoint, allow_insecure_loopback_for_tests_))
     {
         set_error(error, "Voice polish configuration or text was invalid.");
         return std::nullopt;
