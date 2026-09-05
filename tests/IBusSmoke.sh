@@ -56,6 +56,8 @@ printf '%s\n' \
     'punctuation=english' \
     'full-width=true' \
     'comma-period-paging=true' \
+    'show-quanpin-helpcode=false' \
+    'show-shuangpin-helpcode=false' \
     'word-to-character=true' \
     'bracket-paging=false' \
     'smart-punctuation=true' \
@@ -105,7 +107,6 @@ if ! python3 - <<'PYTHON'
 import gi
 import os
 from pathlib import Path
-import re
 import sqlite3
 import subprocess
 
@@ -486,18 +487,8 @@ for keyval in (IBus.KEY_n, IBus.KEY_i):
         raise RuntimeError("Mixed-candidate pinyin input was not handled.")
 
 
-def without_helpcode_hint(candidate):
-    # Dictionary candidates carry a trailing "(xx)" helpcode hint when that display is enabled.
-    # This assertion is about the ordering of the mixed candidate types, not about the hint.
-    return re.sub(r"\([A-Za-z]+\)$", "", candidate)
-
-
-def leading_candidates(candidates):
-    return tuple(without_helpcode_hint(candidate) for candidate in candidates[:4])
-
-
 def mixed_candidates_observed():
-    if any(visible and leading_candidates(candidates) == expected_mixed_prefix
+    if any(visible and candidates[:4] == expected_mixed_prefix
            for candidates, visible in lookup_candidate_updates):
         mixed_candidates_loop.quit()
         return GLib.SOURCE_REMOVE
@@ -508,7 +499,7 @@ mixed_candidates_loop = GLib.MainLoop()
 GLib.timeout_add(20, mixed_candidates_observed)
 GLib.timeout_add_seconds(5, mixed_candidates_loop.quit)
 mixed_candidates_loop.run()
-if not any(visible and leading_candidates(candidates) == expected_mixed_prefix
+if not any(visible and candidates[:4] == expected_mixed_prefix
            for candidates, visible in lookup_candidate_updates):
     raise RuntimeError(
         f"Mixed English/Emoji/kaomoji ordering was not published: "
