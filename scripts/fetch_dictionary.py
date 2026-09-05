@@ -97,7 +97,7 @@ def main() -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=OUTPUT_DIR) as temporary:
         incoming = Path(temporary)
-        product_lock.download_assets(tag, incoming)
+        product_lock.download_assets(tag, incoming, data["dictionary"]["repository"])
         product_lock.verify_assets(incoming, data)
         locked = data["dictionary"]["assets"]
         print(f"verified {len(locked)} assets against product-lock.json")
