@@ -1,3 +1,4 @@
+#include "DictionaryBootstrap.h"
 #include "InputController.h"
 #include "IBusKeyMapper.h"
 #include "SettingsStore.h"
@@ -785,6 +786,14 @@ int main(int argc, char **argv)
 {
     (void)argc;
     (void)argv;
+    // A packaged install leaves the dictionaries in a system directory that the
+    // engine never reads. Seed the per-user directory before anything opens a
+    // database, or the engine creates an empty one and produces no candidates.
+    std::string seed_error;
+    if (metasequoia::linux_ime::seed_user_data(&seed_error) == 0 && !seed_error.empty())
+    {
+        g_warning("Unable to seed the user data directory: %s", seed_error.c_str());
+    }
     ibus_init();
     IBusBus *bus = ibus_bus_new();
     if (bus == nullptr || !ibus_bus_is_connected(bus))
