@@ -58,5 +58,24 @@ jobs:
       - name: Current-user install smoke
         shell: bash
         run: tests/InstallSmoke.sh build
+      # Release assets from both architectures land in the same place, so a name
+      # that omits the architecture silently overwrites the other build. This is
+      # cheap here and catches it before a release rather than during one.
+      - name: Verify package names carry the architecture
+        run: |
+          rm -rf build/nametest
+          cpack --config build/CPackConfig.cmake -G TGZ -B build/nametest
+          machine=$(uname -m)
+          shopt -s nullglob
+          archives=(build/nametest/*.tar.gz)
+          if [[ ${#archives[@]} -ne 1 ]]; then
+            echo "Expected exactly one archive, found: ${archives[*]}" >&2
+            exit 1
+          fi
+          echo "archive: ${archives[0]}"
+          if [[ "${archives[0]}" != *"$machine"* ]]; then
+            echo "Archive name does not carry the architecture $machine: ${archives[0]}" >&2
+            exit 1
+          fi
       - name: Check patches
         run: git diff --check

@@ -258,7 +258,11 @@ set(CPACK_RPM_PACKAGE_LICENSE "GPL-3.0-only")
 # were both named after CPACK_SYSTEM_NAME alone, so amd64 and arm64 builds would
 # produce colliding file names and overwrite each other as release assets.
 set(CPACK_RPM_FILE_NAME RPM-DEFAULT)
-set(CPACK_ARCHIVE_FILE_NAME
+# The archive generator did not honour CPACK_ARCHIVE_FILE_NAME on the CMake that
+# Ubuntu 24.04 ships, so both architectures produced the same tarball name and
+# one overwrote the other as a release asset. The generic name is honoured
+# everywhere, and DEB and RPM ignore it because they set their own above.
+set(CPACK_PACKAGE_FILE_NAME
     "${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION}-linux-${CMAKE_SYSTEM_PROCESSOR}")
 set(CPACK_RPM_PACKAGE_GROUP "Applications/Input Methods")
 include(CPack)
