@@ -11,6 +11,7 @@ OUTPUT = DICTIONARY_ROOT / "out" / "msime.db"
 OTHERS_OUTPUT = DICTIONARY_ROOT / "out" / "others.db"
 ENGLISH_OUTPUT = DICTIONARY_ROOT / "out" / "english.db"
 BUILD_SCRIPTS = DICTIONARY_ROOT / "makecikudb" / "quanpindb" / "makedb" / "multi_table_has_jp"
+WUBI_BUILD_SCRIPTS = DICTIONARY_ROOT / "makecikudb" / "wubi86db" / "makedb"
 MIX_BUILD_SCRIPTS = DICTIONARY_ROOT / "makecikudb" / "mixdb"
 EMOJI_BUILD_SCRIPT = DICTIONARY_ROOT / "makecikudb" / "emojidb" / "build_emoji_db.py"
 KAOMOJI_BUILD_SCRIPT = DICTIONARY_ROOT / "makecikudb" / "kaomoji" / "build_kaomoji_db.py"
@@ -20,6 +21,7 @@ ENGLISH_BUILD_SCRIPTS = DICTIONARY_ROOT / "makecikudb" / "englishdb" / "makedb"
 def main() -> None:
     if (
         not BUILD_SCRIPTS.is_dir()
+        or not WUBI_BUILD_SCRIPTS.is_dir()
         or not MIX_BUILD_SCRIPTS.is_dir()
         or not EMOJI_BUILD_SCRIPT.is_file()
         or not KAOMOJI_BUILD_SCRIPT.is_file()
@@ -33,6 +35,9 @@ def main() -> None:
     ENGLISH_OUTPUT.unlink(missing_ok=True)
     for script in ("create_db_and_table.py", "insert_data.py", "create_index_for_db.py"):
         subprocess.run(["python3", str(BUILD_SCRIPTS / script)], cwd=DICTIONARY_ROOT, check=True)
+    # 顺序取自 MSIME-Dict 的 build_all.py，那里是各目录自己声明的编号顺序。
+    for script in ("01create_table.py", "02create_index.py", "03insert_data.py"):
+        subprocess.run(["python3", str(WUBI_BUILD_SCRIPTS / script)], cwd=DICTIONARY_ROOT, check=True)
     for script in ("01create_table.py", "03insert_data.py", "02create_index.py", "04verify_db.py"):
         subprocess.run(["python3", str(MIX_BUILD_SCRIPTS / script)], cwd=DICTIONARY_ROOT, check=True)
     subprocess.run(["python3", str(EMOJI_BUILD_SCRIPT)], cwd=DICTIONARY_ROOT, check=True)
@@ -47,6 +52,9 @@ def main() -> None:
         ).fetchone()
         quick_phrase = database.execute(
             "SELECT value FROM quick_parases WHERE key = ? ORDER BY weight DESC,value LIMIT 1", ("yyds",)
+        ).fetchone()
+        wubi_candidate = database.execute(
+            "SELECT value FROM wubi86 WHERE key = ? ORDER BY weight DESC LIMIT 1", ("aaaa",)
         ).fetchone()
     with sqlite3.connect(OTHERS_OUTPUT) as database:
         others_integrity = database.execute("PRAGMA integrity_check").fetchone()
@@ -65,6 +73,7 @@ def main() -> None:
         integrity != ("ok",)
         or candidate is None
         or quick_phrase != ("永远滴神",)
+        or wubi_candidate is None
         or others_integrity != ("ok",)
         or emoji != ("😀",)
         or kaomoji != ("(*/ω＼*)",)
@@ -78,7 +87,7 @@ def main() -> None:
         raise SystemExit("Generated dictionary failed integrity or candidate verification.")
     print(
         f"Generated {OUTPUT} ({OUTPUT.stat().st_size} bytes), "
-        f"ni'hao -> {candidate[0]}, yyds -> {quick_phrase[0]}"
+        f"ni'hao -> {candidate[0]}, yyds -> {quick_phrase[0]}, aaaa -> {wubi_candidate[0]}"
     )
     print(
         f"Generated {OTHERS_OUTPUT} ({OTHERS_OUTPUT.stat().st_size} bytes), "
