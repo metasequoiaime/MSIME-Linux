@@ -11,7 +11,7 @@
 ## 更新词库
 
 ```sh
-python3 scripts/product_lock.py refresh --dictionary-tag dict-2026.09.05
+python3 scripts/product_lock.py refresh --dictionary-tag dict-v1.0.0
 python3 scripts/product_lock.py validate
 ```
 
