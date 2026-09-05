@@ -32,6 +32,7 @@ target_compile_options(MetasequoiaImeLinuxCore PRIVATE -Wall -Wextra -Wpedantic 
 
 add_library(MetasequoiaImeLinuxOnline STATIC
             src/online/AiSuggestionProvider.cpp
+            src/online/EndpointPolicy.cpp
             src/online/CurlHttpTransport.cpp
             src/online/GoogleCloudProvider.cpp
             src/online/OnlineCandidateService.cpp
@@ -82,6 +83,11 @@ if(BUILD_TESTING)
     target_link_libraries(MetasequoiaImeLinuxOnlineCandidateTests PRIVATE MetasequoiaImeLinuxOnline)
     target_compile_options(MetasequoiaImeLinuxOnlineCandidateTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
     add_test(NAME online_candidate_service COMMAND MetasequoiaImeLinuxOnlineCandidateTests)
+
+    add_executable(MetasequoiaImeLinuxEndpointPolicyTests tests/EndpointPolicyTests.cpp)
+    target_link_libraries(MetasequoiaImeLinuxEndpointPolicyTests PRIVATE MetasequoiaImeLinuxOnline)
+    target_compile_options(MetasequoiaImeLinuxEndpointPolicyTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    add_test(NAME endpoint_policy COMMAND MetasequoiaImeLinuxEndpointPolicyTests)
 
     add_executable(MetasequoiaImeLinuxTranslationTests tests/TranslationProviderTests.cpp)
     target_link_libraries(MetasequoiaImeLinuxTranslationTests PRIVATE MetasequoiaImeLinuxOnline)
