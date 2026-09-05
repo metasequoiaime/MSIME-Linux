@@ -1,0 +1,34 @@
+name: Product integration
+
+# Gates the inputs the packages are built from, separately from the build matrix in ci.yml. It is
+# cheap and architecture independent, so it runs once rather than per runner.
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  lock:
+    name: Validate product inputs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Test rejection of changed or mismatched inputs
+        run: python3 -m unittest discover -s tests -p 'test_product_lock.py'
+      - name: Read the reviewed lock
+        run: python3 scripts/product_lock.py validate
+      # Downloading here rather than trusting the lock to still resolve is the point: it catches a
+      # retagged or deleted release before a release build hits it.
+      - name: Fetch the locked dictionaries and verify their committed digests
+        run: python3 scripts/fetch_dictionary.py
+      - name: Record what a build from this commit would consume
+        run: |
+          python3 scripts/product_lock.py manifest \
+            --source-commit "$(git rev-parse HEAD)" \
+            --output product-manifest.json
+          cat product-manifest.json

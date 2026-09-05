@@ -1,5 +1,7 @@
 /build/
 /dist/
 /vendor/MetasequoiaImeDict/out/
+# Generated per build by scripts/product_lock.py; the reviewed input is product-lock.json.
+/product-manifest.json
 *.swp
 
