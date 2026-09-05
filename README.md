@@ -118,3 +118,11 @@ Settings are stored in `$XDG_CONFIG_HOME/metasequoiaime/config.ini`, falling bac
 ## Scope
 
 This repository owns the Linux/IBus adapter, Linux installation, packaging, and CI. The Apple frontend remains in [`MSIME-Apple`](https://github.com/metasequoiaime/MSIME-Apple), while the input engine and dictionary remain shared dependencies.
+
+## License
+
+Metasequoia IME for Linux is distributed under the GNU General Public License version 3; see [LICENSE](LICENSE). Every binary in this repository statically links the shared engine from [`MSIME-Engine`](https://github.com/metasequoiaime/MSIME-Engine), which is GPLv3, so builds and redistributions are covered by the same terms. System libraries used at build time (IBus, GTK, Boost, fmt, spdlog, SQLite, libcurl, libsecret) keep their own licenses and are not redistributed by this repository.
+
+## Privacy and security
+
+Conversion, candidate learning, clipboard history and handwriting recognition run locally. Cloud candidates are enabled by default and send the typed spelling to Google's input-tools service; AI suggestions, DeepLX translation and voice transcription are opt-in and send data to the endpoint the user configures. See [PRIVACY.md](PRIVACY.md) for the full list and how to disable each one. Report suspected vulnerabilities privately according to [SECURITY.md](SECURITY.md), not through a public issue.
