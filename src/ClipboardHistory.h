@@ -29,6 +29,14 @@ class ClipboardHistory
 
     static std::string normalize(std::string text);
 
+    // Password managers advertise a marker alongside the text so that clipboard
+    // history tools skip it. KeePassXC, Bitwarden, 1Password and Chromium all
+    // set x-kde-passwordManagerHint, which became the cross-desktop convention;
+    // org.nspasteboard.ConcealedType is the equivalent bridged from macOS.
+    // Without this a password copied from a manager is written to disk in
+    // plain text and stays there for fifty entries.
+    static bool marked_sensitive(const std::vector<std::string> &clipboard_target_names);
+
   private:
     std::filesystem::path data_directory_;
 };
