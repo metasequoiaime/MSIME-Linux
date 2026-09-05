@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.8.0](https://github.com/metasequoiaime/MSIME-Linux/compare/v0.7.0...v0.8.0) (2026-09-05)
+
+
+### Features
+
+* **helpcode:** show helpcode hints beside dictionary candidates ([9a47616](https://github.com/metasequoiaime/MSIME-Linux/commit/9a476169cab66e93060590163d196934c5f24704))
+* **helpcode:** show helpcode hints beside dictionary candidates ([2d6f63f](https://github.com/metasequoiaime/MSIME-Linux/commit/2d6f63f2c47e60099da4d74eb73bc04973c6e831))
+* **input:** follow Windows punctuation lock on language switches ([baf3a65](https://github.com/metasequoiaime/MSIME-Linux/commit/baf3a65f97318976158f07726e1186b5a01fc4e6))
+* **input:** follow Windows punctuation lock on language switches ([645e8bb](https://github.com/metasequoiaime/MSIME-Linux/commit/645e8bb4f307d59c726f70d75bf8b8fc6826905b))
+* **input:** reset to a configured mode when the input method is activated ([20e7b59](https://github.com/metasequoiaime/MSIME-Linux/commit/20e7b59fd3bd4d5ccdeaeab02a0d8881fbf17d58))
+* **input:** reset to a configured mode when the input method is activated ([9e32eac](https://github.com/metasequoiaime/MSIME-Linux/commit/9e32eac682c6c63c1e57bd99284c65f1c05bc88a))
+* **keybindings:** make the Chinese/English toggle configurable ([3a80064](https://github.com/metasequoiaime/MSIME-Linux/commit/3a800645a227af140974288bebb0a883db4cc34e))
+* **keybindings:** make the Chinese/English toggle configurable ([214f524](https://github.com/metasequoiaime/MSIME-Linux/commit/214f524c9872c96e7473c8911611a3519c9ef3dc))
+* **utility:** let the Shift+key local modes be turned off ([b25a7e9](https://github.com/metasequoiaime/MSIME-Linux/commit/b25a7e94feb9cbf4e2df402c034ffbf07c2cc306))
+* **utility:** let the Shift+key local modes be turned off ([eac81cd](https://github.com/metasequoiaime/MSIME-Linux/commit/eac81cd8cadc047923559186a800a8ed30e11d76))
+
+
+### Bug Fixes
+
+* **input:** preserve partial composition across host transitions ([af6e0a1](https://github.com/metasequoiaime/MSIME-Linux/commit/af6e0a16b2a917a62c521f17419c4ec884bbdced))
+
 ## [0.7.0](https://github.com/metasequoiaime/MSIME-Linux/compare/v0.6.2...v0.7.0) (2026-09-05)
 
 
