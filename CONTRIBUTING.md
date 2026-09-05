@@ -17,7 +17,7 @@ git submodule update --init --recursive
 提交前请在本地跑完整门禁，与 CI 保持一致：
 
 ```sh
-python3 scripts/build_dictionary.py
+python3 scripts/fetch_dictionary.py
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
