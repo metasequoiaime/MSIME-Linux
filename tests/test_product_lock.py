@@ -60,6 +60,66 @@ class ProductLockTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     lock.validate(changed)
 
+    def test_a_mutable_dictionary_source_commit_is_rejected(self):
+        # The commit the tag resolved to is the whole provenance claim. It used to be read from the
+        # dict gitlink, which recorded 55bd649 while the shipped bytes came from 0c7368c.
+        for commit in ("", "main", "0c7368c", "a" * 39, "a" * 40 + "\n", "A" * 40):
+            with self.subTest(commit=commit):
+                changed = copy.deepcopy(self.data)
+                changed["dictionary"]["source_commit"] = commit
+                with self.assertRaises(ValueError):
+                    lock.validate(changed)
+
+    def test_the_dictionary_source_is_not_a_gitlink(self):
+        # Re-adding it as a submodule would restore a second, unsynchronised home for the pin.
+        self.assertNotIn("dict", lock.SUBMODULES)
+        gitmodules = (ROOT / ".gitmodules").read_text()
+        self.assertNotIn("vendor/MetasequoiaImeDict", gitmodules)
+
+    def tagged_repository(self, directory, tag, annotated):
+        """A real repository, because the bug this guards lives in the ls-remote invocation.
+
+        Handing the parser a transcript proves only that the parser works. The first version of
+        this asked ls-remote for refs/tags/<tag> alone, which never emits the peeled ref, so the
+        commit could not be found no matter how correct the parsing was.
+        """
+        run = lambda *args: subprocess.run(["git", "-C", str(directory), *args], check=True,
+                                           capture_output=True, text=True)
+        run("init", "--quiet", "--initial-branch", "main")
+        run("-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "--quiet",
+            "--allow-empty", "-m", "release")
+        if annotated:
+            run("-c", "user.email=t@example.com", "-c", "user.name=t", "tag", "-a", tag, "-m", tag)
+        else:
+            run("tag", tag)
+        commit = run("rev-parse", f"{tag}^{{commit}}").stdout.strip()
+        return f"file://{directory}", commit
+
+    def test_a_tag_resolves_to_its_commit_whether_or_not_it_is_annotated(self):
+        for annotated in (True, False):
+            with self.subTest(annotated=annotated), tempfile.TemporaryDirectory() as temporary:
+                tag = "dict-2026.01.01"
+                url, commit = self.tagged_repository(Path(temporary), tag, annotated)
+                with mock.patch.object(lock, "DICTIONARY_URL", url):
+                    resolved = lock.resolve_tag_commit(tag)
+                self.assertEqual(resolved, commit)
+                # An annotated tag's own object is 40 hex digits too, so a wrong answer here would
+                # pass every downstream check and lock something that is not in the history.
+                if annotated:
+                    tag_object = subprocess.check_output(
+                        ["git", "-C", temporary, "rev-parse", tag], text=True).strip()
+                    self.assertNotEqual(resolved, tag_object)
+
+    def test_tag_resolution_refuses_anything_but_an_explicit_release(self):
+        for tag in ("latest", "main", "../dict-test", ""):
+            with self.subTest(tag=tag), self.assertRaises(ValueError):
+                lock.resolve_tag_commit(tag)
+
+    def test_a_tag_that_resolves_to_nothing_is_not_locked(self):
+        with mock.patch.object(lock.subprocess, "check_output", return_value=""):
+            with self.assertRaises(ValueError):
+                lock.resolve_tag_commit(self.data["dictionary"]["tag"])
+
     def test_every_shipped_asset_must_be_locked(self):
         for name in lock.ASSETS:
             with self.subTest(name=name):

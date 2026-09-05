@@ -1,5 +1,91 @@
 # Changelog
 
+## [2026.9.1](https://github.com/metasequoiaime/MSIME-Linux/compare/v2026.9.0...v2026.9.1) (2026-09-05)
+
+
+### Features
+
+* add Linux IBus frontend ([4833d88](https://github.com/metasequoiaime/MSIME-Linux/commit/4833d88f1d7f93bb51c7ccfdbc677c89ba2af720))
+* **desktop:** add handwriting recognition and floating toolbar ([9f32c41](https://github.com/metasequoiaime/MSIME-Linux/commit/9f32c41629982267fdb069f707dedfa6e7a497ca))
+* **dictionary:** take the dictionaries from an MSIME-Dict release ([46d380a](https://github.com/metasequoiaime/MSIME-Linux/commit/46d380a3fc77a33b83ec1c43339cf42c24d14019))
+* **dictionary:** take the dictionaries from an MSIME-Dict release ([ef4b15b](https://github.com/metasequoiaime/MSIME-Linux/commit/ef4b15b8b79b4d02d317c70c1cdeec6644e78ef9))
+* **ibus:** add desktop input experience and local modes ([#1](https://github.com/metasequoiaime/MSIME-Linux/issues/1)) ([58f1301](https://github.com/metasequoiaime/MSIME-Linux/commit/58f13014ad19192bcf985c67cb1b0da1724d7927))
+* **ibus:** publish asynchronous online candidates ([c0e22e0](https://github.com/metasequoiaime/MSIME-Linux/commit/c0e22e01909c3bf71d2a98bf0383b4abc40d2e92))
+* **ibus:** show candidate translations ([12b7585](https://github.com/metasequoiaime/MSIME-Linux/commit/12b758569b5f1afdddac504247b8552670c32d89))
+* **ibus:** track online composition generations ([2b733a0](https://github.com/metasequoiaime/MSIME-Linux/commit/2b733a05b0e422123f52682fc85a9b9a2ebba210))
+* **linux:** align Windows capabilities and settings UI ([325631a](https://github.com/metasequoiaime/MSIME-Linux/commit/325631af356a834aeb65693cd73b9bd6c7367a04))
+* **online:** add cancellable Google cloud candidates ([779f7c6](https://github.com/metasequoiaime/MSIME-Linux/commit/779f7c62d263f11c9233cb4b5fc698675bb00395))
+* **online:** add OpenAI-compatible AI suggestions ([ee81b52](https://github.com/metasequoiaime/MSIME-Linux/commit/ee81b52b5a5708042d320f1c537584760f3f649f))
+* **product:** lock the shipped dictionary by digest and record a product manifest ([5089ca8](https://github.com/metasequoiaime/MSIME-Linux/commit/5089ca848de163ea3ca7b5ab28bf6acb2868033e))
+* **product:** lock the shipped dictionary by digest and record a product manifest ([c6a8b12](https://github.com/metasequoiaime/MSIME-Linux/commit/c6a8b12579aea80e4887fcfb8b817eec7539f9e4))
+* say why there are no candidates when the dictionary is unusable ([083ca3e](https://github.com/metasequoiaime/MSIME-Linux/commit/083ca3e5d3cbebeb6403af16bfa5ae07e718e86d))
+* say why there are no candidates when the dictionary is unusable ([91fca47](https://github.com/metasequoiaime/MSIME-Linux/commit/91fca470e6ff92387d4d99da5260b7300096f8e8))
+* seed the user data directory from the packaged dictionaries ([c7b5085](https://github.com/metasequoiaime/MSIME-Linux/commit/c7b508598f9551190b380bdb5f8a49c2d427dd6e))
+* seed the user data directory from the packaged dictionaries ([f89acfd](https://github.com/metasequoiaime/MSIME-Linux/commit/f89acfdeaebd1a9ef5ecc99d4e6e2247d6c0727c))
+* **settings:** align Linux UI with Windows layout ([8081ede](https://github.com/metasequoiaime/MSIME-Linux/commit/8081ede1eac1574c7514e6d1745dbf6ec309e7bf))
+* **settings:** configure online providers securely ([dfd35a4](https://github.com/metasequoiaime/MSIME-Linux/commit/dfd35a45d4878c79db38d1ba8625195e2c0a4b21))
+* skip clipboard content a password manager marked as secret ([b7b1c6a](https://github.com/metasequoiaime/MSIME-Linux/commit/b7b1c6afe5f0b5b598bb2092b5c7448d5621b976))
+* skip clipboard content a password manager marked as secret ([acbefe3](https://github.com/metasequoiaime/MSIME-Linux/commit/acbefe3cf1a8aae6080e5246dafface2197ebeac))
+* **voice:** add Linux microphone capture CLI ([551a61c](https://github.com/metasequoiaime/MSIME-Linux/commit/551a61cf50cc0705bc317c0e53cdd3c6fa74a86b))
+* **voice:** add optional transcript polishing ([f2cd568](https://github.com/metasequoiaime/MSIME-Linux/commit/f2cd568161c948ca30adc3a17f46a5171d192c22))
+
+
+### Bug Fixes
+
+* apply the same credential check in every provider ([04bc6ed](https://github.com/metasequoiaime/MSIME-Linux/commit/04bc6ed0985f4724fd5f543b4c809f9d6c527546))
+* apply the same credential check in every provider ([07c269e](https://github.com/metasequoiaime/MSIME-Linux/commit/07c269e3541c95e63e1b6539f3d93f0d60d03318))
+* **ci:** build against Ubuntu system packages ([9622684](https://github.com/metasequoiaime/MSIME-Linux/commit/96226844298d03a9eaa3894d288c9f49a6e0bbf5))
+* **ci:** check out the scripts the prepare job now runs ([9771edd](https://github.com/metasequoiaime/MSIME-Linux/commit/9771edd120b8398ee41127e0d081fadb18d8c127))
+* **ci:** check out the scripts the prepare job now runs ([4a429c8](https://github.com/metasequoiaime/MSIME-Linux/commit/4a429c80d4ec28c6dc9dbee6cfa5675f9d5cdf24))
+* **ci:** dispatch for every release head, not just the first one ([bfdccbe](https://github.com/metasequoiaime/MSIME-Linux/commit/bfdccbe72052774d4c60025720a30e065e1de636))
+* **ci:** dispatch for every release head, not just the first one ([4bea2d7](https://github.com/metasequoiaime/MSIME-Linux/commit/4bea2d78de79fdb3eb055b0fe0c10bb93c7f1ed4))
+* **ci:** keep the literal token name out of ci.yml ([bf4589e](https://github.com/metasequoiaime/MSIME-Linux/commit/bf4589e1b1f2d3b3cad12b679b6f4dcd609e82d4))
+* **ci:** stop the gated pull_request run cancelling the dispatched one ([947140f](https://github.com/metasequoiaime/MSIME-Linux/commit/947140f085a7e3ca99c0ae1e3eb3a7627a0e3f01))
+* **ci:** stop the gated pull_request run cancelling the dispatched one ([9b1ca8a](https://github.com/metasequoiaime/MSIME-Linux/commit/9b1ca8ae7001762e6379cb6d7d41facc4cf30c16))
+* decide once which endpoints may receive a credential ([c50da31](https://github.com/metasequoiaime/MSIME-Linux/commit/c50da31bfcec97095d8fd7a3006829d8dced57e5))
+* decide once which endpoints may receive a credential ([272253b](https://github.com/metasequoiaime/MSIME-Linux/commit/272253b022723356a9c87966a42372e2df10aab8))
+* **dictionary:** build the wubi86 table ([131bd44](https://github.com/metasequoiaime/MSIME-Linux/commit/131bd44e89e0b0aed686cd0e82dd277b0951cb47))
+* **dictionary:** build the wubi86 table ([ed5deb2](https://github.com/metasequoiaime/MSIME-Linux/commit/ed5deb24ff48a9b49ea69c3e25befbe9316ec798))
+* **dictionary:** move the Dict pin off the revision with real personal data ([b69bfcf](https://github.com/metasequoiaime/MSIME-Linux/commit/b69bfcf654f7b799df522489ae0e71a2bb48d121))
+* **dictionary:** move the Dict pin off the revision with real personal data ([94eb921](https://github.com/metasequoiaime/MSIME-Linux/commit/94eb9212d3248d62c7dcaa92b69a924be1d09c6b))
+* download over plain HTTPS instead of the GitHub CLI ([61f4985](https://github.com/metasequoiaime/MSIME-Linux/commit/61f49855a8fcc2f3c4c21b0c4a287657d65b9435))
+* give the release archive an architecture-specific name ([ad09e4f](https://github.com/metasequoiaime/MSIME-Linux/commit/ad09e4fba61ce26d28054a36a7ff1b0367f11de6))
+* give the release archive an architecture-specific name ([be1a987](https://github.com/metasequoiaime/MSIME-Linux/commit/be1a987f0975150a763ee99edd65b85e617ef062))
+* make the current-user install work on Ubuntu 26.04 ([57028ca](https://github.com/metasequoiaime/MSIME-Linux/commit/57028cadbcfaa9662509acec1d79408c0959c2f3))
+* make the current-user install work on Ubuntu 26.04 ([c3b4f24](https://github.com/metasequoiaime/MSIME-Linux/commit/c3b4f2439992f51b6c4abe4c2280b02367515f1b))
+* make the published packages actually usable ([980b36c](https://github.com/metasequoiaime/MSIME-Linux/commit/980b36c5baf42db52e837a6ed2ff78a758b7a4c0))
+* make the published packages actually usable ([589f397](https://github.com/metasequoiaime/MSIME-Linux/commit/589f397b046d3d4b2f130ccce7db0e4a57799cea))
+* **product:** ask ls-remote for the peeled ref by name ([70e683d](https://github.com/metasequoiaime/MSIME-Linux/commit/70e683d83c79e203f02eaa6970b14d4de38157e4))
+* **product:** lock the dictionary's source commit instead of a gitlink ([4e3995f](https://github.com/metasequoiaime/MSIME-Linux/commit/4e3995fb150ee3e4037e79bb150a8532d26c3926))
+* **product:** 词库源码提交改为锁文件记录，删掉 Dict submodule ([99a5a86](https://github.com/metasequoiaime/MSIME-Linux/commit/99a5a864dd6cb54a7a172077dbb7f41da901babf))
+* reject a malformed credential when it is saved, not when it is used ([22af212](https://github.com/metasequoiaime/MSIME-Linux/commit/22af212e17e1c4f4ca0c70f08fdb29a0aed79dfb))
+* reject a malformed credential when it is saved, not when it is used ([edb5eaf](https://github.com/metasequoiaime/MSIME-Linux/commit/edb5eafbcd3bff6f82b7bc2ad16759e2319cd52a))
+* resolve the desktop tools next to the running program everywhere ([8ce9bfd](https://github.com/metasequoiaime/MSIME-Linux/commit/8ce9bfd55bcabbc9553c5146e674b9f5a743d585))
+* resolve the desktop tools next to the running program everywhere ([b0891e0](https://github.com/metasequoiaime/MSIME-Linux/commit/b0891e0d1834fe31e5cb440dace9c50b39e23bcc))
+* **settings:** preserve rows while applying editors ([b1d52e3](https://github.com/metasequoiaime/MSIME-Linux/commit/b1d52e337ecc80ce143f0cbdcafe8adb6e4e271b))
+
+## [0.6.0](https://github.com/metasequoiaime/MSIME-Linux/compare/v0.5.0...v0.6.0) (2026-09-05)
+
+
+### Features
+
+* **product:** lock the shipped dictionary by digest and record a product manifest ([5089ca8](https://github.com/metasequoiaime/MSIME-Linux/commit/5089ca848de163ea3ca7b5ab28bf6acb2868033e))
+* **product:** lock the shipped dictionary by digest and record a product manifest ([c6a8b12](https://github.com/metasequoiaime/MSIME-Linux/commit/c6a8b12579aea80e4887fcfb8b817eec7539f9e4))
+
+
+### Bug Fixes
+
+* **ci:** check out the scripts the prepare job now runs ([9771edd](https://github.com/metasequoiaime/MSIME-Linux/commit/9771edd120b8398ee41127e0d081fadb18d8c127))
+* **ci:** check out the scripts the prepare job now runs ([4a429c8](https://github.com/metasequoiaime/MSIME-Linux/commit/4a429c80d4ec28c6dc9dbee6cfa5675f9d5cdf24))
+* **ci:** dispatch for every release head, not just the first one ([bfdccbe](https://github.com/metasequoiaime/MSIME-Linux/commit/bfdccbe72052774d4c60025720a30e065e1de636))
+* **ci:** dispatch for every release head, not just the first one ([4bea2d7](https://github.com/metasequoiaime/MSIME-Linux/commit/4bea2d78de79fdb3eb055b0fe0c10bb93c7f1ed4))
+* **ci:** keep the literal token name out of ci.yml ([bf4589e](https://github.com/metasequoiaime/MSIME-Linux/commit/bf4589e1b1f2d3b3cad12b679b6f4dcd609e82d4))
+* **ci:** stop the gated pull_request run cancelling the dispatched one ([947140f](https://github.com/metasequoiaime/MSIME-Linux/commit/947140f085a7e3ca99c0ae1e3eb3a7627a0e3f01))
+* **ci:** stop the gated pull_request run cancelling the dispatched one ([9b1ca8a](https://github.com/metasequoiaime/MSIME-Linux/commit/9b1ca8ae7001762e6379cb6d7d41facc4cf30c16))
+* **product:** ask ls-remote for the peeled ref by name ([70e683d](https://github.com/metasequoiaime/MSIME-Linux/commit/70e683d83c79e203f02eaa6970b14d4de38157e4))
+* **product:** lock the dictionary's source commit instead of a gitlink ([4e3995f](https://github.com/metasequoiaime/MSIME-Linux/commit/4e3995fb150ee3e4037e79bb150a8532d26c3926))
+* **product:** 词库源码提交改为锁文件记录，删掉 Dict submodule ([99a5a86](https://github.com/metasequoiaime/MSIME-Linux/commit/99a5a864dd6cb54a7a172077dbb7f41da901babf))
+
 ## [0.5.0](https://github.com/metasequoiaime/MSIME-Linux/compare/v0.4.3...v0.5.0) (2026-09-05)
 
 

@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Maintain and consume the reviewed Linux product dependency lock.
 
-The engine, helpcode and dictionary *source* pins are gitlinks. Git already makes those immutable and shows every move in a pull request diff, so they are not copied into this lock: doing that would only give the submodule pin a second home to drift from, and it would break the dependabot bump that engine-bump-triage.yml merges on green CI.
+The engine and helpcode pins are gitlinks. Git already makes those immutable and shows every move in a pull request diff, so they are not copied into this lock: doing that would only give the submodule pin a second home to drift from, and it would break the dependabot bump that engine-bump-triage.yml merges on green CI.
 
 The dictionary the packages actually *ship* is the one input git does not pin. It is a release asset behind a tag that upstream can retag, and it used to be verified against the SHA256SUMS.txt published beside it, which is exactly as mutable as the data. So product-lock.json holds the tag and the SHA256 of every asset, and the build verifies those committed digests instead.
+
+The dictionary's *source* commit is locked alongside them rather than read from a gitlink. It used to be a gitlink, and that pin recorded the wrong answer: nothing moved it in lockstep with the release tag, so the manifest attested to whatever revision of MSIME-Dict happened to be vendored while the packages shipped bytes built from a different one. The commit the release tag resolves to is the only one that produced the data, so `refresh` resolves it at the moment the data is reviewed and commits it here.
 
 `refresh` is the only command that reaches upstream. `manifest` records what a build consumed: the source commit, every gitlink, the locked dictionary and the digest of the lock itself.
 """
@@ -31,13 +33,13 @@ LEGACY_DICTIONARY_TAG = "dict-2026.09.05"
 
 REPOSITORY = "metasequoiaime/MSIME-Linux"
 DICTIONARY_REPOSITORY = "metasequoiaime/MSIME-Dict"
+DICTIONARY_URL = f"https://github.com/{DICTIONARY_REPOSITORY}.git"
 
 # Every gitlink this repository builds from. The manifest reads their commits here rather than from
 # a second copy in the lock, so there is one source of truth for what was checked out.
 SUBMODULES = {
     "engine": ("metasequoiaime/MSIME-Engine", "vendor/MetasequoiaImeEngine"),
     "helpcode": ("metasequoiaime/MSIME-HelpCode", "vendor/MetasequoiaImeHelpCode"),
-    "dict": (DICTIONARY_REPOSITORY, "vendor/MetasequoiaImeDict"),
 }
 
 # The databases CMakeLists.txt installs into the packages, plus the checksum file the release
@@ -59,6 +61,8 @@ def validate(data: dict) -> dict:
         raise ValueError("Unexpected dictionary repository")
     if not TAG.fullmatch(dictionary.get("tag", "")):
         raise ValueError("Dictionary tag must be an explicit dict-* release, never latest")
+    if not SHA.fullmatch(dictionary.get("source_commit", "")):
+        raise ValueError("Dictionary source_commit must be the full commit the release tag resolves to")
     assets = dictionary.get("assets", {})
     expected_assets = set(ASSETS) if dictionary['tag'] == LEGACY_DICTIONARY_TAG else set(ASSETS) | {PRODUCT_MANIFEST}
     if set(assets) != expected_assets:
@@ -127,6 +131,36 @@ def download_assets(tag: str, destination: Path) -> None:
         print(f"downloaded {name} ({target.stat().st_size} bytes)")
 
 
+def resolve_tag_commit(tag: str) -> str:
+    """Resolve a dict-* tag to the commit that built it, over the plain git protocol.
+
+    Not the API: `refresh` is run from the same places `download_assets` is, and this repository has
+    already had the API rate limited to 403 from a single runner address. ls-remote needs no
+    credentials and no gh, and git is present anywhere the submodules can be checked out.
+    """
+    if not TAG.fullmatch(tag):
+        raise ValueError("Refusing to resolve a tag that is not an explicit dict-* release")
+    # Both refs are requested by name. ls-remote filters on the ref as written, and the peeled ref
+    # is literally named refs/tags/<tag>^{}, so asking only for refs/tags/<tag> gets an annotated
+    # tag's tag object and nothing else. A trailing glob would return the peeled ref too, but it
+    # would also match dict-2026.01.01-rc1.
+    output = subprocess.check_output(
+        ["git", "ls-remote", DICTIONARY_URL, f"refs/tags/{tag}", f"refs/tags/{tag}^{{}}"], text=True
+    )
+    references = {}
+    for line in output.splitlines():
+        commit, _, reference = line.partition("\t")
+        references[reference.strip()] = commit.strip()
+    # An annotated tag lists the tag object under the plain name and the commit it points at under
+    # ^{}; a lightweight one only has the plain reference. Locking the tag object's own SHA would
+    # record something that is not a commit in MSIME-Dict's history at all, and it is 40 hex digits
+    # like any other object, so nothing downstream would notice.
+    commit = references.get(f"refs/tags/{tag}^{{}}") or references.get(f"refs/tags/{tag}")
+    if not commit or not SHA.fullmatch(commit):
+        raise ValueError(f"{tag} does not resolve to a commit in {DICTIONARY_REPOSITORY}")
+    return commit
+
+
 def published_checksums(directory: Path) -> dict[str, str]:
     checksums = {}
     for line in (directory / "SHA256SUMS.txt").read_text(encoding="utf-8").splitlines():
@@ -182,10 +216,16 @@ def refresh(tag: str) -> dict:
         for name in DATABASES:
             if name not in published:
                 raise ValueError(f"{name} has no entry in the SHA256SUMS.txt published with {tag}")
-    print(f"locked {len(assets)} assets from {DICTIONARY_REPOSITORY} at {tag}")
+    source_commit = resolve_tag_commit(tag)
+    print(f"locked {len(assets)} assets from {DICTIONARY_REPOSITORY} at {tag} ({source_commit})")
     return validate({
         "schema_version": 1,
-        "dictionary": {"repository": DICTIONARY_REPOSITORY, "tag": tag, "assets": assets},
+        "dictionary": {
+            "repository": DICTIONARY_REPOSITORY,
+            "tag": tag,
+            "source_commit": source_commit,
+            "assets": assets,
+        },
     })
 
 

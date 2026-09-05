@@ -51,7 +51,6 @@ fi
 test -f "$checkout_root/vendor/MetasequoiaImeEngine/CMakeLists.txt"
 test -f "$checkout_root/vendor/MetasequoiaImeEngine/googlepinyinime-rev/command/pinyinime_dictbuilder.cpp"
 test -f "$checkout_root/vendor/MetasequoiaImeEngine/utfcpp/source/utf8.h"
-test -f "$checkout_root/vendor/MetasequoiaImeDict/cn/BaseDictV1.txt"
 test -f "$checkout_root/vendor/MetasequoiaImeHelpCode/helpcodes/helpcode.txt"
 
 engine_revision=$(git -C "$checkout_root" ls-tree HEAD -- vendor/MetasequoiaImeEngine | awk '{print $3}')

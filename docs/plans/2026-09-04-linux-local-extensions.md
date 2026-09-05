@@ -147,7 +147,7 @@ Commit/push Engine first, update the Linux gitlink, then commit Linux tests and 
 
 1. RED-test `Shift+K` plus lowercase letter codes, prefix ordering, generated/quick-phrase source, commit/reset, missing/corrupt DB diagnostics, and XDG persistence.
 2. Port the Windows `quick_parases(key,value,weight)` query and journal schema behavior; never mutate packaged source data directly.
-3. Seed quick phrases from `vendor/MetasequoiaImeDict/mix/quick_phrases.txt`, replay user edits during staged install, and verify successful/failed upgrade paths.
+3. Seed quick phrases from the `quick_parases` table in the packaged `msime.db` — the dict submodule that used to hold `mix/quick_phrases.txt` is gone, and the shipped database is the locked artifact anyway — replay user edits during staged install, and verify successful/failed upgrade paths.
 4. Run full tests, commit Engine first, then Linux.
 
 ### Task 5: Port Emoji and kaomoji explicit modes
