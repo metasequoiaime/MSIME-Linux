@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/metasequoiaime/MSIME-Linux/compare/v0.2.3...v0.3.0) (2026-09-05)
+
+
+### Features
+
+* seed the user data directory from the packaged dictionaries ([c7b5085](https://github.com/metasequoiaime/MSIME-Linux/commit/c7b508598f9551190b380bdb5f8a49c2d427dd6e))
+
 ## [0.2.3](https://github.com/metasequoiaime/MSIME-Linux/compare/v0.2.2...v0.2.3) (2026-09-05)
 
 
