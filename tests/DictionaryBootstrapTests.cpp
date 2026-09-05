@@ -150,6 +150,41 @@ void leaves_no_staging_files_behind()
     }
     fs::remove_all(root);
 }
+void reports_a_missing_dictionary()
+{
+    const fs::path root = make_root();
+    const fs::path user_dir = root / "user";
+    fs::create_directories(user_dir);
+
+    const std::string reason = metasequoia::linux_ime::describe_unusable_dictionary(user_dir);
+
+    require(reason.find("missing") != std::string::npos, "a missing dictionary was not reported");
+    require(reason.find("msime.db") != std::string::npos, "the reported reason does not name the file");
+    fs::remove_all(root);
+}
+
+void reports_an_empty_dictionary()
+{
+    const fs::path root = make_root();
+    const fs::path user_dir = root / "user";
+    write_file(user_dir / "msime.db", "");
+
+    const std::string reason = metasequoia::linux_ime::describe_unusable_dictionary(user_dir);
+
+    require(reason.find("empty") != std::string::npos, "an empty dictionary was not reported");
+    fs::remove_all(root);
+}
+
+void stays_quiet_for_a_usable_dictionary()
+{
+    const fs::path root = make_root();
+    const fs::path user_dir = root / "user";
+    write_file(user_dir / "msime.db", "content");
+
+    require(metasequoia::linux_ime::describe_unusable_dictionary(user_dir).empty(),
+            "a usable dictionary produced a warning");
+    fs::remove_all(root);
+}
 } // namespace
 
 int main()
@@ -160,5 +195,8 @@ int main()
     prefers_the_first_system_directory();
     tolerates_absent_system_data();
     leaves_no_staging_files_behind();
+    reports_a_missing_dictionary();
+    reports_an_empty_dictionary();
+    stays_quiet_for_a_usable_dictionary();
     return 0;
 }
