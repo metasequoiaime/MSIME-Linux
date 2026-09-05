@@ -199,5 +199,28 @@ if [[ -n "$backup_english_database" ]]; then
     backup_english_database=""
 fi
 
+# IBus only scans its own package data directory and whatever IBUS_COMPONENT_PATH
+# names; it does not look under XDG_DATA_HOME. Without this the component installed
+# above is never registered, and the engine cannot be selected at all. The variable
+# replaces the search path rather than extending it, so the system directory has to
+# be listed explicitly alongside the user one.
+system_component_dir=$(pkg-config --variable=pkgdatadir ibus-1.0 2>/dev/null || true)
+if [[ -z "$system_component_dir" ]]; then
+    system_component_dir=/usr/share/ibus
+fi
+system_component_dir="$system_component_dir/component"
+environment_dir="${XDG_CONFIG_HOME:-$HOME/.config}/environment.d"
+environment_file="$environment_dir/10-metasequoiaime.conf"
+mkdir -p "$environment_dir"
+printf '%s\n' \
+    '# Written by MSIME-Linux scripts/install.sh. IBus does not scan XDG_DATA_HOME,' \
+    '# so the current-user component directory has to be named explicitly.' \
+    "IBUS_COMPONENT_PATH=$system_component_dir:$component_dir" \
+    >"$environment_file"
+
 echo "Installed Metasequoia IME to $user_prefix"
-echo "Restart IBus and select Metasequoia IME in your desktop input-source settings."
+echo "Wrote $environment_file so IBus can find the current-user component."
+echo "Log out and back in for that to take effect, then restart IBus and select"
+echo "Metasequoia IME in your desktop input-source settings."
+echo "For the current session only, you can instead run:"
+echo "  IBUS_COMPONENT_PATH=$system_component_dir:$component_dir ibus-daemon -drx"

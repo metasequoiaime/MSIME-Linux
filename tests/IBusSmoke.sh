@@ -28,6 +28,9 @@ export XDG_CONFIG_HOME="$smoke_root/config"
 export XDG_RUNTIME_DIR="$smoke_root/run"
 export DISPLAY=:99
 export IBUS_USE_PORTAL=0
+# gvfs mounts a fuse directory inside XDG_RUNTIME_DIR on newer desktops, and the
+# cleanup rm cannot remove that mount point. The smoke run needs no gvfs at all.
+export GIO_USE_VFS=local
 export IBUS_COMPONENT_PATH="$smoke_root/components"
 source_data_dir=${METASEQUOIA_IME_DATA_DIR:-"$project_root/vendor/MetasequoiaImeDict/out"}
 source_helpcode_dir="$project_root/vendor/MetasequoiaImeHelpCode/helpcodes"
@@ -237,14 +240,30 @@ context.focus_in()
 context.set_engine("metasequoiaime")
 
 
-def refocus_when_active():
+def engine_is_active():
     active_engine = context.get_engine()
-    if active_engine is not None and active_engine.get_name() == "metasequoiaime":
+    return active_engine is not None and active_engine.get_name() == "metasequoiaime"
+
+
+def activate_globally_if_needed():
+    # ibus 1.5.34 no longer activates the engine from set_engine() alone: the
+    # context stays on the dummy engine and no engine process is ever spawned.
+    # Older releases do activate it per context, and setting the global engine
+    # there breaks the property activation round-trip below, so this is only a
+    # fallback for when the per-context path did not take.
+    if not engine_is_active():
+        bus.set_global_engine("metasequoiaime")
+    return GLib.SOURCE_REMOVE
+
+
+def refocus_when_active():
+    if engine_is_active():
         context.focus_in()
         return GLib.SOURCE_REMOVE
     return GLib.SOURCE_CONTINUE
 
 
+GLib.timeout_add(500, activate_globally_if_needed)
 GLib.timeout_add(20, refocus_when_active)
 GLib.timeout_add_seconds(5, loop.quit)
 loop.run()

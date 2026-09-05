@@ -5,7 +5,7 @@
   <exec>@CMAKE_INSTALL_FULL_LIBEXECDIR@/metasequoia-ime-ibus --ibus</exec>
   <version>@PROJECT_VERSION@</version>
   <author>Metasequoia IME contributors</author>
-  <license>MIT</license>
+  <license>GPL-3.0-only</license>
   <homepage>https://github.com/metasequoiaime/MSIME-Linux</homepage>
   <textdomain>metasequoiaime</textdomain>
   <engines>
@@ -14,7 +14,7 @@
       <longname>Metasequoia IME</longname>
       <description>Chinese and Japanese input with Quanpin, Shuangpin, Wubi and Romaji schemes</description>
       <language>zh</language>
-      <license>MIT</license>
+      <license>GPL-3.0-only</license>
       <author>Metasequoia IME contributors</author>
       <layout>us</layout>
     </engine>
