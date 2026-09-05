@@ -33,7 +33,7 @@ export IBUS_USE_PORTAL=0
 export GIO_USE_VFS=local
 export IBUS_COMPONENT_PATH="$smoke_root/components"
 source_data_dir=${METASEQUOIA_IME_DATA_DIR:-"$project_root/vendor/MetasequoiaImeDict/out"}
-source_helpcode_dir="$project_root/vendor/MetasequoiaImeHelpCode/helpcodes"
+source_helpcode_dir="$project_root/vendor/MetasequoiaImeEngine/helpcode/helpcodes"
 if [[ -d "$source_data_dir/helpcodes" ]]; then
     source_helpcode_dir="$source_data_dir/helpcodes"
 fi
