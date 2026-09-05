@@ -16,7 +16,7 @@ Components compiled into the binaries
 -------------------------------------
 
   MSIME-Engine            GPL-3.0       https://github.com/metasequoiaime/MSIME-Engine
-  googlepinyinime-rev     Apache-2.0    https://github.com/metasequoiaime/googlepinyinime-rev
+  googlepinyinime-rev     Apache-2.0    https://github.com/metasequoiaime/Google-PinyinIME-Rev
   utfcpp                  BSL-1.0       https://github.com/nemtrif/utfcpp
   fmt                     MIT           https://github.com/fmtlib/fmt
   spdlog                  MIT           https://github.com/gabime/spdlog
@@ -49,7 +49,7 @@ Source: https://github.com/metasequoiaime/MSIME-Engine
 Continuation of the Google Pinyin IME sources. The files under
 googlepinyinime-rev/src/share are compiled into the engine.
 
-Source: https://github.com/metasequoiaime/googlepinyinime-rev
+Source: https://github.com/metasequoiaime/Google-PinyinIME-Rev
 
                                  Apache License
                            Version 2.0, January 2004
@@ -395,7 +395,7 @@ Bundled data files
 The packages install dictionary and helpcode data built from these repositories:
 
   MSIME-Dict                https://github.com/metasequoiaime/MSIME-Dict
-  MetasequoiaImeHelpCode    https://github.com/metasequoiaime/MetasequoiaImeHelpCode
+  MSIME-HelpCode            https://github.com/metasequoiaime/MSIME-HelpCode
 
 Installed as msime.db, others.db, english.db and helpcodes/*.txt under the package data directory.
 
@@ -407,6 +407,7 @@ Sources of msime.db, others.db and english.db, via MSIME-Dict:
   CustomPinyinDictionary  none       https://github.com/wuhgit/CustomPinyinDictionary
   pinyin-data             MIT        https://github.com/mozillazg/pinyin-data
   rime-wubi86-jidian      Apache-2.0 https://github.com/KyleBing/rime-wubi86-jidian
+  rime-jp_sela            none       https://github.com/Selaube/rime-jp_sela
   rime_kaomoji_dict       MIT        https://github.com/aoguai/rime_kaomoji_dict
   ECDICT                  MIT        https://github.com/skywind3000/ECDICT
   Windows-classic-samples MIT        https://github.com/microsoft/Windows-classic-samples
@@ -415,7 +416,7 @@ Sources of msime.db, others.db and english.db, via MSIME-Dict:
 
 The Chinese tables that msime.db is built from (cn/BaseDictAllV1Part1.txt and cn/BaseDictAllV1Part2.txt) merge rime-ice with CustomPinyinDictionary. rime-ice is licensed under the GNU General Public License version 3, which is the same license this project is distributed under, so its terms are satisfied by the distribution as a whole; this notice serves as its attribution, and its source remains available at the URL above.
 
-Sources of helpcodes/*.txt, via MetasequoiaImeHelpCode:
+Sources of helpcodes/*.txt, via MSIME-HelpCode:
 
   helpcode.txt                    lantian      蓝天小雨点 helpcode scheme
   zrm_helpcode_big_unique.txt     ziranma      自然码, derived from
@@ -424,7 +425,7 @@ Sources of helpcodes/*.txt, via MetasequoiaImeHelpCode:
   shouyouplus_helpcode.txt        shouyouplus  首右 plus helpcode scheme
   xiaohe_helpcode.txt             xiaohe       小鹤 shape-code scheme
 
-Unresolved: CustomPinyinDictionary and ZRM_Aux-code publish no license; the English word list in english.db includes word forms extracted from a commercial dictionary, whose rights belong to its publisher; and the helpcode tables reproduce input schemes whose rights belong to their respective authors. Redistributors who need an explicit grant for those parts should raise it with the Metasequoia IME maintainers rather than assume one. This notice will be updated as those terms are clarified.
+Unresolved: CustomPinyinDictionary, rime-jp_sela and ZRM_Aux-code publish no license; the English word list in english.db includes word forms extracted from a commercial dictionary, whose rights belong to its publisher; and the helpcode tables reproduce input schemes whose rights belong to their respective authors. Redistributors who need an explicit grant for those parts should raise it with the Metasequoia IME maintainers rather than assume one. This notice will be updated as those terms are clarified.
 
 
 ------------------------------------------------------------------------------
