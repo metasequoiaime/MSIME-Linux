@@ -2,7 +2,7 @@
 
 水杉输入法（Metasequoia IME）的 Linux 前端。首个前端面向 IBus，复用 [`MSIME-Engine`](https://github.com/metasequoiaime/MSIME-Engine) 提供的共享 C++ 组词引擎。
 
-引擎子模块固定在提供原生桌面前端 API 的上游修订版本，同时提供 `helpcode/helpcodes` 辅助码。公共词库源数据和构建器已合入 MSIME-Engine；现有词库仍按 `product-lock.json` 下载原 MSIME-Dict release，保留原来源和摘要。
+引擎子模块固定在提供原生桌面前端 API 的上游修订版本，同时提供 `helpcode/helpcodes` 辅助码。公共词库源数据和构建器已合入 MSIME-Engine；发布词库按 `product-lock.json` 从 MSIME-Engine 下载，并核对来源提交、格式清单和摘要。历史 MSIME-Dict release 保留原版本和摘要。
 
 当前桌面体验支持在全拼、双拼、五笔与日语罗马音之间实时切换，中文／直接输入切换，混合英文／Emoji／颜文字候选，专用英文候选，来自本地 SQLite 词库的实时候选，键盘与鼠标选择候选，翻页，中英文标点，半／全角输入，可配置的内联预编辑，全拼／双拼辅助码，以及按用户持久化的设置。
 
@@ -153,4 +153,4 @@ DEB 生成需要 `dpkg-dev` 和 `file`（CPack 用它解析二进制以生成 sh
 
 ### 词库产品格式
 
-后续 Dict 发布除摘要外必须提供 `dictionary-manifest.json`，下载阶段使用与固定 Engine 一致的公共校验器检查格式版本、桌面 profile 和实际消费的数据库。`dict-2026.09.05` 是唯一保留的无清单兼容版本。清单随安装数据一起打包。
+Engine 词库发布除摘要外必须提供 `dictionary-manifest.json`，下载阶段使用与固定 Engine 一致的公共校验器检查格式版本、桌面 profile 和实际消费的数据库。`dict-2026.09.05` 是唯一保留的无清单兼容版本。清单随安装数据一起打包。

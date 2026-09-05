@@ -32,7 +32,7 @@ LEGACY_DICTIONARY_TAG = "dict-2026.09.05"
 
 
 REPOSITORY = "metasequoiaime/MSIME-Linux"
-DICTIONARY_REPOSITORY = "metasequoiaime/MSIME-Dict"
+DICTIONARY_REPOSITORY = "metasequoiaime/MSIME-Engine"
 DICTIONARY_URL = f"https://github.com/{DICTIONARY_REPOSITORY}.git"
 
 # Every gitlink this repository builds from. The manifest reads their commits here rather than from
@@ -56,7 +56,9 @@ def validate(data: dict) -> dict:
     if data.get("schema_version") != 1:
         raise ValueError("Unsupported product lock schema_version")
     dictionary = data.get("dictionary", {})
-    if dictionary.get("repository") != DICTIONARY_REPOSITORY:
+    if dictionary.get("repository") != DICTIONARY_REPOSITORY and not (
+        dictionary.get("repository") == "metasequoiaime/MSIME-Dict" and dictionary.get("tag") == LEGACY_DICTIONARY_TAG
+    ):
         raise ValueError("Unexpected dictionary repository")
     if not TAG.fullmatch(dictionary.get("tag", "")):
         raise ValueError("Dictionary tag must be an explicit dict-* release, never latest")
@@ -100,20 +102,26 @@ def verify_assets(directory: Path, data: dict) -> None:
             raise ValueError(f"{name} does not match the product lock: expected {expected}, got {actual}")
 
     if PRODUCT_MANIFEST in data["dictionary"]["assets"]:
-        _product.verify_product(directory, "desktop", set(data["dictionary"]["assets"]) - {"SHA256SUMS.txt", PRODUCT_MANIFEST})
+        manifest = _product.verify_product(directory, "desktop", set(data["dictionary"]["assets"]) - {"SHA256SUMS.txt", PRODUCT_MANIFEST})
+        source = manifest.get("source", {})
+        if (source.get("repository") != data["dictionary"]["repository"] or
+                source.get("commit") != data["dictionary"]["source_commit"] or source.get("dirty") is not False):
+            raise ValueError("Dictionary manifest provenance does not match the reviewed source commit")
 
 
-def download_assets(tag: str, destination: Path) -> None:
+def download_assets(tag: str, destination: Path, repository: str = DICTIONARY_REPOSITORY) -> None:
     """Plain HTTPS rather than the GitHub CLI or the API.
 
     The release assets of a public repository are served unauthenticated from a CDN, so this needs no credentials and no gh, which the bare Ubuntu containers in CI do not have. It also stays off the API, which this repository has already had rate limited to 403 from a single runner address (see scripts/bootstrap_ci_dependencies.sh).
     """
     if not TAG.fullmatch(tag):
         raise ValueError("Refusing to download from a tag that is not an explicit dict-* release")
+    if repository not in (DICTIONARY_REPOSITORY, "metasequoiaime/MSIME-Dict"):
+        raise ValueError("Unexpected dictionary repository")
     destination.mkdir(parents=True, exist_ok=True)
     names = ASSETS if tag == LEGACY_DICTIONARY_TAG else (*ASSETS, PRODUCT_MANIFEST)
     for name in names:
-        url = f"https://github.com/{DICTIONARY_REPOSITORY}/releases/download/{tag}/{name}"
+        url = f"https://github.com/{repository}/releases/download/{tag}/{name}"
         target = destination / name
         last_error: Exception | None = None
         for attempt in range(1, 4):
