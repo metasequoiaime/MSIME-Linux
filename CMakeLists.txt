@@ -234,7 +234,7 @@ endif()
 
 # Every binary here statically links the GPLv3 engine, so the packages carry the
 # same terms. Ship the license text with them and declare it in the metadata.
-install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/LICENSE
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/LICENSE ${CMAKE_CURRENT_SOURCE_DIR}/THIRD_PARTY_NOTICES.txt
         DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/metasequoia-ime-linux)
 
 # CPack gives downstreams a reproducible baseline package. Debian and RPM

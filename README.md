@@ -135,7 +135,9 @@ DEB 生成需要 `dpkg-dev`，RPM 生成需要 `rpm`（Debian／Ubuntu 上是 `r
 
 ## 许可
 
-水杉输入法 Linux 版依据 GNU 通用公共许可证第 3 版分发，见 [LICENSE](LICENSE)。本仓库的每个二进制产物都静态链接了 [`MSIME-Engine`](https://github.com/metasequoiaime/MSIME-Engine) 提供的共享引擎，而该引擎是 GPLv3，因此构建与再分发都受同样的条款约束。构建时使用的系统库（IBus、GTK、Boost、fmt、spdlog、SQLite、libcurl、libsecret）保留各自的许可，本仓库不对其进行再分发。
+水杉输入法 Linux 版依据 GNU 通用公共许可证第 3 版分发，见 [LICENSE](LICENSE)。本仓库的每个二进制产物都静态链接了 [`MSIME-Engine`](https://github.com/metasequoiaime/MSIME-Engine) 提供的共享引擎，而该引擎是 GPLv3，因此构建与再分发都受同样的条款约束。
+
+被编入二进制的第三方代码（googlepinyinime-rev、utfcpp，以及以 header-only 方式使用的 fmt、spdlog 与 Boost 头文件部分）及其各自的许可全文见 [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt)，该文件随包安装到 `share/licenses/metasequoia-ime-linux/`。只做动态链接的系统库（IBus、GTK、SQLite、libcurl、libsecret、Boost.JSON）保留发行版各自的许可，本仓库不对其进行再分发；手写识别调用的 Tesseract 是外部进程，不参与链接。
 
 ## 隐私与安全
 
