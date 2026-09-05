@@ -205,6 +205,14 @@ void show_settings_warning(MetasequoiaEngine *engine)
     ibus_engine_update_auxiliary_text(IBUS_ENGINE(engine), text(engine->settings_warning->c_str()), TRUE);
 }
 
+// Only dictionary candidates carry a helpcode. Emoji, kaomoji, English words and quick phrases are
+// matched by something other than a pinyin reading, and a kaomoji containing a Chinese character
+// would otherwise pick up a hint for that one character.
+bool has_helpcode_hint(const WordItem &candidate)
+{
+    return candidate.source == CandidateSource::Database || candidate.source == CandidateSource::UserDatabase;
+}
+
 // A hint is only shown when the scheme in use has helpcodes enabled and its display switch is on,
 // which is how the two Windows settings compose.
 bool show_helpcode_hint(const MetasequoiaEngine *engine)
@@ -371,7 +379,7 @@ void update_lookup_table(MetasequoiaEngine *engine)
     for (const WordItem &candidate : engine->controller->candidates())
     {
         std::string display = candidate.word;
-        if (show_helpcode_hint(engine))
+        if (show_helpcode_hint(engine) && has_helpcode_hint(candidate))
         {
             // The controller selects the schema for the active scheme before every key, so the
             // globally selected one is already the right one to compute against here.
