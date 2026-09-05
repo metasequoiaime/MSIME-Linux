@@ -220,7 +220,29 @@ printf '%s\n' \
 
 echo "Installed Metasequoia IME to $user_prefix"
 echo "Wrote $environment_file so IBus can find the current-user component."
-echo "Log out and back in for that to take effect, then restart IBus and select"
-echo "Metasequoia IME in your desktop input-source settings."
-echo "For the current session only, you can instead run:"
-echo "  IBUS_COMPONENT_PATH=$system_component_dir:$component_dir ibus-daemon -drx"
+echo
+echo "environment.d is only read when a session starts, so that file does nothing until"
+echo "you log out and back in. Afterwards, add Metasequoia IME under your desktop's"
+echo "input-source settings."
+echo
+# The desktop starts IBus from a user unit and the daemon inherits the systemd user
+# environment, so setting the variable there and restarting the unit registers the
+# component without displacing the daemon the session is already managing. Starting a
+# second ibus-daemon by hand does register the component, but it leaves that unit dead
+# and the desktop no longer owns the daemon it thinks it owns.
+ibus_unit=org.freedesktop.IBus.session.GNOME.service
+if systemctl --user cat "$ibus_unit" >/dev/null 2>&1; then
+    echo "To register it with the IBus this session already runs, without logging out:"
+    echo "  systemctl --user set-environment IBUS_COMPONENT_PATH=$system_component_dir:$component_dir"
+    echo "  systemctl --user restart $ibus_unit"
+else
+    echo "For the current session only, and only where no IBus user unit exists:"
+    echo "  IBUS_COMPONENT_PATH=$system_component_dir:$component_dir ibus-daemon -drx"
+    echo "That replaces the session's own IBus daemon until the next login."
+fi
+echo
+echo "Typing works as soon as the engine is registered and selected. On GNOME the"
+echo "top-bar indicator and the input-source list are built by the Shell at startup and"
+echo "do not pick up a newly registered engine until you log out and back in, so before"
+echo "then the indicator keeps showing the previous source even while Metasequoia IME is"
+echo "the engine actually handling keys."
