@@ -304,10 +304,36 @@ ControllerResult InputController::set_mode(InputMode mode)
         session_.set_dedicated_english_mode(false);
     }
     mode_ = mode;
+    apply_punctuation_lock();
     result.handled = true;
     reset_highlight();
     ++online_generation_;
     return result;
+}
+
+void InputController::set_punctuation_lock(PunctuationLock lock)
+{
+    punctuation_lock_ = lock;
+    apply_punctuation_lock();
+}
+
+// Matches the Windows rule: chinese and english hold punctuation, anything else follows the
+// language. Called on every mode change so the two stay consistent without the caller
+// having to remember to.
+void InputController::apply_punctuation_lock()
+{
+    switch (punctuation_lock_)
+    {
+    case PunctuationLock::Chinese:
+        (void)set_punctuation_mode(PunctuationMode::Chinese);
+        return;
+    case PunctuationLock::English:
+        (void)set_punctuation_mode(PunctuationMode::English);
+        return;
+    case PunctuationLock::Follow:
+        (void)set_punctuation_mode(mode_ == InputMode::Ime ? PunctuationMode::Chinese : PunctuationMode::English);
+        return;
+    }
 }
 
 ControllerResult InputController::toggle_mode()

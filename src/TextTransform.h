@@ -12,6 +12,16 @@ enum class PunctuationMode
     English,
 };
 
+// What punctuation does when the Chinese/English mode changes, matching the Windows
+// punctuation_lock setting. Follow ties punctuation to the language; the other two hold it
+// regardless of the mode.
+enum class PunctuationLock
+{
+    Follow,
+    Chinese,
+    English,
+};
+
 enum class CharacterWidth
 {
     Half,

@@ -220,6 +220,20 @@ const char *scheme_name(SchemeType scheme)
     return nullptr;
 }
 
+const char *punctuation_lock_name(PunctuationLock lock)
+{
+    switch (lock)
+    {
+    case PunctuationLock::Follow:
+        return "follow";
+    case PunctuationLock::Chinese:
+        return "chinese";
+    case PunctuationLock::English:
+        return "english";
+    }
+    return nullptr;
+}
+
 const char *punctuation_name(PunctuationMode mode)
 {
     switch (mode)
@@ -273,6 +287,7 @@ bool valid_input_settings(const InputSettings &settings)
 {
     return mode_name(settings.mode) != nullptr && scheme_name(settings.scheme) != nullptr &&
            punctuation_name(settings.punctuation_mode) != nullptr &&
+           punctuation_lock_name(settings.punctuation_lock) != nullptr &&
            preedit_style_name(settings.preedit_style) != nullptr &&
            frequency_adjustment_name(settings.frequency_adjustment_mode) != nullptr &&
            valid_character_width(settings.character_width) && settings.page_size >= kMinimumPageSize &&
@@ -406,6 +421,25 @@ InputSettings SettingsStore::load(std::string *warning) const
             invalid = true;
         }
         g_clear_error(&value_error);
+    }
+
+    if (g_key_file_has_key(key_file, kGroup, "punctuation-lock", nullptr))
+    {
+        gchar *value = g_key_file_get_string(key_file, kGroup, "punctuation-lock", nullptr);
+        const std::string_view text = value != nullptr ? std::string_view(value) : std::string_view();
+        if (text == "chinese")
+        {
+            settings.punctuation_lock = PunctuationLock::Chinese;
+        }
+        else if (text == "english")
+        {
+            settings.punctuation_lock = PunctuationLock::English;
+        }
+        else if (text != "follow")
+        {
+            invalid = true;
+        }
+        g_free(value);
     }
 
     if (g_key_file_has_key(key_file, kGroup, "punctuation", nullptr))
@@ -982,6 +1016,7 @@ bool SettingsStore::save(const InputSettings &settings, std::string *error) cons
     const char *mode = mode_name(settings.mode);
     const char *scheme = scheme_name(settings.scheme);
     const char *punctuation = punctuation_name(settings.punctuation_mode);
+    const char *punctuation_lock = punctuation_lock_name(settings.punctuation_lock);
     const char *preedit_style = preedit_style_name(settings.preedit_style);
     const char *frequency_adjustment = frequency_adjustment_name(settings.frequency_adjustment_mode);
     if (!valid_input_settings(settings))
@@ -1015,6 +1050,7 @@ bool SettingsStore::save(const InputSettings &settings, std::string *error) cons
     g_key_file_set_string(key_file, kGroup, "scheme", scheme);
     g_key_file_set_integer(key_file, kGroup, "page-size", static_cast<gint>(settings.page_size));
     g_key_file_set_string(key_file, kGroup, "punctuation", punctuation);
+    g_key_file_set_string(key_file, kGroup, "punctuation-lock", punctuation_lock);
     g_key_file_set_boolean(key_file, kGroup, "full-width", settings.character_width == CharacterWidth::Full);
     g_key_file_set_boolean(key_file, kGroup, "comma-period-paging", settings.comma_period_paging);
     g_key_file_set_boolean(key_file, kGroup, "word-to-character", settings.word_to_character);

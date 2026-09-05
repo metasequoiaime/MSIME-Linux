@@ -120,6 +120,8 @@ class InputController
     ControllerResult set_mode(InputMode mode);
     ControllerResult toggle_mode();
     ControllerResult set_punctuation_mode(PunctuationMode mode);
+    // Follow ties punctuation to the language, so set_mode recomputes it; the other two hold it.
+    void set_punctuation_lock(PunctuationLock lock);
     ControllerResult toggle_punctuation_mode();
     ControllerResult set_character_width(CharacterWidth width);
     ControllerResult toggle_character_width();
@@ -184,6 +186,8 @@ class InputController
     std::size_t page_size_ = 9;
     std::size_t highlighted_candidate_ = 0;
     PunctuationMode punctuation_mode_ = PunctuationMode::Chinese;
+    void apply_punctuation_lock();
+    PunctuationLock punctuation_lock_ = PunctuationLock::Follow;
     CharacterWidth character_width_ = CharacterWidth::Half;
     bool comma_period_paging_ = false;
     bool word_to_character_ = false;

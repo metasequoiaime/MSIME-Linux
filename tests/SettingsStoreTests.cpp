@@ -23,6 +23,7 @@ using metasequoia::linux_ime::InputMode;
 using metasequoia::linux_ime::InputSettings;
 using metasequoia::linux_ime::OnlineSettings;
 using metasequoia::linux_ime::PreeditStyle;
+using metasequoia::linux_ime::PunctuationLock;
 using metasequoia::linux_ime::PunctuationMode;
 using metasequoia::linux_ime::SecretKind;
 using metasequoia::linux_ime::SecretLookupResult;
@@ -147,6 +148,7 @@ int main()
     const InputSettings defaults = store.load(&warning);
     require(defaults.mode == InputMode::Ime && defaults.scheme == SchemeType::Quanpin && defaults.page_size == 9 &&
                 defaults.punctuation_mode == PunctuationMode::Chinese &&
+                defaults.punctuation_lock == PunctuationLock::Follow &&
                 defaults.character_width == CharacterWidth::Half && defaults.comma_period_paging &&
                 defaults.word_to_character && !defaults.bracket_paging && defaults.smart_punctuation &&
                 defaults.smart_punctuation_repeat_to_chinese && defaults.paired_punctuation &&
@@ -177,6 +179,7 @@ int main()
     saved.scheme = SchemeType::Wubi;
     saved.page_size = 3;
     saved.punctuation_mode = PunctuationMode::English;
+    saved.punctuation_lock = PunctuationLock::English;
     saved.character_width = CharacterWidth::Full;
     saved.comma_period_paging = true;
     saved.word_to_character = true;
@@ -232,6 +235,7 @@ int main()
     const InputSettings round_trip = store.load(&warning);
     require(round_trip.mode == saved.mode && round_trip.scheme == saved.scheme &&
                 round_trip.page_size == saved.page_size && round_trip.punctuation_mode == saved.punctuation_mode &&
+                round_trip.punctuation_lock == saved.punctuation_lock &&
                 round_trip.character_width == saved.character_width &&
                 round_trip.comma_period_paging == saved.comma_period_paging &&
                 round_trip.word_to_character == saved.word_to_character &&
