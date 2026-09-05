@@ -401,7 +401,7 @@ The packages install dictionary and helpcode data built from these repositories:
 
 Installed as msime.db, others.db, english.db and helpcodes/*.txt under the package data directory.
 
-Neither repository declares a license of its own, because most of their content is not their own work. They aggregate word lists and code tables from upstream projects. The upstream terms, which travel with the data, are as follows.
+The imported data directories do not declare a license of their own, because most of their content is not their own work. They aggregate word lists and code tables from upstream projects. The upstream terms, which travel with the data, are as follows.
 
 Sources of msime.db, others.db and english.db:
 
