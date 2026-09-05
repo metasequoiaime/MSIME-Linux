@@ -34,6 +34,40 @@ class ProductLockTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     lock.validate(changed)
 
+    def test_a_mutable_dictionary_source_commit_is_rejected(self):
+        # The commit the tag resolved to is the whole provenance claim. It used to be read from the
+        # dict gitlink, which recorded 55bd649 while the shipped bytes came from 0c7368c.
+        for commit in ("", "main", "0c7368c", "a" * 39, "a" * 40 + "\n", "A" * 40):
+            with self.subTest(commit=commit):
+                changed = copy.deepcopy(self.data)
+                changed["dictionary"]["source_commit"] = commit
+                with self.assertRaises(ValueError):
+                    lock.validate(changed)
+
+    def test_the_dictionary_source_is_not_a_gitlink(self):
+        # Re-adding it as a submodule would restore a second, unsynchronised home for the pin.
+        self.assertNotIn("dict", lock.SUBMODULES)
+        gitmodules = (ROOT / ".gitmodules").read_text()
+        self.assertNotIn("vendor/MetasequoiaImeDict", gitmodules)
+
+    def test_an_annotated_tag_locks_the_commit_rather_than_the_tag_object(self):
+        tag = self.data["dictionary"]["tag"]
+        tag_object = "b" * 40
+        commit = "c" * 40
+        output = f"{tag_object}\trefs/tags/{tag}\n{commit}\trefs/tags/{tag}^{{}}\n"
+        with mock.patch.object(lock.subprocess, "check_output", return_value=output):
+            self.assertEqual(lock.resolve_tag_commit(tag), commit)
+
+    def test_tag_resolution_refuses_anything_but_an_explicit_release(self):
+        for tag in ("latest", "main", "../dict-test", ""):
+            with self.subTest(tag=tag), self.assertRaises(ValueError):
+                lock.resolve_tag_commit(tag)
+
+    def test_a_tag_that_resolves_to_nothing_is_not_locked(self):
+        with mock.patch.object(lock.subprocess, "check_output", return_value=""):
+            with self.assertRaises(ValueError):
+                lock.resolve_tag_commit(self.data["dictionary"]["tag"])
+
     def test_every_shipped_asset_must_be_locked(self):
         for name in lock.ASSETS:
             with self.subTest(name=name):
