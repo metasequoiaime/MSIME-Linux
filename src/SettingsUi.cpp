@@ -128,6 +128,8 @@ const char *choice_label(const std::string &value)
         return "五笔";
     if (value == "japanese")
         return "日文罗马字";
+    if (value == "follow")
+        return "跟随中英文";
     if (value == "chinese")
         return "中文";
     if (value == "english")

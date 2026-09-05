@@ -754,6 +754,9 @@ void metasequoia_engine_init(MetasequoiaEngine *engine)
     options.mixed_expressive.kaomoji_candidates = settings.mixed_kaomoji_candidates_enabled;
     engine->controller = new InputController(settings.scheme, options);
     (void)engine->controller->set_mode(settings.mode);
+    // After set_mode, which early-returns when the mode is already the default and so would not
+    // apply the lock itself.
+    engine->controller->set_punctuation_lock(settings.punctuation_lock);
     engine->mode_toggle = new IBusModeToggleTracker();
     engine->mode_toggle->configure(
         {settings.switch_language_shift, settings.switch_language_ctrl, settings.switch_language_ctrl_alt_space});

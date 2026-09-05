@@ -37,6 +37,7 @@ struct InputSettings
     SchemeType scheme = SchemeType::Quanpin;
     std::size_t page_size = 9;
     PunctuationMode punctuation_mode = PunctuationMode::Chinese;
+    PunctuationLock punctuation_lock = PunctuationLock::Follow;
     CharacterWidth character_width = CharacterWidth::Half;
     bool comma_period_paging = true;
     bool word_to_character = true;

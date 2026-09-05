@@ -24,6 +24,7 @@ using metasequoia::linux_ime::InputController;
 using metasequoia::linux_ime::InputMode;
 using metasequoia::linux_ime::InputOptions;
 using metasequoia::linux_ime::PreeditStyle;
+using metasequoia::linux_ime::PunctuationLock;
 using metasequoia::linux_ime::PunctuationMode;
 
 class Database
@@ -423,6 +424,46 @@ int main()
 
         require(punctuation_controller.set_punctuation_mode(PunctuationMode::English).handled,
                 "English punctuation mode was not activated.");
+
+        InputController lock_controller(SchemeType::Quanpin, 3);
+        lock_controller.set_punctuation_lock(PunctuationLock::Follow);
+        require(lock_controller.punctuation_mode() == PunctuationMode::Chinese,
+                "Follow did not derive Chinese punctuation for Chinese input.");
+        lock_controller.set_mode(InputMode::Direct);
+        require(lock_controller.punctuation_mode() == PunctuationMode::English,
+                "Follow did not switch punctuation with the language.");
+        lock_controller.set_mode(InputMode::Ime);
+        require(lock_controller.punctuation_mode() == PunctuationMode::Chinese,
+                "Follow did not switch punctuation back with the language.");
+
+        // A manual toggle stands until the next language switch recomputes it, which is what the
+        // Windows implementation does on its mode-switch message.
+        lock_controller.set_punctuation_mode(PunctuationMode::English);
+        require(lock_controller.punctuation_mode() == PunctuationMode::English,
+                "Follow refused a manual punctuation toggle.");
+        lock_controller.set_mode(InputMode::Direct);
+        require(lock_controller.punctuation_mode() == PunctuationMode::English,
+                "A manual toggle survived the language switch that should have recomputed it.");
+
+        lock_controller.set_punctuation_lock(PunctuationLock::Chinese);
+        require(lock_controller.punctuation_mode() == PunctuationMode::Chinese,
+                "A Chinese lock did not take effect immediately.");
+        lock_controller.set_mode(InputMode::Ime);
+        lock_controller.set_mode(InputMode::Direct);
+        require(lock_controller.punctuation_mode() == PunctuationMode::Chinese,
+                "A Chinese lock did not hold across language switches.");
+        lock_controller.set_punctuation_mode(PunctuationMode::English);
+        lock_controller.set_mode(InputMode::Ime);
+        require(lock_controller.punctuation_mode() == PunctuationMode::Chinese,
+                "A Chinese lock did not reassert itself after a manual toggle.");
+
+        lock_controller.set_punctuation_lock(PunctuationLock::English);
+        require(lock_controller.punctuation_mode() == PunctuationMode::English,
+                "An English lock did not take effect immediately.");
+        lock_controller.set_mode(InputMode::Direct);
+        lock_controller.set_mode(InputMode::Ime);
+        require(lock_controller.punctuation_mode() == PunctuationMode::English,
+                "An English lock did not hold across language switches.");
         require(!punctuation_controller.handle_key(punctuation(',')).handled,
                 "Plain English punctuation was swallowed without a composition.");
         type(punctuation_controller, "nihao");

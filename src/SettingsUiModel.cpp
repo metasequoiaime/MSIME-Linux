@@ -105,6 +105,20 @@ std::string punctuation_value(PunctuationMode value)
     return value == PunctuationMode::Chinese ? "chinese" : "english";
 }
 
+std::string punctuation_lock_value(PunctuationLock value)
+{
+    switch (value)
+    {
+    case PunctuationLock::Chinese:
+        return "chinese";
+    case PunctuationLock::English:
+        return "english";
+    case PunctuationLock::Follow:
+        break;
+    }
+    return "follow";
+}
+
 std::string width_value(CharacterWidth value)
 {
     return value == CharacterWidth::Full ? "full" : "half";
@@ -183,9 +197,9 @@ bool set_choice(std::string_view value, std::initializer_list<std::string_view> 
 
 SettingsUiSection settings_section_for_id(const std::string &id)
 {
-    if (id == "page-size" || id == "punctuation" || id == "width" || id == "preedit-style" ||
-        id == "smart-punctuation" || id == "smart-punctuation-repeat-to-chinese" || id == "paired-punctuation" ||
-        id == "bracket-paging" || id == "word-to-character")
+    if (id == "page-size" || id == "punctuation" || id == "punctuation-lock" || id == "width" ||
+        id == "preedit-style" || id == "smart-punctuation" || id == "smart-punctuation-repeat-to-chinese" ||
+        id == "paired-punctuation" || id == "bracket-paging" || id == "word-to-character")
     {
         return SettingsUiSection::Appearance;
     }
@@ -267,6 +281,8 @@ void SettingsUiModel::rebuild_rows()
     add(rows_, "page-size", "Candidates per page", std::to_string(settings_.page_size), SettingsControl::Integer);
     add(rows_, "punctuation", "Punctuation", punctuation_value(settings_.punctuation_mode), SettingsControl::Choice,
         {"chinese", "english"});
+    add(rows_, "punctuation-lock", "Punctuation lock", punctuation_lock_value(settings_.punctuation_lock),
+        SettingsControl::Choice, {"follow", "chinese", "english"});
     add(rows_, "width", "Character width", width_value(settings_.character_width), SettingsControl::Choice,
         {"half", "full"});
     add(rows_, "preedit-style", "Preedit style", preedit_value(settings_.preedit_style), SettingsControl::Choice,
@@ -397,6 +413,17 @@ bool SettingsUiModel::set(const std::string &id, const std::string &value, std::
             candidate.punctuation_mode = PunctuationMode::Chinese;
         else if (value == "english")
             candidate.punctuation_mode = PunctuationMode::English;
+        else
+            parsed = false;
+    }
+    else if (id == "punctuation-lock")
+    {
+        if (value == "follow")
+            candidate.punctuation_lock = PunctuationLock::Follow;
+        else if (value == "chinese")
+            candidate.punctuation_lock = PunctuationLock::Chinese;
+        else if (value == "english")
+            candidate.punctuation_lock = PunctuationLock::English;
         else
             parsed = false;
     }
