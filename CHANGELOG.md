@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/metasequoiaime/MSIME-Linux/compare/v0.6.0...v0.6.1) (2026-09-05)
+
+
+### Reverts
+
+* move back off calendar versioning ([bc8173d](https://github.com/metasequoiaime/MSIME-Linux/commit/bc8173d96350ddc8003253617097e5cd4c9f6856))
+
 ## [0.6.0](https://github.com/metasequoiaime/MSIME-Linux/compare/v0.5.0...v0.6.0) (2026-09-05)
 
 
