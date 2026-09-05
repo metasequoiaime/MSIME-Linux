@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.3](https://github.com/metasequoiaime/MSIME-Linux/compare/v0.2.2...v0.2.3) (2026-09-05)
+
+
+### Bug Fixes
+
+* make the published packages actually usable ([980b36c](https://github.com/metasequoiaime/MSIME-Linux/commit/980b36c5baf42db52e837a6ed2ff78a758b7a4c0))
+* make the published packages actually usable ([589f397](https://github.com/metasequoiaime/MSIME-Linux/commit/589f397b046d3d4b2f130ccce7db0e4a57799cea))
+
 ## [0.2.2](https://github.com/metasequoiaime/MSIME-Linux/compare/v0.2.1...v0.2.2) (2026-09-05)
 
 
