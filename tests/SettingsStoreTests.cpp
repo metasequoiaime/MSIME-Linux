@@ -147,8 +147,8 @@ int main()
     const InputSettings defaults = store.load(&warning);
     require(defaults.mode == InputMode::Ime && defaults.scheme == SchemeType::Quanpin && defaults.page_size == 9 &&
                 defaults.punctuation_mode == PunctuationMode::Chinese &&
-                defaults.character_width == CharacterWidth::Half && !defaults.comma_period_paging &&
-                !defaults.word_to_character && !defaults.bracket_paging && defaults.smart_punctuation &&
+                defaults.character_width == CharacterWidth::Half && defaults.comma_period_paging &&
+                defaults.word_to_character && !defaults.bracket_paging && defaults.smart_punctuation &&
                 defaults.smart_punctuation_repeat_to_chinese && defaults.paired_punctuation &&
                 defaults.preedit_style == PreeditStyle::Raw && defaults.quanpin_helpcode_enabled &&
                 defaults.quanpin_helpcode_schema == "lantian" && defaults.shuangpin_helpcode_enabled &&
@@ -157,8 +157,8 @@ int main()
                 defaults.frequency_trigger_count == 1 && defaults.frequency_linear_step == 1 &&
                 defaults.unicode_mode_enabled && defaults.super_jianpin_mode_enabled &&
                 defaults.temporary_english_mode_enabled && defaults.temporary_japanese_mode_enabled &&
-                !defaults.mixed_english_candidates_enabled && defaults.mixed_english_minimum_prefix == 2 &&
-                !defaults.mixed_emoji_candidates_enabled && !defaults.mixed_kaomoji_candidates_enabled,
+                defaults.mixed_english_candidates_enabled && defaults.mixed_english_minimum_prefix == 2 &&
+                defaults.mixed_emoji_candidates_enabled && !defaults.mixed_kaomoji_candidates_enabled,
             "Missing settings did not use defaults.");
     require(warning.empty(), "A missing optional settings file produced a warning.");
     require(defaults.online.cloud_candidates_enabled && !defaults.online.ai.enabled &&
@@ -449,8 +449,8 @@ int main()
     const InputSettings invalid = store.load(&warning);
     require(invalid.mode == InputMode::Ime && invalid.scheme == SchemeType::Quanpin && invalid.page_size == 9 &&
                 invalid.punctuation_mode == PunctuationMode::Chinese &&
-                invalid.character_width == CharacterWidth::Half && !invalid.comma_period_paging &&
-                !invalid.word_to_character && !invalid.bracket_paging && invalid.smart_punctuation &&
+                invalid.character_width == CharacterWidth::Half && invalid.comma_period_paging &&
+                invalid.word_to_character && !invalid.bracket_paging && invalid.smart_punctuation &&
                 invalid.smart_punctuation_repeat_to_chinese && invalid.paired_punctuation &&
                 invalid.preedit_style == PreeditStyle::Raw && invalid.quanpin_helpcode_enabled &&
                 invalid.quanpin_helpcode_schema == "lantian" && invalid.shuangpin_helpcode_enabled &&
@@ -459,8 +459,8 @@ int main()
                 invalid.frequency_trigger_count == 1 && invalid.frequency_linear_step == 1 &&
                 invalid.unicode_mode_enabled && invalid.super_jianpin_mode_enabled &&
                 invalid.temporary_english_mode_enabled && invalid.temporary_japanese_mode_enabled &&
-                !invalid.mixed_english_candidates_enabled && invalid.mixed_english_minimum_prefix == 2 &&
-                !invalid.mixed_emoji_candidates_enabled && !invalid.mixed_kaomoji_candidates_enabled,
+                invalid.mixed_english_candidates_enabled && invalid.mixed_english_minimum_prefix == 2 &&
+                invalid.mixed_emoji_candidates_enabled && !invalid.mixed_kaomoji_candidates_enabled,
             "Invalid settings did not fall back field by field.");
     require(invalid.online.cloud_candidates_enabled && invalid.online.ai.enabled &&
                 invalid.online.ai.provider == AiProvider::DeepSeek && invalid.online.ai.endpoint.empty() &&
