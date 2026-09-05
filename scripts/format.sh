@@ -27,5 +27,9 @@ case "$mode" in
 esac
 
 cd "$project_root"
-git ls-files 'src/*.cpp' 'src/*.h' 'tests/*.cpp' \
+# --others --exclude-standard so a newly written file that has not been staged
+# yet is still formatted. Without it the script reports a clean tree while
+# skipping exactly the file being worked on.
+git ls-files --cached --others --exclude-standard 'src/*.cpp' 'src/*.h' 'tests/*.cpp' \
+    | sort -u \
     | xargs "$clang_format" "${clang_format_arguments[@]}" --style=file
