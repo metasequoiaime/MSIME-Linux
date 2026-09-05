@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.2](https://github.com/metasequoiaime/MSIME-Linux/compare/v0.4.1...v0.4.2) (2026-09-05)
+
+
+### Bug Fixes
+
+* reject a malformed credential when it is saved, not when it is used ([22af212](https://github.com/metasequoiaime/MSIME-Linux/commit/22af212e17e1c4f4ca0c70f08fdb29a0aed79dfb))
+
 ## [0.4.1](https://github.com/metasequoiaime/MSIME-Linux/compare/v0.4.0...v0.4.1) (2026-09-05)
 
 
