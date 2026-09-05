@@ -38,8 +38,8 @@ struct InputSettings
     std::size_t page_size = 9;
     PunctuationMode punctuation_mode = PunctuationMode::Chinese;
     CharacterWidth character_width = CharacterWidth::Half;
-    bool comma_period_paging = false;
-    bool word_to_character = false;
+    bool comma_period_paging = true;
+    bool word_to_character = true;
     bool bracket_paging = false;
     bool smart_punctuation = true;
     bool smart_punctuation_repeat_to_chinese = true;
@@ -56,9 +56,9 @@ struct InputSettings
     bool super_jianpin_mode_enabled = true;
     bool temporary_english_mode_enabled = true;
     bool temporary_japanese_mode_enabled = true;
-    bool mixed_english_candidates_enabled = false;
+    bool mixed_english_candidates_enabled = true;
     std::size_t mixed_english_minimum_prefix = 2;
-    bool mixed_emoji_candidates_enabled = false;
+    bool mixed_emoji_candidates_enabled = true;
     bool mixed_kaomoji_candidates_enabled = false;
     bool clipboard_history_enabled = false;
     bool floating_toolbar_enabled = true;
