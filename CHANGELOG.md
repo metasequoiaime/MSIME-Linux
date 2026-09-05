@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/metasequoiaime/MSIME-Linux/compare/v0.8.0...v0.8.1) (2026-09-05)
+
+
+### Bug Fixes
+
+* **install:** resolve consolidated helpcodes in source installs and smoke tests ([ae92220](https://github.com/metasequoiaime/MSIME-Linux/commit/ae92220846416bb83452c0eb337e0fa8af968a22))
+
 ## [0.8.0](https://github.com/metasequoiaime/MSIME-Linux/compare/v0.7.0...v0.8.0) (2026-09-05)
 
 
