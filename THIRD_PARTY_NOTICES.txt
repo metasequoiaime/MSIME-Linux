@@ -397,12 +397,9 @@ The packages install dictionary and helpcode data built from these repositories:
   MSIME-Dict                https://github.com/metasequoiaime/MSIME-Dict
   MetasequoiaImeHelpCode    https://github.com/metasequoiaime/MetasequoiaImeHelpCode
 
-Installed as msime.db, others.db, english.db and helpcodes/*.txt under the
-package data directory.
+Installed as msime.db, others.db, english.db and helpcodes/*.txt under the package data directory.
 
-Neither repository declares a license of its own, because most of their content
-is not their own work. They aggregate word lists and code tables from upstream
-projects. The upstream terms, which travel with the data, are as follows.
+Neither repository declares a license of its own, because most of their content is not their own work. They aggregate word lists and code tables from upstream projects. The upstream terms, which travel with the data, are as follows.
 
 Sources of msime.db, others.db and english.db, via MSIME-Dict:
 
@@ -414,13 +411,9 @@ Sources of msime.db, others.db and english.db, via MSIME-Dict:
   ECDICT                  MIT        https://github.com/skywind3000/ECDICT
   Windows-classic-samples MIT        https://github.com/microsoft/Windows-classic-samples
   Google count_1w         see source https://www.norvig.com/ngrams/count_1w.txt
+  OALD word forms         none       extracted headword list; rights with the dictionary's publisher
 
-The Chinese tables that msime.db is built from (cn/BaseDictAllV1Part1.txt and
-cn/BaseDictAllV1Part2.txt) merge rime-ice with CustomPinyinDictionary. rime-ice
-is licensed under the GNU General Public License version 3, which is the same
-license this project is distributed under, so its terms are satisfied by the
-distribution as a whole; this notice serves as its attribution, and its source
-remains available at the URL above.
+The Chinese tables that msime.db is built from (cn/BaseDictAllV1Part1.txt and cn/BaseDictAllV1Part2.txt) merge rime-ice with CustomPinyinDictionary. rime-ice is licensed under the GNU General Public License version 3, which is the same license this project is distributed under, so its terms are satisfied by the distribution as a whole; this notice serves as its attribution, and its source remains available at the URL above.
 
 Sources of helpcodes/*.txt, via MetasequoiaImeHelpCode:
 
@@ -431,11 +424,7 @@ Sources of helpcodes/*.txt, via MetasequoiaImeHelpCode:
   shouyouplus_helpcode.txt        shouyouplus  首右 plus helpcode scheme
   xiaohe_helpcode.txt             xiaohe       小鹤 shape-code scheme
 
-Unresolved: CustomPinyinDictionary and ZRM_Aux-code publish no license, and the
-helpcode tables reproduce input schemes whose rights belong to their respective
-authors. Redistributors who need an explicit grant for those parts should raise
-it with the Metasequoia IME maintainers rather than assume one. This notice will
-be updated as those terms are clarified.
+Unresolved: CustomPinyinDictionary and ZRM_Aux-code publish no license; the English word list in english.db includes word forms extracted from a commercial dictionary, whose rights belong to its publisher; and the helpcode tables reproduce input schemes whose rights belong to their respective authors. Redistributors who need an explicit grant for those parts should raise it with the Metasequoia IME maintainers rather than assume one. This notice will be updated as those terms are clarified.
 
 
 ------------------------------------------------------------------------------
