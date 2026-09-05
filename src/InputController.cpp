@@ -95,7 +95,7 @@ ControllerResult InputController::handle_key(const FrontendKeyEvent &event)
 
     if (event.host_shortcut)
     {
-        ControllerResult result = commit_highlighted();
+        ControllerResult result = finish_composition();
         invalidate_context();
         result.handled = false;
         return result;
@@ -300,7 +300,7 @@ ControllerResult InputController::set_mode(InputMode mode)
     ControllerResult result;
     if (mode == InputMode::Direct)
     {
-        result = commit_highlighted();
+        result = finish_composition();
         session_.set_dedicated_english_mode(false);
     }
     mode_ = mode;
@@ -367,7 +367,7 @@ ControllerResult InputController::switch_scheme(SchemeType scheme_type)
         return {};
     }
 
-    ControllerResult result = commit_highlighted();
+    ControllerResult result = finish_composition();
     session_.switch_scheme(scheme_type);
     select_active_helpcode_schema();
     result.handled = true;
@@ -624,10 +624,15 @@ ControllerResult InputController::commit_highlighted()
     return select_candidate(highlighted_candidate_);
 }
 
+ControllerResult InputController::finish_composition()
+{
+    return finish_composition_mutation(session_.finish_composition(highlighted_candidate_));
+}
+
 ControllerResult InputController::commit_punctuation(char ascii, std::optional<char32_t> preceding_character)
 {
     const bool had_composition = has_composition();
-    ControllerResult result = commit_highlighted();
+    ControllerResult result = finish_composition();
 
     if (result.commit.has_value() && !result.commit->empty())
     {

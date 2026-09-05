@@ -169,6 +169,7 @@ class InputController
 
   private:
     ControllerResult commit_highlighted();
+    ControllerResult finish_composition();
     ControllerResult commit_punctuation(char ascii, std::optional<char32_t> preceding_character);
     ControllerResult commit_full_width(char ascii);
     ControllerResult move_cursor(bool forward);
