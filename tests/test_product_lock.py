@@ -50,13 +50,39 @@ class ProductLockTests(unittest.TestCase):
         gitmodules = (ROOT / ".gitmodules").read_text()
         self.assertNotIn("vendor/MetasequoiaImeDict", gitmodules)
 
-    def test_an_annotated_tag_locks_the_commit_rather_than_the_tag_object(self):
-        tag = self.data["dictionary"]["tag"]
-        tag_object = "b" * 40
-        commit = "c" * 40
-        output = f"{tag_object}\trefs/tags/{tag}\n{commit}\trefs/tags/{tag}^{{}}\n"
-        with mock.patch.object(lock.subprocess, "check_output", return_value=output):
-            self.assertEqual(lock.resolve_tag_commit(tag), commit)
+    def tagged_repository(self, directory, tag, annotated):
+        """A real repository, because the bug this guards lives in the ls-remote invocation.
+
+        Handing the parser a transcript proves only that the parser works. The first version of
+        this asked ls-remote for refs/tags/<tag> alone, which never emits the peeled ref, so the
+        commit could not be found no matter how correct the parsing was.
+        """
+        run = lambda *args: subprocess.run(["git", "-C", str(directory), *args], check=True,
+                                           capture_output=True, text=True)
+        run("init", "--quiet", "--initial-branch", "main")
+        run("-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "--quiet",
+            "--allow-empty", "-m", "release")
+        if annotated:
+            run("-c", "user.email=t@example.com", "-c", "user.name=t", "tag", "-a", tag, "-m", tag)
+        else:
+            run("tag", tag)
+        commit = run("rev-parse", f"{tag}^{{commit}}").stdout.strip()
+        return f"file://{directory}", commit
+
+    def test_a_tag_resolves_to_its_commit_whether_or_not_it_is_annotated(self):
+        for annotated in (True, False):
+            with self.subTest(annotated=annotated), tempfile.TemporaryDirectory() as temporary:
+                tag = "dict-2026.01.01"
+                url, commit = self.tagged_repository(Path(temporary), tag, annotated)
+                with mock.patch.object(lock, "DICTIONARY_URL", url):
+                    resolved = lock.resolve_tag_commit(tag)
+                self.assertEqual(resolved, commit)
+                # An annotated tag's own object is 40 hex digits too, so a wrong answer here would
+                # pass every downstream check and lock something that is not in the history.
+                if annotated:
+                    tag_object = subprocess.check_output(
+                        ["git", "-C", temporary, "rev-parse", tag], text=True).strip()
+                    self.assertNotEqual(resolved, tag_object)
 
     def test_tag_resolution_refuses_anything_but_an_explicit_release(self):
         for tag in ("latest", "main", "../dict-test", ""):

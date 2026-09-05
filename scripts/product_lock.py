@@ -26,6 +26,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 REPOSITORY = "metasequoiaime/MSIME-Linux"
 DICTIONARY_REPOSITORY = "metasequoiaime/MSIME-Dict"
+DICTIONARY_URL = f"https://github.com/{DICTIONARY_REPOSITORY}.git"
 
 # Every gitlink this repository builds from. The manifest reads their commits here rather than from
 # a second copy in the lock, so there is one source of truth for what was checked out.
@@ -127,15 +128,21 @@ def resolve_tag_commit(tag: str) -> str:
     """
     if not TAG.fullmatch(tag):
         raise ValueError("Refusing to resolve a tag that is not an explicit dict-* release")
-    url = f"https://github.com/{DICTIONARY_REPOSITORY}.git"
-    output = subprocess.check_output(["git", "ls-remote", "--tags", url, f"refs/tags/{tag}"], text=True)
+    # Both refs are requested by name. ls-remote filters on the ref as written, and the peeled ref
+    # is literally named refs/tags/<tag>^{}, so asking only for refs/tags/<tag> gets an annotated
+    # tag's tag object and nothing else. A trailing glob would return the peeled ref too, but it
+    # would also match dict-2026.01.01-rc1.
+    output = subprocess.check_output(
+        ["git", "ls-remote", DICTIONARY_URL, f"refs/tags/{tag}", f"refs/tags/{tag}^{{}}"], text=True
+    )
     references = {}
     for line in output.splitlines():
         commit, _, reference = line.partition("\t")
         references[reference.strip()] = commit.strip()
-    # An annotated tag lists the tag object first and the commit it points at under ^{}; a
-    # lightweight one only has the plain reference. Locking the tag object's own SHA would record
-    # something that is not a commit in MSIME-Dict's history at all.
+    # An annotated tag lists the tag object under the plain name and the commit it points at under
+    # ^{}; a lightweight one only has the plain reference. Locking the tag object's own SHA would
+    # record something that is not a commit in MSIME-Dict's history at all, and it is 40 hex digits
+    # like any other object, so nothing downstream would notice.
     commit = references.get(f"refs/tags/{tag}^{{}}") or references.get(f"refs/tags/{tag}")
     if not commit or not SHA.fullmatch(commit):
         raise ValueError(f"{tag} does not resolve to a commit in {DICTIONARY_REPOSITORY}")
