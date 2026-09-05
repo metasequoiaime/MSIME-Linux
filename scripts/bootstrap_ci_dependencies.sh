@@ -17,6 +17,13 @@ github_api_headers=(
     --header 'Accept: application/vnd.github+json'
     --header 'X-GitHub-Api-Version: 2022-11-28'
 )
+# Unauthenticated calls are limited to 60 an hour per source address, and GitHub-hosted runners
+# share their addresses between customers, so that budget is spent by strangers as well as by us.
+# A token raises it to 1,000 an hour for this repository alone. Optional: the script still works
+# without one, which is how it runs locally, just against the shared budget.
+if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+    github_api_headers+=(--header "Authorization: Bearer $GITHUB_TOKEN")
+fi
 cleanup() {
     rm -rf "$temporary_root"
 }
