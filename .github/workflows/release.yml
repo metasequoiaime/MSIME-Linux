@@ -34,6 +34,14 @@ jobs:
       tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || steps.release.outputs.tag_name }}
       target_sha: ${{ github.event_name == 'workflow_dispatch' && steps.requested_release.outputs.target_sha || steps.release.outputs.sha }}
     steps:
+      # Only for scripts/dispatch_release_ci.sh below; this job otherwise works entirely through
+      # the API and needs no working tree.
+      - name: Check out release automation
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: scripts
+          persist-credentials: false
+
       # release-please opens a version PR from conventional commits. Merging that
       # PR is what tags the release and creates the draft the publish job builds.
       - name: Prepare release
