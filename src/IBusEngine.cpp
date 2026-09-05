@@ -755,6 +755,8 @@ void metasequoia_engine_init(MetasequoiaEngine *engine)
     engine->controller = new InputController(settings.scheme, options);
     (void)engine->controller->set_mode(settings.mode);
     engine->mode_toggle = new IBusModeToggleTracker();
+    engine->mode_toggle->configure(
+        {settings.switch_language_shift, settings.switch_language_ctrl, settings.switch_language_ctrl_alt_space});
     initialize_properties(engine);
     update_property_values(engine);
 

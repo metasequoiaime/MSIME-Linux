@@ -200,7 +200,7 @@ SettingsUiSection settings_section_for_id(const std::string &id)
         return SettingsUiSection::Helpcode;
     }
     if (id == "unicode-mode" || id == "super-jianpin-mode" || id == "temporary-english-mode" ||
-        id == "temporary-japanese-mode")
+        id == "temporary-japanese-mode" || id.rfind("switch-language-", 0) == 0)
     {
         return SettingsUiSection::Shortcuts;
     }
@@ -303,6 +303,12 @@ void SettingsUiModel::rebuild_rows()
         SettingsControl::Boolean);
     add(rows_, "temporary-japanese-mode", "Temporary Japanese mode",
         bool_value(settings_.temporary_japanese_mode_enabled), SettingsControl::Boolean);
+    add(rows_, "switch-language-shift", "Switch language with Shift", bool_value(settings_.switch_language_shift),
+        SettingsControl::Boolean);
+    add(rows_, "switch-language-ctrl", "Switch language with Control", bool_value(settings_.switch_language_ctrl),
+        SettingsControl::Boolean);
+    add(rows_, "switch-language-ctrl-alt-space", "Switch language with Control+Alt+Space",
+        bool_value(settings_.switch_language_ctrl_alt_space), SettingsControl::Boolean);
     add(rows_, "mixed-english-candidates", "Mixed English candidates",
         bool_value(settings_.mixed_english_candidates_enabled), SettingsControl::Boolean);
     add(rows_, "mixed-english-minimum-prefix", "English minimum prefix",
@@ -420,7 +426,8 @@ bool SettingsUiModel::set(const std::string &id, const std::string &value, std::
              id == "super-jianpin-mode" || id == "temporary-english-mode" || id == "temporary-japanese-mode" ||
              id == "mixed-english-candidates" || id == "mixed-emoji-candidates" || id == "mixed-kaomoji-candidates" ||
              id == "clipboard-history" || id == "floating-toolbar" || id == "voice-enabled" ||
-             id == "voice-polish-enabled" || id == "cloud-enabled" || id == "ai-enabled" || id == "translation-enabled")
+             id.rfind("switch-language-", 0) == 0 || id == "voice-polish-enabled" || id == "cloud-enabled" ||
+             id == "ai-enabled" || id == "translation-enabled")
     {
         bool value_as_bool = false;
         parsed = parse_bool(value, value_as_bool);
@@ -450,6 +457,12 @@ bool SettingsUiModel::set(const std::string &id, const std::string &value, std::
                 candidate.temporary_english_mode_enabled = value_as_bool;
             else if (id == "temporary-japanese-mode")
                 candidate.temporary_japanese_mode_enabled = value_as_bool;
+            else if (id == "switch-language-shift")
+                candidate.switch_language_shift = value_as_bool;
+            else if (id == "switch-language-ctrl")
+                candidate.switch_language_ctrl = value_as_bool;
+            else if (id == "switch-language-ctrl-alt-space")
+                candidate.switch_language_ctrl_alt_space = value_as_bool;
             else if (id == "mixed-english-candidates")
                 candidate.mixed_english_candidates_enabled = value_as_bool;
             else if (id == "mixed-emoji-candidates")

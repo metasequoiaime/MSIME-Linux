@@ -54,6 +54,42 @@ int main()
     require(!toggle_tracker.observe(IBUS_Shift_L, IBUS_RELEASE_MASK | IBUS_CONTROL_MASK | IBUS_SHIFT_MASK),
             "Control+Shift toggled mode on key release.");
 
+    // Ctrl+Alt+Space is on by default and is an ordinary chord, so it toggles on press.
+    require(toggle_tracker.observe(IBUS_space, IBUS_CONTROL_MASK | IBUS_MOD1_MASK),
+            "Ctrl+Alt+Space did not toggle mode.");
+    require(!toggle_tracker.observe(IBUS_space, IBUS_CONTROL_MASK),
+            "Ctrl+Space toggled mode; the desktop owns that chord.");
+    require(!toggle_tracker.observe(IBUS_space, IBUS_MOD1_MASK | IBUS_SHIFT_MASK), "Alt+Shift+Space toggled mode.");
+
+    IBusModeToggleTracker without_shift;
+    without_shift.configure({false, false, false});
+    require(!without_shift.observe(IBUS_Shift_L, 0), "Shift armed while its binding was off.");
+    require(!without_shift.observe(IBUS_Shift_L, IBUS_RELEASE_MASK | IBUS_SHIFT_MASK),
+            "A disabled Shift binding still toggled mode.");
+    require(!without_shift.observe(IBUS_space, IBUS_CONTROL_MASK | IBUS_MOD1_MASK),
+            "A disabled Ctrl+Alt+Space binding still toggled mode.");
+
+    IBusModeToggleTracker with_ctrl;
+    with_ctrl.configure({false, true, false});
+    require(!with_ctrl.observe(IBUS_Control_L, 0), "Control toggled mode on key-down.");
+    require(with_ctrl.observe(IBUS_Control_L, IBUS_RELEASE_MASK | IBUS_CONTROL_MASK),
+            "A bare Control tap did not toggle mode when its binding was on.");
+    require(!with_ctrl.observe(IBUS_A, IBUS_CONTROL_MASK), "Control plus a character toggled mode.");
+    require(!with_ctrl.observe(IBUS_Control_L, IBUS_RELEASE_MASK | IBUS_CONTROL_MASK),
+            "Control used as a modifier toggled mode on release.");
+    require(!with_ctrl.observe(IBUS_Control_L, IBUS_MOD1_MASK), "Alt+Control armed the Control toggle.");
+    require(!with_ctrl.observe(IBUS_Control_L, IBUS_RELEASE_MASK | IBUS_CONTROL_MASK | IBUS_MOD1_MASK),
+            "Alt+Control toggled mode.");
+    require(!with_ctrl.observe(IBUS_Shift_L, IBUS_RELEASE_MASK | IBUS_SHIFT_MASK),
+            "Shift toggled mode while only the Control binding was on.");
+
+    // Turning a binding off must not leave an already-pressed key able to toggle on its release.
+    IBusModeToggleTracker disarmed;
+    require(!disarmed.observe(IBUS_Shift_L, 0), "Shift toggled mode on key-down.");
+    disarmed.configure({false, false, true});
+    require(!disarmed.observe(IBUS_Shift_L, IBUS_RELEASE_MASK | IBUS_SHIFT_MASK),
+            "A Shift held across a settings change toggled mode after its binding was turned off.");
+
     const auto shift_press = translate_ibus_key(IBUS_Shift_L, 0);
     require(shift_press.disposition == IBusKeyDisposition::Ignore,
             "A Shift press was treated as a host shortcut and committed the composition.");
