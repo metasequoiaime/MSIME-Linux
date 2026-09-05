@@ -1,6 +1,7 @@
 #include "SecretStore.h"
 #include "SettingsStore.h"
 #include "SettingsUiModel.h"
+#include "ToolLauncher.h"
 
 #include <gtk/gtk.h>
 
@@ -360,8 +361,12 @@ GtkWidget *make_card(const char *title, const char *body)
 
 void launch_program(AppState &state, const char *command)
 {
+    // Same defect the floating toolbar had: a bare name only resolves when
+    // ~/.local/bin is in PATH, which it is not in a desktop session.
+    const std::string executable = metasequoia::linux_ime::tool_path(command);
+    gchar *argv[] = {const_cast<gchar *>(executable.c_str()), nullptr};
     GError *error = nullptr;
-    if (!g_spawn_command_line_async(command, &error))
+    if (!g_spawn_async(nullptr, argv, nullptr, G_SPAWN_SEARCH_PATH, nullptr, nullptr, nullptr, &error))
     {
         show_message(GTK_WINDOW(state.window), GTK_MESSAGE_ERROR,
                      error == nullptr ? "无法启动桌面工具。" : error->message);

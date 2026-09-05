@@ -1,5 +1,6 @@
 #include <gtk/gtk.h>
 #include "SettingsStore.h"
+#include "ToolLauncher.h"
 
 #include <string>
 
@@ -10,29 +11,9 @@ struct ToolbarState
     GtkWidget *window = nullptr;
 };
 
-// The desktop tools live next to this executable, both in the build tree and
-// after scripts/install.sh puts them in the user prefix. Resolving them through
-// PATH breaks the current-user install, because the GNOME session and the
-// systemd user manager do not carry ~/.local/bin in PATH.
-std::string sibling_program(const char *program)
-{
-    gchar *self = g_file_read_link("/proc/self/exe", nullptr);
-    if (self == nullptr)
-    {
-        return program;
-    }
-    gchar *directory = g_path_get_dirname(self);
-    gchar *candidate = g_build_filename(directory, program, nullptr);
-    std::string resolved = g_file_test(candidate, G_FILE_TEST_IS_EXECUTABLE) ? candidate : program;
-    g_free(candidate);
-    g_free(directory);
-    g_free(self);
-    return resolved;
-}
-
 void spawn(const char *program, const char *argument)
 {
-    const std::string executable = sibling_program(program);
+    const std::string executable = metasequoia::linux_ime::tool_path(program);
     gchar *argv[] = {const_cast<gchar *>(executable.c_str()), const_cast<gchar *>(argument), nullptr};
     GError *error = nullptr;
     if (!g_spawn_async(nullptr, argv, nullptr, G_SPAWN_SEARCH_PATH, nullptr, nullptr, nullptr, &error) &&
@@ -60,7 +41,7 @@ void launch_tools(GtkButton *, gpointer)
 
 void launch_voice(GtkButton *, gpointer)
 {
-    const std::string executable = sibling_program("metasequoia-ime-voice");
+    const std::string executable = metasequoia::linux_ime::tool_path("metasequoia-ime-voice");
     gchar *argv[] = {const_cast<gchar *>(executable.c_str()), const_cast<gchar *>("--record"), const_cast<gchar *>("5"),
                      nullptr};
     GError *error = nullptr;
