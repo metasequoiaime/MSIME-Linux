@@ -88,6 +88,13 @@ endif()
 option(METASEQUOIA_IME_BUILD_IBUS "Build the IBus engine" ON)
 option(METASEQUOIA_IME_BUILD_SETTINGS_UI "Build the GTK settings application" ON)
 set(METASEQUOIA_IME_DICTIONARY "${CMAKE_CURRENT_SOURCE_DIR}/vendor/MetasequoiaImeDict/out/msime.db" CACHE FILEPATH "Path to msime.db")
+# scripts/install.sh has always installed all three databases; only msime.db was
+# ever packaged, so Emoji, kaomoji and English candidates were missing from the
+# DEB and RPM.
+set(METASEQUOIA_IME_OTHERS_DICTIONARY "${CMAKE_CURRENT_SOURCE_DIR}/vendor/MetasequoiaImeDict/out/others.db"
+    CACHE FILEPATH "Path to others.db")
+set(METASEQUOIA_IME_ENGLISH_DICTIONARY "${CMAKE_CURRENT_SOURCE_DIR}/vendor/MetasequoiaImeDict/out/english.db"
+    CACHE FILEPATH "Path to english.db")
 set(METASEQUOIA_IME_HELPCODE_DIRECTORY
     "${CMAKE_CURRENT_SOURCE_DIR}/vendor/MetasequoiaImeHelpCode/helpcodes"
     CACHE PATH "Path to the Metasequoia helpcode data directory")
@@ -218,11 +225,14 @@ if(METASEQUOIA_IME_BUILD_IBUS)
     install(TARGETS metasequoia-ime-ibus RUNTIME DESTINATION ${CMAKE_INSTALL_LIBEXECDIR})
     install(FILES ${CMAKE_CURRENT_BINARY_DIR}/metasequoiaime.xml DESTINATION ${CMAKE_INSTALL_DATADIR}/ibus/component)
 
-    if(EXISTS "${METASEQUOIA_IME_DICTIONARY}")
-        install(FILES "${METASEQUOIA_IME_DICTIONARY}" DESTINATION ${CMAKE_INSTALL_DATADIR}/metasequoiaime)
-    else()
-        message(WARNING "Dictionary not found at ${METASEQUOIA_IME_DICTIONARY}; the engine will need msime.db in the data directory at runtime.")
-    endif()
+    foreach(database IN ITEMS "${METASEQUOIA_IME_DICTIONARY}" "${METASEQUOIA_IME_OTHERS_DICTIONARY}"
+                              "${METASEQUOIA_IME_ENGLISH_DICTIONARY}")
+        if(EXISTS "${database}")
+            install(FILES "${database}" DESTINATION ${CMAKE_INSTALL_DATADIR}/metasequoiaime)
+        else()
+            message(WARNING "Dictionary not found at ${database}; the engine will need it in the data directory at runtime.")
+        endif()
+    endforeach()
     if(EXISTS "${METASEQUOIA_IME_HELPCODE_DIRECTORY}")
         install(DIRECTORY "${METASEQUOIA_IME_HELPCODE_DIRECTORY}/"
                 DESTINATION ${CMAKE_INSTALL_DATADIR}/metasequoiaime/helpcodes

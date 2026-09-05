@@ -61,10 +61,14 @@ jobs:
       # Release assets from both architectures land in the same place, so a name
       # that omits the architecture silently overwrites the other build. This is
       # cheap here and catches it before a release rather than during one.
-      - name: Verify package names carry the architecture
+      # The install smoke above reconfigures this build directory with its own
+      # throwaway prefix, so packaging has to reconfigure with the prefix the
+      # packages install into before it can check anything meaningful.
+      - name: Verify packaged names and component path
         run: |
-          rm -rf build/nametest
-          cpack --config build/CPackConfig.cmake -G TGZ -B build/nametest
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_INSTALL_PREFIX=/usr
+          rm -rf build/nametest build/debcheck
+          cpack --config build/CPackConfig.cmake -G "TGZ;DEB" -B build/nametest
           machine=$(uname -m)
           shopt -s nullglob
           archives=(build/nametest/*.tar.gz)
@@ -75,6 +79,17 @@ jobs:
           echo "archive: ${archives[0]}"
           if [[ "${archives[0]}" != *"$machine"* ]]; then
             echo "Archive name does not carry the architecture $machine: ${archives[0]}" >&2
+            exit 1
+          fi
+          # The IBus component's exec path must name a file the package ships,
+          # or the engine registers but can never be activated.
+          mkdir -p build/debcheck
+          dpkg-deb -x build/nametest/*.deb build/debcheck
+          component=$(find build/debcheck -name metasequoiaime.xml | head -1)
+          engine=$(sed -n 's|.*<exec>\([^ <]*\).*|\1|p' "$component")
+          echo "component exec: $engine"
+          if [[ ! -x "build/debcheck$engine" ]]; then
+            echo "The packaged IBus component points at $engine, which the package does not ship." >&2
             exit 1
           fi
       - name: Check patches
