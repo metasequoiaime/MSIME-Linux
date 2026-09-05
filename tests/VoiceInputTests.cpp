@@ -13,11 +13,16 @@ class FakeTransport final : public HttpTransport
 {
   public:
     HttpRequest request;
+    int calls = 0;
+    bool *cancel_after_response = nullptr;
     HttpResponse response{200, R"({"text":"你好世界"})", {}};
 
     HttpResponse perform(const HttpRequest &value, const CancellationCheck &) override
     {
+        ++calls;
         request = value;
+        if (cancel_after_response)
+            *cancel_after_response = true;
         return response;
     }
 };
@@ -42,7 +47,8 @@ int main()
         config.endpoint = "https://voice.example/v1/audio/transcriptions";
         config.token = "voice-secret";
         config.model = "whisper-1";
-        const auto result = provider.transcribe("RIFF\0audio", config, [] { return false; });
+        const std::string audio("RIFF\0audio", 10);
+        const auto result = provider.transcribe(audio, config, [] { return false; });
         require(result && *result == "你好世界", "Voice transcription response was not parsed.");
         require(transport->request.method == HttpMethod::Post, "Voice transcription did not use POST.");
         require(transport->request.headers.size() == 2, "Voice transcription headers were incomplete.");
@@ -52,6 +58,18 @@ int main()
                 "Voice transcription did not send a multipart file field.");
         require(transport->request.body.find("RIFF") != std::string::npos,
                 "Voice transcription did not include the audio payload.");
+        require(transport->request.body.find(audio) != std::string::npos,
+                "Shared voice protocol lost binary NUL bytes.");
+        require(transport->request.body.find("name=\"language\"\r\n\r\nzh") != std::string::npos,
+                "Shared voice protocol dropped the selected language.");
+        const auto calls = transport->calls;
+        require(!provider.transcribe(audio, config, [] { return true; }) && transport->calls == calls,
+                "Cancelled transcription reached the transport.");
+        bool cancelled = false;
+        transport->cancel_after_response = &cancelled;
+        require(!provider.transcribe(audio, config, [&] { return cancelled; }),
+                "Transcription returned a response after cancellation.");
+        transport->cancel_after_response = nullptr;
         require(!provider.transcribe("audio", VoiceInputConfig{}, [] { return false; }),
                 "An insecure or incomplete voice configuration was accepted.");
         transport->response = {200, R"({"result":{"text":"nested"}})", {}};
@@ -73,6 +91,12 @@ int main()
                     transport->request.body.find("原始文本") != std::string::npos &&
                     transport->request.body.find("voice-secret") == std::string::npos,
                 "Voice polish request did not contain the configured model and text.");
+        require(!provider.polish("原始文本", config, [] { return true; }), "Cancelled polish returned a result.");
+        cancelled = false;
+        transport->cancel_after_response = &cancelled;
+        require(!provider.polish("原始文本", config, [&] { return cancelled; }),
+                "Polish returned a response after cancellation.");
+        transport->cancel_after_response = nullptr;
         require(VoiceInputRecorder::valid_duration(5) && !VoiceInputRecorder::valid_duration(0) &&
                     !VoiceInputRecorder::valid_duration(121),
                 "Voice recorder duration validation was incorrect.");

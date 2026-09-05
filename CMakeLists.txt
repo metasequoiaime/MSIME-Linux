@@ -22,6 +22,10 @@ if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/vendor/MetasequoiaImeEngine/CMakeList
                         "or 'scripts/bootstrap_ci_dependencies.sh' where git transport is unavailable.")
 endif()
 
+# Linux keeps its recorder and cancellable network transport; provider codecs come from Engine.
+set(METASEQUOIA_IME_BUILD_VOICE ON CACHE BOOL "" FORCE)
+set(MSIME_VOICE_CAPTURE OFF CACHE BOOL "" FORCE)
+set(MSIME_VOICE_WHISPER OFF CACHE BOOL "" FORCE)
 add_subdirectory(vendor/MetasequoiaImeEngine engine)
 
 # EndpointPolicy has no dependencies beyond the standard library and is needed by
@@ -47,7 +51,7 @@ target_include_directories(MetasequoiaImeLinuxOnline PUBLIC ${CMAKE_CURRENT_SOUR
 target_compile_options(MetasequoiaImeLinuxOnline PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 add_library(MetasequoiaImeLinuxVoice STATIC src/VoiceInput.cpp)
-target_link_libraries(MetasequoiaImeLinuxVoice PUBLIC MetasequoiaImeLinuxOnline PRIVATE Boost::json)
+target_link_libraries(MetasequoiaImeLinuxVoice PUBLIC MetasequoiaImeLinuxOnline PRIVATE MetasequoiaIme::Voice)
 target_include_directories(MetasequoiaImeLinuxVoice PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_options(MetasequoiaImeLinuxVoice PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
