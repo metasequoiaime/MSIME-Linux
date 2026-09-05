@@ -53,6 +53,11 @@ struct InputSettings
     std::string quanpin_helpcode_schema = "lantian";
     bool shuangpin_helpcode_enabled = true;
     std::string shuangpin_helpcode_schema = "lantian";
+    // Whether the helpcode hint appears beside each candidate, matching the Windows
+    // show_qp/sp_helpcode_in_candidate_window pair. Only meaningful when the matching helpcode
+    // above is enabled.
+    bool show_quanpin_helpcode_in_candidates = true;
+    bool show_shuangpin_helpcode_in_candidates = true;
     FrequencyAdjustmentMode frequency_adjustment_mode = FrequencyAdjustmentMode::Promote;
     int frequency_trigger_count = 1;
     int frequency_linear_step = 1;

@@ -56,6 +56,8 @@ printf '%s\n' \
     'punctuation=english' \
     'full-width=true' \
     'comma-period-paging=true' \
+    'show-quanpin-helpcode=false' \
+    'show-shuangpin-helpcode=false' \
     'word-to-character=true' \
     'bracket-paging=false' \
     'smart-punctuation=true' \
