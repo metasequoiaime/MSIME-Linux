@@ -271,6 +271,11 @@ if(METASEQUOIA_IME_BUILD_IBUS)
             message(WARNING "Dictionary not found at ${database}; the engine will need it in the data directory at runtime.")
         endif()
     endforeach()
+    get_filename_component(dictionary_directory "${METASEQUOIA_IME_DICTIONARY}" DIRECTORY)
+    if(EXISTS "${dictionary_directory}/dictionary-manifest.json")
+        install(FILES "${dictionary_directory}/dictionary-manifest.json"
+                DESTINATION ${CMAKE_INSTALL_DATADIR}/metasequoiaime)
+    endif()
     if(EXISTS "${METASEQUOIA_IME_HELPCODE_DIRECTORY}")
         install(DIRECTORY "${METASEQUOIA_IME_HELPCODE_DIRECTORY}/"
                 DESTINATION ${CMAKE_INSTALL_DATADIR}/metasequoiaime/helpcodes

@@ -150,3 +150,7 @@ DEB 生成需要 `dpkg-dev` 和 `file`（CPack 用它解析二进制以生成 sh
 转换、候选学习、剪贴板历史与手写识别都在本地完成。云候选默认开启，会把所敲的拼写发送给 Google 的输入工具服务；AI 建议、DeepLX 翻译与语音转写均为选择性开启，数据发往用户自行配置的端点。完整清单与各自的关闭方式见 [PRIVACY.md](PRIVACY.md)。疑似漏洞请按 [SECURITY.md](SECURITY.md) 的方式私下上报，不要通过公开 issue。
 
 参与贡献请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
+### 词库产品格式
+
+后续 Dict 发布除摘要外必须提供 `dictionary-manifest.json`，下载阶段使用与固定 Engine 一致的公共校验器检查格式版本、桌面 profile 和实际消费的数据库。`dict-2026.09.05` 是唯一保留的无清单兼容版本。清单随安装数据一起打包。
