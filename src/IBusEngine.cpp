@@ -2,6 +2,8 @@
 #include "InputController.h"
 #include "IBusKeyMapper.h"
 #include "SettingsStore.h"
+
+#include "common/helpcode_utils.h"
 #include "core/data_path.h"
 #include "online/HttpTransport.h"
 #include "online/OnlineCandidateService.h"
@@ -45,6 +47,8 @@ struct _MetasequoiaEngine
     InputController *controller = nullptr;
     IBusModeToggleTracker *mode_toggle = nullptr;
     InputMode default_mode = InputMode::Ime;
+    bool show_quanpin_helpcode = true;
+    bool show_shuangpin_helpcode = true;
     SettingsStore *settings_store = nullptr;
     metasequoia::linux_ime::LibsecretSecretStore *secret_store = nullptr;
     OnlineCandidateService *online_service = nullptr;
@@ -201,6 +205,21 @@ void show_settings_warning(MetasequoiaEngine *engine)
     ibus_engine_update_auxiliary_text(IBUS_ENGINE(engine), text(engine->settings_warning->c_str()), TRUE);
 }
 
+// A hint is only shown when the scheme in use has helpcodes enabled and its display switch is on,
+// which is how the two Windows settings compose.
+bool show_helpcode_hint(const MetasequoiaEngine *engine)
+{
+    switch (engine->controller->scheme())
+    {
+    case SchemeType::Quanpin:
+        return engine->show_quanpin_helpcode && engine->controller->quanpin_helpcode_enabled();
+    case SchemeType::Shuangpin:
+        return engine->show_shuangpin_helpcode && engine->controller->shuangpin_helpcode_enabled();
+    default:
+        return false;
+    }
+}
+
 void update_lookup_table(MetasequoiaEngine *engine);
 void refresh_translation(MetasequoiaEngine *engine);
 
@@ -352,6 +371,12 @@ void update_lookup_table(MetasequoiaEngine *engine)
     for (const WordItem &candidate : engine->controller->candidates())
     {
         std::string display = candidate.word;
+        if (show_helpcode_hint(engine))
+        {
+            // The controller selects the schema for the active scheme before every key, so the
+            // globally selected one is already the right one to compute against here.
+            display += HelpcodeUtils::compute_helpcodes(candidate.word);
+        }
         if (const auto found = engine->translation_glosses->find(candidate.word);
             found != engine->translation_glosses->end())
         {
@@ -772,6 +797,8 @@ void metasequoia_engine_init(MetasequoiaEngine *engine)
     // apply the lock itself.
     engine->controller->set_punctuation_lock(settings.punctuation_lock);
     engine->default_mode = settings.default_mode;
+    engine->show_quanpin_helpcode = settings.show_quanpin_helpcode_in_candidates;
+    engine->show_shuangpin_helpcode = settings.show_shuangpin_helpcode_in_candidates;
     engine->mode_toggle = new IBusModeToggleTracker();
     engine->mode_toggle->configure(
         {settings.switch_language_shift, settings.switch_language_ctrl, settings.switch_language_ctrl_alt_space});

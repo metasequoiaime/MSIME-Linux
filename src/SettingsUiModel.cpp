@@ -210,7 +210,7 @@ SettingsUiSection settings_section_for_id(const std::string &id)
         return SettingsUiSection::Input;
     }
     if (id == "quanpin-helpcode" || id == "quanpin-helpcode-schema" || id == "shuangpin-helpcode" ||
-        id == "shuangpin-helpcode-schema")
+        id == "shuangpin-helpcode-schema" || id == "show-quanpin-helpcode" || id == "show-shuangpin-helpcode")
     {
         return SettingsUiSection::Helpcode;
     }
@@ -310,6 +310,10 @@ void SettingsUiModel::rebuild_rows()
         SettingsControl::Boolean);
     add(rows_, "shuangpin-helpcode-schema", "Shuangpin helpcode schema", settings_.shuangpin_helpcode_schema,
         SettingsControl::Choice, {"lantian", "ziranma", "shouyou2_0", "shouyouplus", "xiaohe"});
+    add(rows_, "show-quanpin-helpcode", "Show Quanpin helpcode in candidates",
+        bool_value(settings_.show_quanpin_helpcode_in_candidates), SettingsControl::Boolean);
+    add(rows_, "show-shuangpin-helpcode", "Show Shuangpin helpcode in candidates",
+        bool_value(settings_.show_shuangpin_helpcode_in_candidates), SettingsControl::Boolean);
     add(rows_, "frequency-adjustment", "Frequency adjustment", frequency_value(settings_.frequency_adjustment_mode),
         SettingsControl::Choice, {"disabled", "pin", "halve", "linear", "promote"});
     add(rows_, "frequency-trigger-count", "Frequency trigger count", std::to_string(settings_.frequency_trigger_count),
@@ -475,8 +479,8 @@ bool SettingsUiModel::set(const std::string &id, const std::string &value, std::
              id == "mixed-english-candidates" || id == "mixed-emoji-candidates" || id == "mixed-kaomoji-candidates" ||
              id == "clipboard-history" || id == "floating-toolbar" || id == "voice-enabled" ||
              id == "quick-phrase-mode" || id == "date-time-mode" || id == "emoji-mode" || id == "kaomoji-mode" ||
-             id.rfind("switch-language-", 0) == 0 || id == "voice-polish-enabled" || id == "cloud-enabled" ||
-             id == "ai-enabled" || id == "translation-enabled")
+             id == "show-quanpin-helpcode" || id == "show-shuangpin-helpcode" || id.rfind("switch-language-", 0) == 0 ||
+             id == "voice-polish-enabled" || id == "cloud-enabled" || id == "ai-enabled" || id == "translation-enabled")
     {
         bool value_as_bool = false;
         parsed = parse_bool(value, value_as_bool);
@@ -518,6 +522,10 @@ bool SettingsUiModel::set(const std::string &id, const std::string &value, std::
                 candidate.mixed_emoji_candidates_enabled = value_as_bool;
             else if (id == "mixed-kaomoji-candidates")
                 candidate.mixed_kaomoji_candidates_enabled = value_as_bool;
+            else if (id == "show-quanpin-helpcode")
+                candidate.show_quanpin_helpcode_in_candidates = value_as_bool;
+            else if (id == "show-shuangpin-helpcode")
+                candidate.show_shuangpin_helpcode_in_candidates = value_as_bool;
             else if (id == "quick-phrase-mode")
                 candidate.quick_phrase_mode_enabled = value_as_bool;
             else if (id == "date-time-mode")

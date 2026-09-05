@@ -956,6 +956,8 @@ InputSettings SettingsStore::load(std::string *warning) const
     load_boolean(kUtilityGroup, "kaomoji-mode", settings.kaomoji_mode_enabled);
     load_boolean(kUtilityGroup, "clipboard-history", settings.clipboard_history_enabled);
     load_boolean(kUtilityGroup, "floating-toolbar", settings.floating_toolbar_enabled);
+    load_boolean(kGroup, "show-quanpin-helpcode", settings.show_quanpin_helpcode_in_candidates);
+    load_boolean(kGroup, "show-shuangpin-helpcode", settings.show_shuangpin_helpcode_in_candidates);
     load_boolean(kKeybindingsGroup, "switch-language-shift", settings.switch_language_shift);
     load_boolean(kKeybindingsGroup, "switch-language-ctrl", settings.switch_language_ctrl);
     load_boolean(kKeybindingsGroup, "switch-language-ctrl-alt-space", settings.switch_language_ctrl_alt_space);
@@ -1106,6 +1108,8 @@ bool SettingsStore::save(const InputSettings &settings, std::string *error) cons
     g_key_file_set_boolean(key_file, kUtilityGroup, "emoji-mode", settings.emoji_mode_enabled);
     g_key_file_set_boolean(key_file, kUtilityGroup, "kaomoji-mode", settings.kaomoji_mode_enabled);
     g_key_file_set_boolean(key_file, kUtilityGroup, "floating-toolbar", settings.floating_toolbar_enabled);
+    g_key_file_set_boolean(key_file, kGroup, "show-quanpin-helpcode", settings.show_quanpin_helpcode_in_candidates);
+    g_key_file_set_boolean(key_file, kGroup, "show-shuangpin-helpcode", settings.show_shuangpin_helpcode_in_candidates);
     g_key_file_set_boolean(key_file, kKeybindingsGroup, "switch-language-shift", settings.switch_language_shift);
     g_key_file_set_boolean(key_file, kKeybindingsGroup, "switch-language-ctrl", settings.switch_language_ctrl);
     g_key_file_set_boolean(key_file, kKeybindingsGroup, "switch-language-ctrl-alt-space",

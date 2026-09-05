@@ -154,7 +154,8 @@ int main()
                 defaults.word_to_character && !defaults.bracket_paging && defaults.smart_punctuation &&
                 defaults.smart_punctuation_repeat_to_chinese && defaults.paired_punctuation &&
                 defaults.preedit_style == PreeditStyle::Raw && defaults.quanpin_helpcode_enabled &&
-                defaults.quanpin_helpcode_schema == "lantian" && defaults.shuangpin_helpcode_enabled &&
+                defaults.quanpin_helpcode_schema == "lantian" && defaults.show_quanpin_helpcode_in_candidates &&
+                defaults.show_shuangpin_helpcode_in_candidates && defaults.shuangpin_helpcode_enabled &&
                 defaults.shuangpin_helpcode_schema == "lantian" &&
                 defaults.frequency_adjustment_mode == FrequencyAdjustmentMode::Promote &&
                 defaults.frequency_trigger_count == 1 && defaults.frequency_linear_step == 1 &&
@@ -196,6 +197,8 @@ int main()
     saved.quanpin_helpcode_schema = "xiaohe";
     saved.shuangpin_helpcode_enabled = false;
     saved.shuangpin_helpcode_schema = "ziranma";
+    saved.show_quanpin_helpcode_in_candidates = false;
+    saved.show_shuangpin_helpcode_in_candidates = false;
     saved.frequency_adjustment_mode = FrequencyAdjustmentMode::Halve;
     saved.frequency_trigger_count = 3;
     saved.frequency_linear_step = 4;
@@ -260,6 +263,8 @@ int main()
                 round_trip.quanpin_helpcode_schema == saved.quanpin_helpcode_schema &&
                 round_trip.shuangpin_helpcode_enabled == saved.shuangpin_helpcode_enabled &&
                 round_trip.shuangpin_helpcode_schema == saved.shuangpin_helpcode_schema &&
+                round_trip.show_quanpin_helpcode_in_candidates == saved.show_quanpin_helpcode_in_candidates &&
+                round_trip.show_shuangpin_helpcode_in_candidates == saved.show_shuangpin_helpcode_in_candidates &&
                 round_trip.frequency_adjustment_mode == saved.frequency_adjustment_mode &&
                 round_trip.frequency_trigger_count == saved.frequency_trigger_count &&
                 round_trip.frequency_linear_step == saved.frequency_linear_step &&
