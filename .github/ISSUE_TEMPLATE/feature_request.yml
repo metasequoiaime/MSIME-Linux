@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        本仓库只负责 Linux／IBus 适配层、安装、打包与 CI。涉及组词逻辑或词库的建议请提到 [MSIME-Engine](https://github.com/metasequoiaime/MSIME-Engine) 或 [MSIME-Dict](https://github.com/metasequoiaime/MSIME-Dict)。
+        本仓库只负责 Linux／IBus 适配层、安装、打包与 CI。涉及组词逻辑或词库的建议请提到 [MSIME-Engine](https://github.com/metasequoiaime/MSIME-Engine)。
   - type: textarea
     id: problem
     attributes:
