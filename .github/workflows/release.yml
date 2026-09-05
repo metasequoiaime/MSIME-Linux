@@ -49,7 +49,14 @@ jobs:
         id: release
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          # A pull request opened by github-actions[bot] is treated as coming
+          # from a first-time contributor, so its check is created held and a
+          # person has to press Approve before any release can be reviewed. The
+          # branch is not a fork and the run is not otherwise special; the actor
+          # is the whole reason. Opening it as a real account removes the gate at
+          # the source. Falls back to the repository token so a fork without the
+          # secret still runs, just with the gate.
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
       # Without this the release pull request carries no check at all, so it gets merged blind
       # and required_status_checks cannot be turned on for this repository.
       - name: Dispatch CI for the release branch
