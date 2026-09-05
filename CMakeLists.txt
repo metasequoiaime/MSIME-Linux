@@ -5,6 +5,10 @@ project(MetasequoiaImeLinux VERSION 0.1.0 LANGUAGES CXX)
 include(CTest)
 include(GNUInstallDirs)
 
+# The release workflow stamps the tag here so generated packages carry the
+# published version instead of the in-tree default.
+set(METASEQUOIA_IME_PACKAGE_VERSION "${PROJECT_VERSION}" CACHE STRING "Version stamped into generated packages")
+
 find_package(Boost REQUIRED COMPONENTS json)
 find_package(CURL REQUIRED)
 find_package(Threads REQUIRED)
@@ -12,6 +16,11 @@ find_package(Threads REQUIRED)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+
+if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/vendor/MetasequoiaImeEngine/CMakeLists.txt")
+    message(FATAL_ERROR "The engine submodule is missing. Run 'git submodule update --init --recursive', "
+                        "or 'scripts/bootstrap_ci_dependencies.sh' where git transport is unavailable.")
+endif()
 
 add_subdirectory(vendor/MetasequoiaImeEngine engine)
 
@@ -223,24 +232,43 @@ if(METASEQUOIA_IME_BUILD_IBUS)
     endif()
 endif()
 
+# Every binary here statically links the GPLv3 engine, so the packages carry the
+# same terms. Ship the license text with them and declare it in the metadata.
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/LICENSE
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/metasequoia-ime-linux)
+
 # CPack gives downstreams a reproducible baseline package. Debian and RPM
 # generators consume the same install manifest; TGZ remains available on
 # minimal build hosts that do not ship native package tooling.
 set(CPACK_PACKAGE_NAME "metasequoia-ime-linux")
 set(CPACK_PACKAGE_VENDOR "Metasequoia IME contributors")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Metasequoia IME Linux IBus frontend and desktop tools")
-set(CPACK_PACKAGE_CONTACT "metasequoiaime contributors")
-set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
+set(CPACK_PACKAGE_CONTACT "Metasequoia IME contributors <suzukaze.haduki@gmail.com>")
+set(CPACK_PACKAGE_VERSION ${METASEQUOIA_IME_PACKAGE_VERSION})
 set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/metasequoiaime/MSIME-Linux")
+set(CPACK_RESOURCE_FILE_LICENSE ${CMAKE_CURRENT_SOURCE_DIR}/LICENSE)
 set(CPACK_GENERATOR "TGZ;DEB;RPM")
 set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
 set(CPACK_DEBIAN_PACKAGE_SECTION "utils")
+set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "ibus")
+set(CPACK_DEBIAN_PACKAGE_SUGGESTS "tesseract-ocr, tesseract-ocr-chi-sim")
 set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
-set(CPACK_RPM_PACKAGE_LICENSE "MIT")
+set(CPACK_RPM_PACKAGE_LICENSE "GPL-3.0-only")
 set(CPACK_RPM_PACKAGE_GROUP "Applications/Input Methods")
 include(CPack)
 
 if(BUILD_TESTING)
     add_test(NAME packaging_tgz
              COMMAND ${CMAKE_CPACK_COMMAND} --config ${CMAKE_CURRENT_BINARY_DIR}/CPackConfig.cmake -G TGZ)
+
+    # The DEB generator is the one downstreams actually consume, so gate it too
+    # wherever dpkg is present. Hosts without dpkg keep the TGZ-only coverage.
+    find_program(METASEQUOIA_IME_DPKG_DEB dpkg-deb)
+    if(METASEQUOIA_IME_DPKG_DEB)
+        add_test(NAME packaging_deb
+                 COMMAND ${CMAKE_CPACK_COMMAND} --config ${CMAKE_CURRENT_BINARY_DIR}/CPackConfig.cmake -G DEB)
+        # dpkg-shlibdeps walks every installed binary, so this needs more than
+        # the short default the unit tests run under.
+        set_tests_properties(packaging_deb PROPERTIES TIMEOUT 300)
+    endif()
 endif()

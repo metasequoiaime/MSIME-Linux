@@ -1,0 +1,33 @@
+name: 功能建议
+description: 建议为 Linux 前端增加或调整某项能力
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        本仓库只负责 Linux／IBus 适配层、安装、打包与 CI。涉及组词逻辑或词库的建议请提到 [MSIME-Engine](https://github.com/metasequoiaime/MSIME-Engine) 或 [MSIME-Dict](https://github.com/metasequoiaime/MSIME-Dict)。
+  - type: textarea
+    id: problem
+    attributes:
+      label: 要解决的问题
+      description: 当前在什么场景下不好用，你实际想完成什么。
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 期望的行为
+      description: 希望它怎么工作。如果涉及新的按键、设置项或桌面工具，请写清楚。
+    validations:
+      required: true
+  - type: input
+    id: parity
+    attributes:
+      label: 其他平台的对应实现
+      description: 如果 Windows 或 macOS 版已有这项能力，请说明它在那边的行为，便于保持一致。
+  - type: checkboxes
+    id: network
+    attributes:
+      label: 联网
+      options:
+        - label: 这项能力需要访问网络（会涉及隐私说明与默认开关）

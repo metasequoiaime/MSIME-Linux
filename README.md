@@ -1,24 +1,24 @@
-# Metasequoia IME for Linux
+# 水杉输入法 Linux 版
 
-Linux frontend for Metasequoia IME. The first frontend targets IBus and reuses the shared C++ engine from [`MSIME-Engine`](https://github.com/metasequoiaime/MSIME-Engine).
+水杉输入法（Metasequoia IME）的 Linux 前端。首个前端面向 IBus，复用 [`MSIME-Engine`](https://github.com/metasequoiaime/MSIME-Engine) 提供的共享 C++ 组词引擎。
 
-The engine submodule is pinned to the tested upstream revision that provides the native desktop frontend API.
+引擎子模块固定在提供原生桌面前端 API 的、已通过测试的上游修订版本。
 
-The current desktop experience supports runtime switching among Quanpin, Shuangpin, Wubi and Japanese Romaji, a Chinese/direct-input toggle, mixed English/Emoji/kaomoji candidates, dedicated English candidates, live candidates from local SQLite dictionaries, keyboard and mouse candidate selection, paging, Chinese/English punctuation, half/full-width input, configurable inline preedit, Quanpin/Shuangpin helpcodes, and persistent per-user settings.
+当前桌面体验支持在全拼、双拼、五笔与日语罗马音之间实时切换，中文／直接输入切换，混合英文／Emoji／颜文字候选，专用英文候选，来自本地 SQLite 词库的实时候选，键盘与鼠标选择候选，翻页，中英文标点，半／全角输入，可配置的内联预编辑，全拼／双拼辅助码，以及按用户持久化的设置。
 
-The Linux desktop tools include a GTK settings application, a clipboard-history store and panel, and a small screen-keyboard/handwriting workspace. Voice transcription is available through the standalone `metasequoia-ime-voice` command using the configured HTTPS provider; it accepts an existing WAV file or records from Linux audio with `--record SECONDS` when `arecord` or `pw-record` is installed.
+Linux 桌面工具包含一个 GTK 设置程序、一个剪贴板历史存储与面板，以及一个小型的屏幕键盘／手写工作区。语音转写通过独立的 `metasequoia-ime-voice` 命令使用配置好的 HTTPS 服务商完成；它接受已有的 WAV 文件，也可以在安装了 `arecord` 或 `pw-record` 时用 `--record 秒数` 直接从 Linux 音频录制。
 
-## Dependencies
+## 依赖
 
-On Debian/Ubuntu:
+Debian／Ubuntu：
 
 ```sh
 sudo apt install build-essential cmake pkg-config libibus-1.0-dev libboost-dev libfmt-dev libspdlog-dev libsqlite3-dev libcurl4-openssl-dev libsecret-1-dev libgtk-3-dev gnome-keyring python3 python3-gi python3-pypinyin gir1.2-ibus-1.0 ibus dbus-x11 iso-codes
 ```
 
-For local Chinese handwriting recognition, also install `tesseract-ocr` and `tesseract-ocr-chi-sim`. The desktop tool remains usable without them and reports the missing backend in its status line.
+若需要本地中文手写识别，还需安装 `tesseract-ocr` 与 `tesseract-ocr-chi-sim`。缺少它们时桌面工具仍可使用，并会在状态栏说明缺失的后端。
 
-## Build and test
+## 构建与测试
 
 ```sh
 git clone --recursive https://github.com/metasequoiaime/MSIME-Linux.git
@@ -29,19 +29,19 @@ cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 ```
 
-To build the tested core without IBus headers, use `-DMETASEQUOIA_IME_BUILD_IBUS=OFF`.
+若要在没有 IBus 头文件的环境下构建受测核心，使用 `-DMETASEQUOIA_IME_BUILD_IBUS=OFF`。
 
-## Install for the current user
+## 为当前用户安装
 
-Stop any running Metasequoia IME engine before installing so its latest learned frequencies can be replayed safely. The installer refuses to continue while the current user's engine is running.
+安装前请先停止正在运行的水杉输入法引擎，以便安全地重放它最新学习到的词频。当前用户的引擎仍在运行时，安装脚本会拒绝继续。
 
 ```sh
 ./scripts/install.sh
 ```
 
-The installer puts the engine in `~/.local/libexec`, and installs the IBus component descriptor, three dictionaries, and five helpcode data files under `${XDG_DATA_HOME:-$HOME/.local/share}`. Restart IBus, then select “Metasequoia IME” in the desktop input-source settings.
+安装脚本把引擎放到 `~/.local/libexec`，并把 IBus 组件描述文件、三个词库和五个辅助码数据文件安装到 `${XDG_DATA_HOME:-$HOME/.local/share}` 下。重启 IBus，然后在桌面的输入源设置中选择“Metasequoia IME”。
 
-To uninstall the current-user installation, remove the engine plus the component and dictionaries under `${XDG_DATA_HOME:-$HOME/.local/share}`, then restart IBus:
+要卸载当前用户的安装，删除引擎以及 `${XDG_DATA_HOME:-$HOME/.local/share}` 下的组件和词库，然后重启 IBus：
 
 ```sh
 rm ~/.local/libexec/metasequoia-ime-ibus
@@ -53,76 +53,90 @@ rm "$data_home/metasequoiaime/english.db"
 rm -r "$data_home/metasequoiaime/helpcodes"
 ```
 
-## Controls and settings
+## 打包
 
-- Tap either Shift key by itself to switch between Chinese conversion and direct input. Shift used with another key is left alone.
-- Press `Ctrl+.` to switch between Chinese and English punctuation. Press `Ctrl+Shift+Space` to switch between half-width and full-width input. Both states are also available from the IBus language-bar menu.
-- Use the IBus language-bar menu to select Quanpin, Shuangpin, Wubi or Japanese Romaji.
-- Use Up/Down to move the candidate cursor. PageUp/PageDown, `-`/`=`, and Shift+Tab/Tab change pages. Comma/period paging is available as an opt-in setting and is disabled by default.
-- Use `1`–`9` or keypad `1`–`9` to select from the visible page. Space commits the highlighted candidate, Return commits the raw input, and Escape cancels. Punctuation commits together with the highlighted candidate when a composition is active; apostrophe remains a pinyin separator.
-- In Quanpin or Shuangpin, press `Shift+U` with no active composition to enter Unicode mode. Type a hexadecimal scalar such as `4e00` or `+1f600`; Space commits the highlighted character, and `Shift+1`–`Shift+9` select another visible candidate. Set `unicode-mode=false` to disable this mode.
-- In Quanpin or Shuangpin, press `Shift+T` with no active composition for local date/time output. Use `rq`, `riqi`, or `date` for the current date; `sj`, `shijian`, or `time` for the current time; and `xq`, `xingqi`, or `week` for the current weekday.
-- In Quanpin or Shuangpin, press `Shift+K` with no active composition and enter a lowercase letter code to query quick phrases from the local dictionary. For example, `yyds` selects its shipped phrase; user upserts and deletions survive staged dictionary upgrades through the XDG journal.
-- In Quanpin or Shuangpin, press `Shift+E` for Emoji or `Shift+M` for kaomoji with no active composition. Search by full pinyin, abbreviated pinyin, supported Shuangpin spelling, or an English keyword; Space commits the highlighted result.
-- In Quanpin or Shuangpin, press `Shift+J` with no active composition to enter super-jianpin mode. Each following letter represents one initial; Shuangpin initial keys follow the active profile. Page and select candidates normally, or set `super-jianpin-mode=false` to disable this mode.
-- In Quanpin or Shuangpin with no active composition, press `Shift+Y` for one temporary English composition (raw text first, followed by completions), or `Shift+R` for one temporary Japanese Romaji composition. Committing, cancelling, or deleting the bare prefix returns to the original Chinese scheme. Set `temporary-english-mode=false` or `temporary-japanese-mode=false` to disable either shortcut.
-- Press `Ctrl+Shift+E` to enter or leave dedicated English mode. Type letters to query English-only prefix candidates; Space selects the highlighted candidate, while Return commits and learns raw alphabetic input without leaving the mode.
-- Set `mixed-english-candidates=true`, `mixed-emoji-candidates=true`, or `mixed-kaomoji-candidates=true` to merge those local sources into normal Quanpin and Shuangpin candidates. The Windows-compatible priority is the leading Chinese candidate, then the first English, Emoji, and kaomoji matches, followed by the remaining local and source-group candidates with stable deduplication. Emoji and kaomoji start at two typed characters; `mixed-english-minimum-prefix` controls the English threshold and accepts 1–8. All three mixed sources are disabled by default, and the default English threshold is 2.
-- Online candidates are enabled by default and are fetched asynchronously after a 500 ms idle period. Google cloud suggestions occupy the second candidate slot. Network failures, timeouts, reset, focus-out, and stale generations never block or alter local input. Set `cloud-enabled=false` in `[online]` to disable them.
-- AI suggestions use an OpenAI-compatible provider (`deepseek`, `openai`, `siliconflow`, `groq`, or `custom`) and occupy the third slot. Configure non-secret values in `[ai]` (`enabled`, `provider`, `endpoint`, `model`, `prompt`, and `candidate-limit`); the API token is stored in the desktop Secret Service, never in `config.ini` or diagnostics. Only HTTPS endpoints are accepted at runtime.
-- Candidate translations are shown as display metadata (`候选 · gloss`) and never change the committed candidate text. Local English/Chinese glosses are preferred; set `provider=deeplx` in `[translation]` to enable an HTTPS DeepLX-compatible fallback. Configure `target-language` and `endpoint` in `[translation]`; its Bearer token is stored in Secret Service. Translation errors clear only the gloss and leave candidate selection functional.
-- Set `word-to-character=true` to make `[` commit the first Han character and `]` the last Han character of the highlighted candidate. If `bracket-paging=true`, bracket paging takes precedence and word-to-character selection is disabled for those keys.
-- With `smart-punctuation=true`, comma, period and colon remain ASCII after an ASCII letter or digit. Repeating the same mark within two seconds replaces it with its Chinese form when `smart-punctuation-repeat-to-chinese=true`; unavailable surrounding text safely falls back to Chinese punctuation.
-- With `paired-punctuation=true`, opening quotes, brackets, braces, book-title marks and parentheses insert both halves and leave the cursor between them.
-- Set `preedit-style=raw`, `pinyin`, or `hidden` to show the typed keys, segmented pinyin, or no inline preedit. Hidden inline preedit does not hide the candidate lookup table.
-- Quanpin and Shuangpin helpcodes are independently controlled by `quanpin-helpcode` and `shuangpin-helpcode`. Their schema keys accept `lantian`, `ziranma`, `shouyou2_0`, `shouyouplus`, or `xiaohe`; helpcodes activate only after a complete base spelling.
-- Local candidate learning uses `frequency-adjustment=disabled|pin|halve|linear|promote`. `pin` moves a selected non-leading candidate to the top, `halve` halves its rank, `linear` advances by `frequency-linear-step`, and `promote` advances one slot or to slot five when it is farther back. `frequency-trigger-count` controls how many selections trigger an adjustment; both numeric settings accept 1–10.
-- Launch `metasequoia-ime-settings` (also available from the desktop applications menu) to edit the same XDG settings without hand-editing `config.ini`. Secret Service credentials are intentionally omitted from the form. Launch `metasequoia-ime-tools` for clipboard history, a screen keyboard that builds text for the clipboard, and the handwriting workspace. Launch `metasequoia-ime-toolbar` for an always-on-top shortcut bar to these desktop tools.
-- Set `voice.enabled=true` and configure the `[voice]` endpoint/model in the settings application, then run `metasequoia-ime-voice --file recording.wav` or `metasequoia-ime-voice --record 5`. Set `voice.polish-enabled=true` to send the transcript through the configured Chat Completions endpoint before printing it. The API token is stored in Secret Service under the voice provider and is never written to `config.ini`; failed transcription or optional polishing leaves the local input engine unaffected.
+CMake 配置内置 CPack，可生成 TGZ、DEB 与 RPM 三种包，它们共用同一份安装清单：
 
-Settings are stored in `$XDG_CONFIG_HOME/metasequoiaime/config.ini`, falling back to `~/.config/metasequoiaime/config.ini`. The `[input]` group stores the local input settings listed above. Online non-secret values are stored in `[online]` (`cloud-enabled`, `connect-timeout-ms`, `total-timeout-ms`), `[ai]` (`enabled`, `provider`, `endpoint`, `model`, `prompt`, `candidate-limit`), and `[translation]` (`enabled`, `provider`, `target-language`, `endpoint`). Utility visibility is stored in `[utility]` (`clipboard-history`, `floating-toolbar`), and voice options are stored in `[voice]` (`enabled`, `provider`, `endpoint`, `model`, `language`, `polish-enabled`, `polish-endpoint`, `polish-model`, `polish-prompt`). AI, translation and voice tokens are stored in the desktop Secret Service under provider-isolated attributes and are never written to this file. Edit or remove the file while the engine is not active; it will be written atomically after the next property or hotkey change. Learned weights and English raw entries are journaled in `${XDG_DATA_HOME:-$HOME/.local/share}/metasequoiaime/msime_user.db`; rerunning `scripts/install.sh` replays that journal into staged `msime.db`, `others.db`, and `english.db` files before replacing the live dictionary set as one unit.
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel
+cd build && cpack -G "TGZ;DEB"
+```
 
-## Desktop-core parity
+DEB 生成需要 `dpkg-dev`，RPM 生成需要 `rpm`（Debian／Ubuntu 上是 `rpm` 包）。CI 在每次构建中验证 TGZ 与 DEB 生成；推送 `v*` 标签会触发发布流水线，构建三种包并附加到对应的 GitHub Release。
 
-| Capability | Status | Evidence |
+## 操作与设置
+
+- 单独轻敲任一 Shift 键在中文转换与直接输入之间切换。与其他键组合使用的 Shift 不受影响。
+- 按 `Ctrl+.` 在中英文标点之间切换。按 `Ctrl+Shift+Space` 在半角与全角输入之间切换。两个状态也可在 IBus 语言栏菜单中访问。
+- 使用 IBus 语言栏菜单选择全拼、双拼、五笔或日语罗马音。
+- 使用上／下键移动候选光标。PageUp／PageDown、`-`／`=` 以及 Shift+Tab／Tab 用于翻页。逗号／句号翻页是可选设置，默认关闭。
+- 使用 `1`–`9` 或小键盘 `1`–`9` 从当前页选择。空格提交高亮候选，回车提交原始输入，Esc 取消。有活动组词时，标点会与高亮候选一并提交；单引号仍作为拼音分隔符。
+- 全拼或双拼下，无活动组词时按 `Shift+U` 进入 Unicode 模式。输入十六进制标量，如 `4e00` 或 `+1f600`；空格提交高亮字符，`Shift+1`–`Shift+9` 选择其他可见候选。设置 `unicode-mode=false` 可禁用该模式。
+- 全拼或双拼下，无活动组词时按 `Shift+T` 输出本地日期／时间。`rq`、`riqi` 或 `date` 取当前日期；`sj`、`shijian` 或 `time` 取当前时间；`xq`、`xingqi` 或 `week` 取当前星期。
+- 全拼或双拼下，无活动组词时按 `Shift+K` 并输入小写字母码，可查询本地词库中的快捷短语。例如 `yyds` 会选中其内置短语；用户的新增与删除通过 XDG 日志在词库分阶段升级后依然保留。
+- 全拼或双拼下，无活动组词时按 `Shift+E` 进入 Emoji、按 `Shift+M` 进入颜文字。可用全拼、简拼、受支持的双拼拼写或英文关键词搜索；空格提交高亮结果。
+- 全拼或双拼下，无活动组词时按 `Shift+J` 进入超级简拼模式。之后的每个字母代表一个声母；双拼的声母键遵循当前方案。翻页与选择照常，或设置 `super-jianpin-mode=false` 禁用该模式。
+- 全拼或双拼下且无活动组词时，按 `Shift+Y` 进行一次临时英文组词（先原始文本，后补全），或按 `Shift+R` 进行一次临时日语罗马音组词。提交、取消或删空前缀后即返回原来的中文方案。设置 `temporary-english-mode=false` 或 `temporary-japanese-mode=false` 可分别禁用这两个快捷键。
+- 按 `Ctrl+Shift+E` 进入或退出专用英文模式。输入字母查询纯英文前缀候选；空格选择高亮候选，回车提交并学习原始字母输入且不退出该模式。
+- 设置 `mixed-english-candidates=true`、`mixed-emoji-candidates=true` 或 `mixed-kaomoji-candidates=true`，可把这些本地来源合并进普通的全拼与双拼候选。与 Windows 一致的优先级是：首个中文候选，然后是第一个英文、Emoji 与颜文字匹配，之后是其余本地候选与来源分组候选，并做稳定去重。Emoji 与颜文字从输入两个字符起生效；`mixed-english-minimum-prefix` 控制英文阈值，取值 1–8。三个混合来源默认全部关闭，英文阈值默认为 2。
+- 在线候选默认开启，在 500 毫秒空闲后异步获取。Google 云输入建议占据第二个候选位。网络失败、超时、重置、失焦以及过期的请求代次都不会阻塞或改变本地输入。在 `[online]` 中设置 `cloud-enabled=false` 可禁用。
+- AI 建议使用 OpenAI 兼容的服务商（`deepseek`、`openai`、`siliconflow`、`groq` 或 `custom`），占据第三个候选位。非机密项在 `[ai]` 中配置（`enabled`、`provider`、`endpoint`、`model`、`prompt`、`candidate-limit`）；API 令牌存放在桌面 Secret Service 中，绝不写入 `config.ini` 或诊断信息。运行时只接受 HTTPS 端点。
+- 候选翻译作为展示元数据显示（`候选 · 释义`），绝不改变提交的候选文本。优先使用本地英汉释义；在 `[translation]` 中设置 `provider=deeplx` 可启用 HTTPS DeepLX 兼容的回退。在 `[translation]` 中配置 `target-language` 与 `endpoint`；其 Bearer 令牌存放在 Secret Service 中。翻译出错只会清空释义，候选选择仍然可用。
+- 设置 `word-to-character=true` 后，`[` 提交高亮候选的第一个汉字，`]` 提交最后一个汉字。若 `bracket-paging=true`，方括号翻页优先，这两个键上的字词转单字选择会被禁用。
+- 启用 `smart-punctuation=true` 后，逗号、句号与冒号在 ASCII 字母或数字之后保持 ASCII 形态。若 `smart-punctuation-repeat-to-chinese=true`，两秒内重复同一符号会将其替换为中文形态；无法获取周围文本时安全回退为中文标点。
+- 启用 `paired-punctuation=true` 后，前引号、方括号、花括号、书名号与圆括号会成对插入，并把光标留在中间。
+- 设置 `preedit-style=raw`、`pinyin` 或 `hidden`，分别显示所敲按键、切分后的拼音，或不显示内联预编辑。隐藏内联预编辑不会隐藏候选查找表。
+- 全拼与双拼的辅助码分别由 `quanpin-helpcode` 与 `shuangpin-helpcode` 控制。其方案键接受 `lantian`、`ziranma`、`shouyou2_0`、`shouyouplus` 或 `xiaohe`；辅助码只在完整的基础拼写之后才生效。
+- 本地候选学习使用 `frequency-adjustment=disabled|pin|halve|linear|promote`。`pin` 把选中的非首位候选移到最前，`halve` 将其名次减半，`linear` 按 `frequency-linear-step` 前进，`promote` 前进一位、位置较靠后时则前进到第五位。`frequency-trigger-count` 控制触发一次调整所需的选择次数；两个数值设置均取值 1–10。
+- 启动 `metasequoia-ime-settings`（也可从桌面应用菜单打开）即可编辑同一套 XDG 设置，无需手改 `config.ini`。Secret Service 中的凭据有意不出现在表单里。启动 `metasequoia-ime-tools` 使用剪贴板历史、可把文本送入剪贴板的屏幕键盘，以及手写工作区。启动 `metasequoia-ime-toolbar` 获得一个置顶的快捷栏，用于打开上述桌面工具。
+- 在设置程序中设置 `voice.enabled=true` 并配置 `[voice]` 的端点／模型，然后运行 `metasequoia-ime-voice --file recording.wav` 或 `metasequoia-ime-voice --record 5`。设置 `voice.polish-enabled=true` 可在打印前把转写文本送入配置好的 Chat Completions 端点润色。API 令牌按语音服务商存放在 Secret Service 中，绝不写入 `config.ini`；转写或可选润色失败都不会影响本地输入引擎。
+
+设置存放在 `$XDG_CONFIG_HOME/metasequoiaime/config.ini`，回退到 `~/.config/metasequoiaime/config.ini`。`[input]` 组保存上面列出的本地输入设置。在线相关的非机密项分别保存在 `[online]`（`cloud-enabled`、`connect-timeout-ms`、`total-timeout-ms`）、`[ai]`（`enabled`、`provider`、`endpoint`、`model`、`prompt`、`candidate-limit`）与 `[translation]`（`enabled`、`provider`、`target-language`、`endpoint`）。工具显示状态保存在 `[utility]`（`clipboard-history`、`floating-toolbar`），语音选项保存在 `[voice]`（`enabled`、`provider`、`endpoint`、`model`、`language`、`polish-enabled`、`polish-endpoint`、`polish-model`、`polish-prompt`）。AI、翻译与语音的令牌按服务商隔离的属性存放在桌面 Secret Service 中，绝不写入本文件。请在引擎未运行时编辑或删除该文件；下一次属性或热键变更后它会被原子写入。学习到的权重与英文原始条目记录在 `${XDG_DATA_HOME:-$HOME/.local/share}/metasequoiaime/msime_user.db` 中；重新运行 `scripts/install.sh` 会把该日志重放进暂存的 `msime.db`、`others.db` 与 `english.db`，再作为一个整体替换线上词库。
+
+## 与桌面核心的能力对齐
+
+| 能力 | 状态 | 依据 |
 | --- | --- | --- |
-| Quanpin, Shuangpin, Wubi and Japanese switching | Supported | Controller tests and IBus property smoke |
-| Chinese/direct mode and bare-Shift toggle | Supported | Controller and real-keyval mapper tests |
-| Candidate cursor, paging, digits and mouse selection | Supported | Controller and IBus adapter tests |
-| XDG configuration with atomic replacement | Supported | Filesystem and IBus lifecycle tests |
-| IBus registration and current-user install | Supported | D-Bus and install CI smoke gates |
-| Chinese/English punctuation and full-width mode | Supported | Transform, controller, mapper, settings and real D-Bus tests |
-| Smart and paired punctuation | Supported | Surrounding-text, replacement deletion and cursor-forwarding D-Bus smoke |
-| Highlighted-candidate first/last Han selection | Supported | Engine Unicode tests, controller tests and real D-Bus commit smoke |
-| Raw/segmented/hidden preedit and helpcodes | Supported | Engine, controller, settings, installed-data and real D-Bus lookup smoke |
-| Local candidate frequency learning | Supported | Five-mode Engine persistence tests plus controller, settings and real D-Bus/XDG journal smoke |
-| Explicit Unicode scalar input | Supported | Engine scalar validation, controller/mapper/settings tests and real D-Bus commit smoke |
-| Local date, time and weekday candidates | Supported | Deterministic Engine formatter tests plus controller and real D-Bus commit smoke |
-| XDG quick phrases and upgrade replay | Supported | Engine query/failure tests, controller and real D-Bus commit smoke, transactional install smoke |
-| Explicit Emoji and kaomoji modes | Supported | Engine prefix/ordering/failure tests, generated `others.db`, transactional install and real D-Bus commit smoke |
-| Mixed English, Emoji and kaomoji candidates | Supported | Engine slot/deduplication/failure-isolation tests plus controller/settings and real D-Bus ordering smoke |
-| Super-jianpin mode | Supported | Engine Quanpin/Shuangpin query and frequency tests plus controller/settings and real D-Bus paging/selection smoke |
-| Dedicated English input | Supported | Engine failure/learning tests, controller/mapper/settings tests, generated `english.db`, transactional install and real D-Bus commit smoke |
-| Temporary English and Japanese input modes | Supported | Engine lifecycle tests plus controller/settings and real D-Bus commit/restore smoke |
-| Cloud candidate suggestions | Supported | Async provider/service tests, Controller generation tests, real IBus smoke, Ubuntu CI |
-| OpenAI-compatible AI suggestions | Supported | Provider contract/cache tests, Controller generation tests, real IBus smoke, Ubuntu CI |
-| Candidate translation display | Supported | Local/DeepLX parser, debounce/cancellation and UTF-8 tests, real IBus smoke, Ubuntu CI |
-| GTK settings application | Supported | Settings model tests, headless `--check`, install smoke |
-| Clipboard history | Supported | UTF-8/size/deduplication/atomic-store tests and GTK tools panel |
-| Screen keyboard workspace | Supported | GTK desktop-tools executable and headless check |
-| Voice transcription from recorded WAV | Supported | HTTPS multipart provider contract tests and standalone CLI |
-| Microphone voice capture | Supported | Standalone CLI capture through `arecord` or `pw-record`; provider transcription remains optional |
-| Handwriting recognition | Supported | GTK stroke canvas and Tesseract `chi_sim+eng` backend; clear install guidance when unavailable |
-| Floating toolbar | Supported | Always-on-top GTK utility with desktop-tool launchers and install smoke |
+| 全拼、双拼、五笔与日语切换 | 已支持 | 控制器测试与 IBus 属性冒烟测试 |
+| 中文／直接模式与单 Shift 切换 | 已支持 | 控制器测试与真实 keyval 映射测试 |
+| 候选光标、翻页、数字键与鼠标选择 | 已支持 | 控制器测试与 IBus 适配器测试 |
+| XDG 配置与原子替换 | 已支持 | 文件系统与 IBus 生命周期测试 |
+| IBus 注册与当前用户安装 | 已支持 | D-Bus 与安装 CI 冒烟门禁 |
+| 中英文标点与全角模式 | 已支持 | 转换、控制器、映射、设置与真实 D-Bus 测试 |
+| 智能标点与成对标点 | 已支持 | 周围文本、替换删除与光标前移的 D-Bus 冒烟测试 |
+| 高亮候选的首／末汉字选择 | 已支持 | 引擎 Unicode 测试、控制器测试与真实 D-Bus 提交冒烟测试 |
+| 原始／切分／隐藏预编辑与辅助码 | 已支持 | 引擎、控制器、设置、已安装数据与真实 D-Bus 查找冒烟测试 |
+| 本地候选词频学习 | 已支持 | 引擎五种模式的持久化测试，加上控制器、设置与真实 D-Bus／XDG 日志冒烟测试 |
+| 显式 Unicode 标量输入 | 已支持 | 引擎标量校验、控制器／映射／设置测试与真实 D-Bus 提交冒烟测试 |
+| 本地日期、时间与星期候选 | 已支持 | 引擎确定性格式化测试，加上控制器与真实 D-Bus 提交冒烟测试 |
+| XDG 快捷短语与升级重放 | 已支持 | 引擎查询／失败测试，控制器与真实 D-Bus 提交冒烟测试，事务性安装冒烟测试 |
+| 显式 Emoji 与颜文字模式 | 已支持 | 引擎前缀／排序／失败测试，生成的 `others.db`，事务性安装与真实 D-Bus 提交冒烟测试 |
+| 混合英文、Emoji 与颜文字候选 | 已支持 | 引擎候选位／去重／失败隔离测试，加上控制器／设置与真实 D-Bus 排序冒烟测试 |
+| 超级简拼模式 | 已支持 | 引擎全拼／双拼查询与词频测试，加上控制器／设置与真实 D-Bus 翻页／选择冒烟测试 |
+| 专用英文输入 | 已支持 | 引擎失败／学习测试，控制器／映射／设置测试，生成的 `english.db`，事务性安装与真实 D-Bus 提交冒烟测试 |
+| 临时英文与日语输入模式 | 已支持 | 引擎生命周期测试，加上控制器／设置与真实 D-Bus 提交／恢复冒烟测试 |
+| 云候选建议 | 已支持 | 异步服务商／服务测试，控制器代次测试，真实 IBus 冒烟测试，Ubuntu CI |
+| OpenAI 兼容的 AI 建议 | 已支持 | 服务商契约／缓存测试，控制器代次测试，真实 IBus 冒烟测试，Ubuntu CI |
+| 候选翻译展示 | 已支持 | 本地／DeepLX 解析、防抖／取消与 UTF-8 测试，真实 IBus 冒烟测试，Ubuntu CI |
+| GTK 设置程序 | 已支持 | 设置模型测试，无头 `--check`，安装冒烟测试 |
+| 剪贴板历史 | 已支持 | UTF-8／大小／去重／原子存储测试与 GTK 工具面板 |
+| 屏幕键盘工作区 | 已支持 | GTK 桌面工具可执行文件与无头检查 |
+| 从录制 WAV 的语音转写 | 已支持 | HTTPS multipart 服务商契约测试与独立 CLI |
+| 麦克风语音采集 | 已支持 | 独立 CLI 通过 `arecord` 或 `pw-record` 采集；服务商转写仍为可选 |
+| 手写识别 | 已支持 | GTK 笔画画布与 Tesseract `chi_sim+eng` 后端；不可用时给出明确的安装指引 |
+| 浮动工具栏 | 已支持 | 置顶的 GTK 工具，带桌面工具启动入口与安装冒烟测试 |
 
-## Scope
+## 范围
 
-This repository owns the Linux/IBus adapter, Linux installation, packaging, and CI. The Apple frontend remains in [`MSIME-Apple`](https://github.com/metasequoiaime/MSIME-Apple), while the input engine and dictionary remain shared dependencies.
+本仓库负责 Linux／IBus 适配层、Linux 安装、打包与 CI。Apple 前端在 [`MSIME-Apple`](https://github.com/metasequoiaime/MSIME-Apple)，输入引擎与词库则是共享依赖。
 
-## License
+## 许可
 
-Metasequoia IME for Linux is distributed under the GNU General Public License version 3; see [LICENSE](LICENSE). Every binary in this repository statically links the shared engine from [`MSIME-Engine`](https://github.com/metasequoiaime/MSIME-Engine), which is GPLv3, so builds and redistributions are covered by the same terms. System libraries used at build time (IBus, GTK, Boost, fmt, spdlog, SQLite, libcurl, libsecret) keep their own licenses and are not redistributed by this repository.
+水杉输入法 Linux 版依据 GNU 通用公共许可证第 3 版分发，见 [LICENSE](LICENSE)。本仓库的每个二进制产物都静态链接了 [`MSIME-Engine`](https://github.com/metasequoiaime/MSIME-Engine) 提供的共享引擎，而该引擎是 GPLv3，因此构建与再分发都受同样的条款约束。构建时使用的系统库（IBus、GTK、Boost、fmt、spdlog、SQLite、libcurl、libsecret）保留各自的许可，本仓库不对其进行再分发。
 
-## Privacy and security
+## 隐私与安全
 
-Conversion, candidate learning, clipboard history and handwriting recognition run locally. Cloud candidates are enabled by default and send the typed spelling to Google's input-tools service; AI suggestions, DeepLX translation and voice transcription are opt-in and send data to the endpoint the user configures. See [PRIVACY.md](PRIVACY.md) for the full list and how to disable each one. Report suspected vulnerabilities privately according to [SECURITY.md](SECURITY.md), not through a public issue.
+转换、候选学习、剪贴板历史与手写识别都在本地完成。云候选默认开启，会把所敲的拼写发送给 Google 的输入工具服务；AI 建议、DeepLX 翻译与语音转写均为选择性开启，数据发往用户自行配置的端点。完整清单与各自的关闭方式见 [PRIVACY.md](PRIVACY.md)。疑似漏洞请按 [SECURITY.md](SECURITY.md) 的方式私下上报，不要通过公开 issue。
+
+参与贡献请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。

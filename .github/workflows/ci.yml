@@ -2,11 +2,20 @@ name: CI
 
 on:
   push:
+    branches:
+      - main
   pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
+
+# A pull request from a branch in this repository used to build twice, once for
+# the push and once for the pull request. Keep one run per ref and drop the
+# superseded ones.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   linux:

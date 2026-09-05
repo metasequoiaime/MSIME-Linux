@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 安全漏洞
+    url: https://github.com/metasequoiaime/MSIME-Linux/blob/main/SECURITY.md
+    about: 疑似漏洞请按 SECURITY.md 私下上报，不要提交公开 issue。
+  - name: 组词引擎与词库问题
+    url: https://github.com/metasequoiaime/MSIME-Engine/issues
+    about: 选字顺序、词库缺词等属于共享引擎与词库，请到对应仓库反馈。
