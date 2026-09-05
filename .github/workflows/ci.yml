@@ -102,6 +102,14 @@ jobs:
       - name: Current-user install smoke
         shell: bash
         run: tests/InstallSmoke.sh build
+      # Every packaging defect this project has had installed cleanly and then
+      # did nothing: a component naming a path the package did not ship, two of
+      # three dictionaries missing, dictionaries written where the engine never
+      # looks. Inspecting the archive catches the ones already known; running
+      # what is inside it catches the next one.
+      - name: Packaged install smoke
+        shell: bash
+        run: tests/PackagedInstallSmoke.sh build
       # Release assets from both architectures land in the same place, so a name
       # that omits the architecture silently overwrites the other build. This is
       # cheap here and catches it before a release rather than during one.
