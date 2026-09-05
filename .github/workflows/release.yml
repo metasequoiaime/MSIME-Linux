@@ -23,6 +23,9 @@ jobs:
     name: Prepare release metadata
     runs-on: ubuntu-24.04
     permissions:
+      # actions: write lets the dispatch step below start ci.yml on the release branch, which is
+      # the only trigger GITHUB_TOKEN is allowed to fire.
+      actions: write
       contents: write
       issues: write
       pull-requests: write
@@ -39,6 +42,16 @@ jobs:
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+      # Without this the release pull request carries no check at all, so it gets merged blind
+      # and required_status_checks cannot be turned on for this repository.
+      - name: Dispatch CI for the release pull request
+        if: ${{ github.event_name == 'push' && steps.release.outputs.prs_created == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_PR: ${{ steps.release.outputs.pr }}
+        run: bash scripts/dispatch_release_ci.sh
+
       # A dispatched run publishes an existing draft rather than creating one, so
       # everything it will build has to be pinned and checked up front.
       - name: Validate requested draft release
