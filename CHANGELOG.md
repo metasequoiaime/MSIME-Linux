@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.4.1](https://github.com/metasequoiaime/MSIME-Linux/compare/v0.4.0...v0.4.1) (2026-09-05)
+
+
+### Bug Fixes
+
+* apply the same credential check in every provider ([04bc6ed](https://github.com/metasequoiaime/MSIME-Linux/commit/04bc6ed0985f4724fd5f543b4c809f9d6c527546))
+* apply the same credential check in every provider ([07c269e](https://github.com/metasequoiaime/MSIME-Linux/commit/07c269e3541c95e63e1b6539f3d93f0d60d03318))
+* decide once which endpoints may receive a credential ([c50da31](https://github.com/metasequoiaime/MSIME-Linux/commit/c50da31bfcec97095d8fd7a3006829d8dced57e5))
+* decide once which endpoints may receive a credential ([272253b](https://github.com/metasequoiaime/MSIME-Linux/commit/272253b022723356a9c87966a42372e2df10aab8))
+
 ## [0.4.0](https://github.com/metasequoiaime/MSIME-Linux/compare/v0.3.0...v0.4.0) (2026-09-05)
 
 
