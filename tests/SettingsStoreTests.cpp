@@ -23,6 +23,7 @@ using metasequoia::linux_ime::InputMode;
 using metasequoia::linux_ime::InputSettings;
 using metasequoia::linux_ime::OnlineSettings;
 using metasequoia::linux_ime::PreeditStyle;
+using metasequoia::linux_ime::PunctuationLock;
 using metasequoia::linux_ime::PunctuationMode;
 using metasequoia::linux_ime::SecretKind;
 using metasequoia::linux_ime::SecretLookupResult;
@@ -147,6 +148,7 @@ int main()
     const InputSettings defaults = store.load(&warning);
     require(defaults.mode == InputMode::Ime && defaults.scheme == SchemeType::Quanpin && defaults.page_size == 9 &&
                 defaults.punctuation_mode == PunctuationMode::Chinese &&
+                defaults.punctuation_lock == PunctuationLock::Follow &&
                 defaults.character_width == CharacterWidth::Half && defaults.comma_period_paging &&
                 defaults.word_to_character && !defaults.bracket_paging && defaults.smart_punctuation &&
                 defaults.smart_punctuation_repeat_to_chinese && defaults.paired_punctuation &&
@@ -179,6 +181,7 @@ int main()
     saved.scheme = SchemeType::Wubi;
     saved.page_size = 3;
     saved.punctuation_mode = PunctuationMode::English;
+    saved.punctuation_lock = PunctuationLock::English;
     saved.character_width = CharacterWidth::Full;
     saved.comma_period_paging = true;
     saved.word_to_character = true;
@@ -208,6 +211,9 @@ int main()
     saved.emoji_mode_enabled = false;
     saved.kaomoji_mode_enabled = false;
     saved.floating_toolbar_enabled = false;
+    saved.switch_language_shift = false;
+    saved.switch_language_ctrl = true;
+    saved.switch_language_ctrl_alt_space = false;
     saved.voice.enabled = true;
     saved.voice.provider = "openai";
     saved.voice.endpoint = "https://voice.example.test/v1/audio/transcriptions";
@@ -238,6 +244,7 @@ int main()
     const InputSettings round_trip = store.load(&warning);
     require(round_trip.mode == saved.mode && round_trip.scheme == saved.scheme &&
                 round_trip.page_size == saved.page_size && round_trip.punctuation_mode == saved.punctuation_mode &&
+                round_trip.punctuation_lock == saved.punctuation_lock &&
                 round_trip.character_width == saved.character_width &&
                 round_trip.comma_period_paging == saved.comma_period_paging &&
                 round_trip.word_to_character == saved.word_to_character &&
@@ -267,6 +274,9 @@ int main()
                 round_trip.emoji_mode_enabled == saved.emoji_mode_enabled &&
                 round_trip.kaomoji_mode_enabled == saved.kaomoji_mode_enabled &&
                 round_trip.floating_toolbar_enabled == saved.floating_toolbar_enabled &&
+                round_trip.switch_language_shift == saved.switch_language_shift &&
+                round_trip.switch_language_ctrl == saved.switch_language_ctrl &&
+                round_trip.switch_language_ctrl_alt_space == saved.switch_language_ctrl_alt_space &&
                 round_trip.voice.enabled == saved.voice.enabled && round_trip.voice.provider == saved.voice.provider &&
                 round_trip.voice.endpoint == saved.voice.endpoint && round_trip.voice.model == saved.voice.model &&
                 round_trip.voice.language == saved.voice.language &&

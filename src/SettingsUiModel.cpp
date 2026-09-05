@@ -105,6 +105,20 @@ std::string punctuation_value(PunctuationMode value)
     return value == PunctuationMode::Chinese ? "chinese" : "english";
 }
 
+std::string punctuation_lock_value(PunctuationLock value)
+{
+    switch (value)
+    {
+    case PunctuationLock::Chinese:
+        return "chinese";
+    case PunctuationLock::English:
+        return "english";
+    case PunctuationLock::Follow:
+        break;
+    }
+    return "follow";
+}
+
 std::string width_value(CharacterWidth value)
 {
     return value == CharacterWidth::Full ? "full" : "half";
@@ -183,9 +197,9 @@ bool set_choice(std::string_view value, std::initializer_list<std::string_view> 
 
 SettingsUiSection settings_section_for_id(const std::string &id)
 {
-    if (id == "page-size" || id == "punctuation" || id == "width" || id == "preedit-style" ||
-        id == "smart-punctuation" || id == "smart-punctuation-repeat-to-chinese" || id == "paired-punctuation" ||
-        id == "bracket-paging" || id == "word-to-character")
+    if (id == "page-size" || id == "punctuation" || id == "punctuation-lock" || id == "width" ||
+        id == "preedit-style" || id == "smart-punctuation" || id == "smart-punctuation-repeat-to-chinese" ||
+        id == "paired-punctuation" || id == "bracket-paging" || id == "word-to-character")
     {
         return SettingsUiSection::Appearance;
     }
@@ -200,7 +214,7 @@ SettingsUiSection settings_section_for_id(const std::string &id)
         return SettingsUiSection::Helpcode;
     }
     if (id == "unicode-mode" || id == "super-jianpin-mode" || id == "temporary-english-mode" ||
-        id == "temporary-japanese-mode")
+        id == "temporary-japanese-mode" || id.rfind("switch-language-", 0) == 0)
     {
         return SettingsUiSection::Shortcuts;
     }
@@ -268,6 +282,8 @@ void SettingsUiModel::rebuild_rows()
     add(rows_, "page-size", "Candidates per page", std::to_string(settings_.page_size), SettingsControl::Integer);
     add(rows_, "punctuation", "Punctuation", punctuation_value(settings_.punctuation_mode), SettingsControl::Choice,
         {"chinese", "english"});
+    add(rows_, "punctuation-lock", "Punctuation lock", punctuation_lock_value(settings_.punctuation_lock),
+        SettingsControl::Choice, {"follow", "chinese", "english"});
     add(rows_, "width", "Character width", width_value(settings_.character_width), SettingsControl::Choice,
         {"half", "full"});
     add(rows_, "preedit-style", "Preedit style", preedit_value(settings_.preedit_style), SettingsControl::Choice,
@@ -304,6 +320,12 @@ void SettingsUiModel::rebuild_rows()
         SettingsControl::Boolean);
     add(rows_, "temporary-japanese-mode", "Temporary Japanese mode",
         bool_value(settings_.temporary_japanese_mode_enabled), SettingsControl::Boolean);
+    add(rows_, "switch-language-shift", "Switch language with Shift", bool_value(settings_.switch_language_shift),
+        SettingsControl::Boolean);
+    add(rows_, "switch-language-ctrl", "Switch language with Control", bool_value(settings_.switch_language_ctrl),
+        SettingsControl::Boolean);
+    add(rows_, "switch-language-ctrl-alt-space", "Switch language with Control+Alt+Space",
+        bool_value(settings_.switch_language_ctrl_alt_space), SettingsControl::Boolean);
     add(rows_, "mixed-english-candidates", "Mixed English candidates",
         bool_value(settings_.mixed_english_candidates_enabled), SettingsControl::Boolean);
     add(rows_, "mixed-english-minimum-prefix", "English minimum prefix",
@@ -403,6 +425,17 @@ bool SettingsUiModel::set(const std::string &id, const std::string &value, std::
         else
             parsed = false;
     }
+    else if (id == "punctuation-lock")
+    {
+        if (value == "follow")
+            candidate.punctuation_lock = PunctuationLock::Follow;
+        else if (value == "chinese")
+            candidate.punctuation_lock = PunctuationLock::Chinese;
+        else if (value == "english")
+            candidate.punctuation_lock = PunctuationLock::English;
+        else
+            parsed = false;
+    }
     else if (id == "width")
     {
         if (value == "half")
@@ -430,7 +463,8 @@ bool SettingsUiModel::set(const std::string &id, const std::string &value, std::
              id == "mixed-english-candidates" || id == "mixed-emoji-candidates" || id == "mixed-kaomoji-candidates" ||
              id == "clipboard-history" || id == "floating-toolbar" || id == "voice-enabled" ||
              id == "quick-phrase-mode" || id == "date-time-mode" || id == "emoji-mode" || id == "kaomoji-mode" ||
-             id == "voice-polish-enabled" || id == "cloud-enabled" || id == "ai-enabled" || id == "translation-enabled")
+             id.rfind("switch-language-", 0) == 0 || id == "voice-polish-enabled" || id == "cloud-enabled" ||
+             id == "ai-enabled" || id == "translation-enabled")
     {
         bool value_as_bool = false;
         parsed = parse_bool(value, value_as_bool);
@@ -460,6 +494,12 @@ bool SettingsUiModel::set(const std::string &id, const std::string &value, std::
                 candidate.temporary_english_mode_enabled = value_as_bool;
             else if (id == "temporary-japanese-mode")
                 candidate.temporary_japanese_mode_enabled = value_as_bool;
+            else if (id == "switch-language-shift")
+                candidate.switch_language_shift = value_as_bool;
+            else if (id == "switch-language-ctrl")
+                candidate.switch_language_ctrl = value_as_bool;
+            else if (id == "switch-language-ctrl-alt-space")
+                candidate.switch_language_ctrl_alt_space = value_as_bool;
             else if (id == "mixed-english-candidates")
                 candidate.mixed_english_candidates_enabled = value_as_bool;
             else if (id == "mixed-emoji-candidates")

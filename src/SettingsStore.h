@@ -37,6 +37,7 @@ struct InputSettings
     SchemeType scheme = SchemeType::Quanpin;
     std::size_t page_size = 9;
     PunctuationMode punctuation_mode = PunctuationMode::Chinese;
+    PunctuationLock punctuation_lock = PunctuationLock::Follow;
     CharacterWidth character_width = CharacterWidth::Half;
     bool comma_period_paging = true;
     bool word_to_character = true;
@@ -69,6 +70,11 @@ struct InputSettings
     bool mixed_kaomoji_candidates_enabled = false;
     bool clipboard_history_enabled = false;
     bool floating_toolbar_enabled = true;
+    // Chinese/English toggles, matching the Windows keybindings section. Ctrl+Space is claimed by
+    // the desktop rather than by the engine on both platforms, so it is not offered here either.
+    bool switch_language_shift = true;
+    bool switch_language_ctrl = false;
+    bool switch_language_ctrl_alt_space = true;
     VoiceInputConfig voice;
     OnlineSettings online;
 };
