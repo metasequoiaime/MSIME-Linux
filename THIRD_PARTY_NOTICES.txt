@@ -395,15 +395,15 @@ Bundled data files
 
 The packages install dictionary and helpcode data built from these repositories:
 
-  MSIME-Dict                https://github.com/metasequoiaime/MSIME-Dict
+  MSIME-Engine/dictionary  https://github.com/metasequoiaime/MSIME-Engine/tree/main/dictionary
   MSIME-Engine/helpcode    https://github.com/metasequoiaime/MSIME-Engine/tree/main/helpcode
-  (imported from MSIME-HelpCode; upstream attribution below is retained)
+  (imported from the archived MSIME-Dict and MSIME-HelpCode; upstream attribution below is retained)
 
 Installed as msime.db, others.db, english.db and helpcodes/*.txt under the package data directory.
 
 Neither repository declares a license of its own, because most of their content is not their own work. They aggregate word lists and code tables from upstream projects. The upstream terms, which travel with the data, are as follows.
 
-Sources of msime.db, others.db and english.db, via MSIME-Dict:
+Sources of msime.db, others.db and english.db:
 
   rime-ice                GPL-3.0    https://github.com/iDvel/rime-ice
   CustomPinyinDictionary  none       https://github.com/wuhgit/CustomPinyinDictionary
@@ -418,7 +418,7 @@ Sources of msime.db, others.db and english.db, via MSIME-Dict:
 
 The Chinese tables that msime.db is built from (cn/BaseDictAllV1Part1.txt and cn/BaseDictAllV1Part2.txt) merge rime-ice with CustomPinyinDictionary. rime-ice is licensed under the GNU General Public License version 3, which is the same license this project is distributed under, so its terms are satisfied by the distribution as a whole; this notice serves as its attribution, and its source remains available at the URL above.
 
-Sources of helpcodes/*.txt, via MSIME-Engine/helpcode (formerly MSIME-HelpCode):
+Sources of helpcodes/*.txt, via MSIME-Engine/helpcode (formerly the archived MSIME-HelpCode):
 
   helpcode.txt                    lantian      蓝天小雨点 helpcode scheme
   zrm_helpcode_big_unique.txt     ziranma      自然码, derived from

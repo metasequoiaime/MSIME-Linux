@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """Fetch the dictionaries the product lock names and verify them against its committed digests.
 
-These used to be built here from the vendored MSIME-Dict sources. That reproduced part of that
-repository's build in this one, and it meant the data lagged behind the submodule pin: the
+These used to be built here from the vendored dictionary sources. That reproduced part of the
+producer's build in this repository, and it meant the data lagged behind the submodule pin: the
 placeholder replacement for the personal data in quick_phrases.txt sat unmerged upstream for two
 days while this repository kept shipping the old values, and the pin had to be moved by hand.
 
-MSIME-Dict now publishes msime.db, others.db, english.db and SHA256SUMS.txt as release assets, so
-take them from there. Windows already does (MSIME-Server and MSIME-Windows), which means all three
-platforms ship byte-identical dictionaries.
+The dictionary source and its build entry point now live in MSIME-Engine, which publishes msime.db,
+others.db, english.db and SHA256SUMS.txt as release assets, so take them from there. Windows does
+the same (MSIME-Windows), which means all three platforms ship byte-identical dictionaries. The
+archived MSIME-Dict keeps its earlier releases as immutable historical artefacts.
 
 The release tag no longer lives here and cannot be overridden from the command line. product-lock.json names it and records the SHA256 of every asset, so a retagged release or a replaced database fails the build instead of shipping: rewriting the upstream SHA256SUMS.txt along with the data does not help, because that file is verified against a committed digest too. Move to a new release with `python3 scripts/product_lock.py refresh --dictionary-tag dict-vX.Y.Z` and review the resulting diff.
 
