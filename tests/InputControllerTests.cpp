@@ -157,6 +157,38 @@ int main()
         database.execute("INSERT INTO tbl_1_x VALUES('xi', 'x', '丁频', 70)");
         database.execute("INSERT INTO tbl_1_x VALUES('xi', 'x', '戊频', 60)");
         database.execute("INSERT INTO tbl_1_x VALUES('xi', 'x', '己频', 50)");
+        database.execute("CREATE TABLE tbl_1_s(key TEXT,jp TEXT,value TEXT,weight INTEGER)");
+        database.execute("INSERT INTO tbl_1_s VALUES('shui','s','水',100)");
+        database.execute("CREATE TABLE tbl_1_l(key TEXT,jp TEXT,value TEXT,weight INTEGER)");
+        database.execute("INSERT INTO tbl_1_l VALUES('lin','l','林',100)");
+        database.execute("CREATE TABLE tbl_2_s(key TEXT,jp TEXT,value TEXT,weight INTEGER)");
+        database.execute("CREATE TABLE tbl_3_s(key TEXT,jp TEXT,value TEXT,weight INTEGER)");
+        database.execute("CREATE TABLE tbl_4_s(key TEXT,jp TEXT,value TEXT,weight INTEGER)");
+        database.execute("CREATE TABLE tbl_5_s(key TEXT,jp TEXT,value TEXT,weight INTEGER)");
+        {
+            InputOptions partial_options;
+            InputController partial(SchemeType::Quanpin, partial_options);
+            type(partial, "shui'lin");
+            const auto first = partial.handle_key(key(FrontendKey::Space));
+            require(first.commit == "水" && partial.preedit() == "lin" && partial.has_composition(),
+                    "Space discarded the unconsumed pinyin suffix.");
+            const auto last = partial.handle_key(key(FrontendKey::Space));
+            require(last.commit == "林" && !partial.has_composition(),
+                    "The second selection did not finish the remaining input.");
+            type(partial, "shui'lin'lin");
+            const auto punctuated = partial.handle_key(punctuation(','));
+            require(punctuated.commit == "水林林，" && !partial.has_composition(),
+                    "Punctuation lost the unselected suffix.");
+            type(partial, "shui'lin'lin'lin");
+            FrontendKeyEvent shortcut{FrontendKey::Character, 'c'};
+            shortcut.host_shortcut = true;
+            const auto passed = partial.handle_key(shortcut);
+            require(!passed.handled && passed.commit == "水林林林" && !partial.has_composition(),
+                    "Host passthrough left a hidden partial composition.");
+            type(partial, "shui'lin'lin'lin'lin");
+            require(partial.switch_scheme(SchemeType::Wubi).commit == "水林林林林" && !partial.has_composition(),
+                    "Scheme switching discarded the pending suffix.");
+        }
         database.execute("CREATE TABLE quick_parases(key TEXT,value TEXT,weight INTEGER)");
         database.execute("INSERT INTO quick_parases VALUES('ab','控制器短语一',20)");
         database.execute("INSERT INTO quick_parases VALUES('aa','控制器短语二',10)");
