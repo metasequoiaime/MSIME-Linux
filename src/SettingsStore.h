@@ -54,6 +54,13 @@ struct InputSettings
     int frequency_linear_step = 1;
     bool unicode_mode_enabled = true;
     bool super_jianpin_mode_enabled = true;
+    // The engine defaults every local mode on and Linux only overrode four of them, so these
+    // four worked but could not be turned off. Names and defaults follow the Windows utility
+    // section; these are the dedicated Shift+key modes, not the mixed candidates above.
+    bool quick_phrase_mode_enabled = true;
+    bool date_time_mode_enabled = true;
+    bool emoji_mode_enabled = true;
+    bool kaomoji_mode_enabled = true;
     bool temporary_english_mode_enabled = true;
     bool temporary_japanese_mode_enabled = true;
     bool mixed_english_candidates_enabled = true;

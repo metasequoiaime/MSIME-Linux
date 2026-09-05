@@ -156,9 +156,11 @@ int main()
                 defaults.frequency_adjustment_mode == FrequencyAdjustmentMode::Promote &&
                 defaults.frequency_trigger_count == 1 && defaults.frequency_linear_step == 1 &&
                 defaults.unicode_mode_enabled && defaults.super_jianpin_mode_enabled &&
-                defaults.temporary_english_mode_enabled && defaults.temporary_japanese_mode_enabled &&
-                defaults.mixed_english_candidates_enabled && defaults.mixed_english_minimum_prefix == 2 &&
-                defaults.mixed_emoji_candidates_enabled && !defaults.mixed_kaomoji_candidates_enabled,
+                defaults.quick_phrase_mode_enabled && defaults.date_time_mode_enabled && defaults.emoji_mode_enabled &&
+                defaults.kaomoji_mode_enabled && defaults.temporary_english_mode_enabled &&
+                defaults.temporary_japanese_mode_enabled && defaults.mixed_english_candidates_enabled &&
+                defaults.mixed_english_minimum_prefix == 2 && defaults.mixed_emoji_candidates_enabled &&
+                !defaults.mixed_kaomoji_candidates_enabled,
             "Missing settings did not use defaults.");
     require(warning.empty(), "A missing optional settings file produced a warning.");
     require(defaults.online.cloud_candidates_enabled && !defaults.online.ai.enabled &&
@@ -201,6 +203,10 @@ int main()
     saved.mixed_emoji_candidates_enabled = true;
     saved.mixed_kaomoji_candidates_enabled = true;
     saved.clipboard_history_enabled = true;
+    saved.quick_phrase_mode_enabled = false;
+    saved.date_time_mode_enabled = false;
+    saved.emoji_mode_enabled = false;
+    saved.kaomoji_mode_enabled = false;
     saved.floating_toolbar_enabled = false;
     saved.voice.enabled = true;
     saved.voice.provider = "openai";
@@ -256,6 +262,10 @@ int main()
                 round_trip.mixed_emoji_candidates_enabled == saved.mixed_emoji_candidates_enabled &&
                 round_trip.mixed_kaomoji_candidates_enabled == saved.mixed_kaomoji_candidates_enabled &&
                 round_trip.clipboard_history_enabled == saved.clipboard_history_enabled &&
+                round_trip.quick_phrase_mode_enabled == saved.quick_phrase_mode_enabled &&
+                round_trip.date_time_mode_enabled == saved.date_time_mode_enabled &&
+                round_trip.emoji_mode_enabled == saved.emoji_mode_enabled &&
+                round_trip.kaomoji_mode_enabled == saved.kaomoji_mode_enabled &&
                 round_trip.floating_toolbar_enabled == saved.floating_toolbar_enabled &&
                 round_trip.voice.enabled == saved.voice.enabled && round_trip.voice.provider == saved.voice.provider &&
                 round_trip.voice.endpoint == saved.voice.endpoint && round_trip.voice.model == saved.voice.model &&
