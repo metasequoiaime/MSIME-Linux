@@ -4,12 +4,6 @@ on:
   push:
     branches:
       - main
-      # release-please opens its pull request as github-actions[bot], which this
-      # repository treats as a first-time contributor, so the pull_request run
-      # sits waiting for a human to approve it every single release. A push run
-      # on the same branch is not gated, so the version bump still gets a full
-      # build before anyone merges it.
-      - "release-please--**"
   pull_request:
   workflow_dispatch:
 
