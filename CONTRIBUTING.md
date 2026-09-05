@@ -43,7 +43,13 @@ tests/InstallSmoke.sh build
 
 ## 发布
 
-版本由标签驱动。推送 `v*` 标签会触发 `Release` 流水线：以 Release 模式构建、跑测试、用 CPack 生成 TGZ／DEB／RPM，并附加到对应的 GitHub Release。包里的版本号取自标签，不需要改 `CMakeLists.txt`。
+发布由 release-please 驱动，与 [`MSIME-Apple`](https://github.com/metasequoiaime/MSIME-Apple) 保持一致，流程如下：
+
+1. conventional commits 合入 `main` 后，`Release` 流水线自动开出一个版本 PR，其中包含 `version.txt`、`CMakeLists.txt` 中的版本号与 `CHANGELOG.md` 的更新。
+2. 合并该 PR 即打出 `vMAJOR.MINOR.PATCH` 标签并创建草稿 Release。
+3. 发布流水线随后校验该提交确实在 `main` 历史中、`version.txt` 与标签一致，然后以 Release 模式构建、跑完整测试与安装冒烟、用 CPack 生成 TGZ／DEB／RPM，附加到 Release 并将其转正。
+
+不要手动修改 `version.txt`、`.release-please-manifest.json` 或 `CMakeLists.txt` 里的 `project(... VERSION ...)`，这三处由 release-please 统一维护。需要重新发布某个已存在的草稿时，用 `Release` 工作流的手动触发并传入标签名。
 
 ## 安全问题
 

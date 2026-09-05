@@ -63,7 +63,9 @@ cmake --build build --parallel
 cd build && cpack -G "TGZ;DEB"
 ```
 
-DEB 生成需要 `dpkg-dev`，RPM 生成需要 `rpm`（Debian／Ubuntu 上是 `rpm` 包）。CI 在每次构建中验证 TGZ 与 DEB 生成；推送 `v*` 标签会触发发布流水线，构建三种包并附加到对应的 GitHub Release。
+DEB 生成需要 `dpkg-dev`，RPM 生成需要 `rpm`（Debian／Ubuntu 上是 `rpm` 包）。CI 在每次构建中验证 TGZ 与 DEB 生成。
+
+发布由 release-please 驱动，与 Apple 前端保持一致：合入 `main` 的 conventional commits 会自动生成版本 PR，合并该 PR 即打标签并创建草稿 Release，随后发布流水线从被打标签的提交构建 TGZ／DEB／RPM，附加到 Release 并将其转正。版本号记录在 `version.txt` 与 `CMakeLists.txt` 中，由 release-please 统一维护，不要手改。
 
 ## 操作与设置
 

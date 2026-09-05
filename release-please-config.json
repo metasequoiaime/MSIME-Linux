@@ -1,0 +1,22 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "package-name": "MetasequoiaImeLinux",
+      "include-component-in-tag": false,
+      "include-v-in-tag": true,
+      "version-file": "version.txt",
+      "draft": true,
+      "force-tag-creation": true,
+      "pull-request-header": "This PR prepares the next Metasequoia IME for Linux release.",
+      "pull-request-footer": "CI runs automatically. Merging this PR tags the release and publishes the Linux packages built from the tagged commit.",
+      "extra-files": [
+        {
+          "type": "generic",
+          "path": "CMakeLists.txt"
+        }
+      ]
+    }
+  }
+}
