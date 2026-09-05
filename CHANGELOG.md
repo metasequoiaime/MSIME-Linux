@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.1](https://github.com/metasequoiaime/MSIME-Linux/compare/v0.2.0...v0.2.1) (2026-09-05)
+
+
+### Bug Fixes
+
+* make the current-user install work on Ubuntu 26.04 ([57028ca](https://github.com/metasequoiaime/MSIME-Linux/commit/57028cadbcfaa9662509acec1d79408c0959c2f3))
+* make the current-user install work on Ubuntu 26.04 ([c3b4f24](https://github.com/metasequoiaime/MSIME-Linux/commit/c3b4f2439992f51b6c4abe4c2280b02367515f1b))
+
 ## [0.2.0](https://github.com/metasequoiaime/MSIME-Linux/compare/v0.1.0...v0.2.0) (2026-09-05)
 
 
