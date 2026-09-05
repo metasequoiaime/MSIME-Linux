@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.6.0](https://github.com/metasequoiaime/MSIME-Linux/compare/v0.5.0...v0.6.0) (2026-09-05)
+
+
+### Features
+
+* **product:** lock the shipped dictionary by digest and record a product manifest ([5089ca8](https://github.com/metasequoiaime/MSIME-Linux/commit/5089ca848de163ea3ca7b5ab28bf6acb2868033e))
+* **product:** lock the shipped dictionary by digest and record a product manifest ([c6a8b12](https://github.com/metasequoiaime/MSIME-Linux/commit/c6a8b12579aea80e4887fcfb8b817eec7539f9e4))
+
+
+### Bug Fixes
+
+* **ci:** check out the scripts the prepare job now runs ([9771edd](https://github.com/metasequoiaime/MSIME-Linux/commit/9771edd120b8398ee41127e0d081fadb18d8c127))
+* **ci:** check out the scripts the prepare job now runs ([4a429c8](https://github.com/metasequoiaime/MSIME-Linux/commit/4a429c80d4ec28c6dc9dbee6cfa5675f9d5cdf24))
+* **ci:** dispatch for every release head, not just the first one ([bfdccbe](https://github.com/metasequoiaime/MSIME-Linux/commit/bfdccbe72052774d4c60025720a30e065e1de636))
+* **ci:** dispatch for every release head, not just the first one ([4bea2d7](https://github.com/metasequoiaime/MSIME-Linux/commit/4bea2d78de79fdb3eb055b0fe0c10bb93c7f1ed4))
+* **ci:** keep the literal token name out of ci.yml ([bf4589e](https://github.com/metasequoiaime/MSIME-Linux/commit/bf4589e1b1f2d3b3cad12b679b6f4dcd609e82d4))
+* **ci:** stop the gated pull_request run cancelling the dispatched one ([947140f](https://github.com/metasequoiaime/MSIME-Linux/commit/947140f085a7e3ca99c0ae1e3eb3a7627a0e3f01))
+* **ci:** stop the gated pull_request run cancelling the dispatched one ([9b1ca8a](https://github.com/metasequoiaime/MSIME-Linux/commit/9b1ca8ae7001762e6379cb6d7d41facc4cf30c16))
+* **product:** ask ls-remote for the peeled ref by name ([70e683d](https://github.com/metasequoiaime/MSIME-Linux/commit/70e683d83c79e203f02eaa6970b14d4de38157e4))
+* **product:** lock the dictionary's source commit instead of a gitlink ([4e3995f](https://github.com/metasequoiaime/MSIME-Linux/commit/4e3995fb150ee3e4037e79bb150a8532d26c3926))
+* **product:** 词库源码提交改为锁文件记录，删掉 Dict submodule ([99a5a86](https://github.com/metasequoiaime/MSIME-Linux/commit/99a5a864dd6cb54a7a172077dbb7f41da901babf))
+
 ## [0.5.0](https://github.com/metasequoiaime/MSIME-Linux/compare/v0.4.3...v0.5.0) (2026-09-05)
 
 
