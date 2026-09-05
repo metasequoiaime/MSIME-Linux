@@ -44,12 +44,11 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
       # Without this the release pull request carries no check at all, so it gets merged blind
       # and required_status_checks cannot be turned on for this repository.
-      - name: Dispatch CI for the release pull request
-        if: ${{ github.event_name == 'push' && steps.release.outputs.prs_created == 'true' }}
+      - name: Dispatch CI for the release branch
+        if: ${{ github.event_name == 'push' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_PR: ${{ steps.release.outputs.pr }}
         run: bash scripts/dispatch_release_ci.sh
 
       # A dispatched run publishes an existing draft rather than creating one, so
