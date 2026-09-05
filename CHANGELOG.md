@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.2](https://github.com/metasequoiaime/MSIME-Linux/compare/v0.6.1...v0.6.2) (2026-09-05)
+
+
+### Bug Fixes
+
+* **install:** give a current-session recipe that keeps the desktop's IBus ([5dfcd6f](https://github.com/metasequoiaime/MSIME-Linux/commit/5dfcd6f6b6bc614c5ba7856f477d24ec0cbc1f91))
+
 ## [0.6.1](https://github.com/metasequoiaime/MSIME-Linux/compare/v0.6.0...v0.6.1) (2026-09-05)
 
 
