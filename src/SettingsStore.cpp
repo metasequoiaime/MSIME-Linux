@@ -1,5 +1,7 @@
 #include "SettingsStore.h"
 
+#include "online/EndpointPolicy.h"
+
 #include "core/data_path.h"
 
 #include <glib.h>
@@ -172,7 +174,11 @@ bool valid_online_settings(const OnlineSettings &settings)
            valid_translation_language(settings.translation_target_language) &&
            valid_https_endpoint(settings.translation_endpoint) && connect_timeout >= kMinimumConnectTimeoutMs &&
            connect_timeout <= kMaximumConnectTimeoutMs && total_timeout >= kMinimumTotalTimeoutMs &&
-           total_timeout <= kMaximumTotalTimeoutMs;
+           total_timeout <= kMaximumTotalTimeoutMs &&
+           // Endpoints are checked at this layer and again before a request; a
+           // token used to be checked only before the request, so a malformed
+           // one was accepted here, stored, and then silently refused later.
+           online::token_allowed(settings.ai.token) && online::token_allowed(settings.translation_token);
 }
 
 bool valid_voice_settings(const VoiceInputConfig &settings)
@@ -183,7 +189,7 @@ bool valid_voice_settings(const VoiceInputConfig &settings)
            (!settings.enabled || !settings.endpoint.empty()) && valid_https_endpoint(settings.polish_endpoint) &&
            valid_utf8_text(settings.polish_model, 256, false) && !settings.polish_model.empty() &&
            valid_utf8_text(settings.polish_prompt, 8192, true) && !settings.polish_prompt.empty() &&
-           (!settings.polish_enabled || !settings.polish_endpoint.empty());
+           (!settings.polish_enabled || !settings.polish_endpoint.empty()) && online::token_allowed(settings.token);
 }
 
 const char *mode_name(InputMode mode)

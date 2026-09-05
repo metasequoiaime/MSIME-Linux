@@ -24,15 +24,18 @@ endif()
 
 add_subdirectory(vendor/MetasequoiaImeEngine engine)
 
+# EndpointPolicy has no dependencies beyond the standard library and is needed by
+# the settings layer as well as the providers, so it belongs here rather than in
+# the online library.
 add_library(MetasequoiaImeLinuxCore STATIC src/DictionaryBootstrap.cpp src/InputController.cpp
-                                          src/TextTransform.cpp src/ToolLauncher.cpp)
+                                          src/online/EndpointPolicy.cpp src/TextTransform.cpp
+                                          src/ToolLauncher.cpp)
 target_link_libraries(MetasequoiaImeLinuxCore PUBLIC MetasequoiaIme::Engine)
 target_include_directories(MetasequoiaImeLinuxCore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_options(MetasequoiaImeLinuxCore PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 add_library(MetasequoiaImeLinuxOnline STATIC
             src/online/AiSuggestionProvider.cpp
-            src/online/EndpointPolicy.cpp
             src/online/CurlHttpTransport.cpp
             src/online/GoogleCloudProvider.cpp
             src/online/OnlineCandidateService.cpp

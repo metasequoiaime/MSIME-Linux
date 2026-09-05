@@ -508,6 +508,27 @@ int main()
     unsupported.online.total_timeout = std::chrono::milliseconds(30001);
     require(!store.save(unsupported, &error) && !error.empty(), "An invalid total timeout was written to disk.");
 
+    // A token is concatenated into an Authorization header, and libcurl passes
+    // header values through verbatim. Endpoints were rejected at this layer and
+    // again before a request; tokens were only ever checked before the request,
+    // so a malformed one was stored and the feature then failed with nothing to
+    // explain why. Reject it here, where the settings window can show a message.
+    MemorySecretStore rejecting_secrets;
+    std::string rejection_diagnostic;
+    InputSettings header_injection = saved;
+    header_injection.voice.token = "sk-abc\r\nX-Injected: yes";
+    require(!store.save(header_injection, rejecting_secrets, &rejection_diagnostic) && !rejection_diagnostic.empty(),
+            "A voice token containing a header separator was accepted.");
+    header_injection = saved;
+    header_injection.online.ai.token = "sk-abc\nX-Injected: yes";
+    require(!store.save(header_injection, rejecting_secrets, &rejection_diagnostic) && !rejection_diagnostic.empty(),
+            "An AI token containing a newline was accepted.");
+    header_injection = saved;
+    header_injection.online.translation_token = std::string(4097, 'a');
+    require(!store.save(header_injection, rejecting_secrets, &rejection_diagnostic) && !rejection_diagnostic.empty(),
+            "An overlong translation token was accepted.");
+    require(rejecting_secrets.values.empty(), "A rejected credential still reached the secret store.");
+
     MemorySecretStore secrets;
     std::string secret_diagnostic;
     require(store.save(saved, secrets, &secret_diagnostic) && secret_diagnostic.empty(),
