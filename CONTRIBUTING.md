@@ -1,6 +1,6 @@
 # 参与贡献
 
-感谢参与水杉输入法 Linux 前端的开发。本仓库只负责 Linux／IBus 适配层、安装、打包与 CI；组词逻辑、词库与辅助码分别属于 [`MSIME-Engine`](https://github.com/metasequoiaime/MSIME-Engine)、[`MSIME-Dict`](https://github.com/metasequoiaime/MSIME-Dict) 与 [`MetasequoiaImeHelpCode`](https://github.com/metasequoiaime/MetasequoiaImeHelpCode)，请把对应问题提到那些仓库。
+感谢参与水杉输入法 Linux 前端的开发。本仓库只负责 Linux／IBus 适配层、安装、打包与 CI；组词逻辑、词库源数据与辅助码统一属于 [`MSIME-Engine`](https://github.com/metasequoiaime/MSIME-Engine)，请把对应问题提到公共仓库。
 
 ## 准备开发环境
 

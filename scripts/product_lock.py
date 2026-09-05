@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Maintain and consume the reviewed Linux product dependency lock.
 
-The engine and helpcode pins are gitlinks. Git already makes those immutable and shows every move in a pull request diff, so they are not copied into this lock: doing that would only give the submodule pin a second home to drift from, and it would break the dependabot bump that engine-bump-triage.yml merges on green CI.
+The Engine gitlink provides both the engine and helpcode data. Git already makes those immutable and shows every move in a pull request diff, so they are not copied into this lock: doing that would only give the submodule pin a second home to drift from, and it would break the dependabot bump that engine-bump-triage.yml merges on green CI.
 
 The dictionary the packages actually *ship* is the one input git does not pin. It is a release asset behind a tag that upstream can retag, and it used to be verified against the SHA256SUMS.txt published beside it, which is exactly as mutable as the data. So product-lock.json holds the tag and the SHA256 of every asset, and the build verifies those committed digests instead.
 
@@ -39,7 +39,6 @@ DICTIONARY_URL = f"https://github.com/{DICTIONARY_REPOSITORY}.git"
 # a second copy in the lock, so there is one source of truth for what was checked out.
 SUBMODULES = {
     "engine": ("metasequoiaime/MSIME-Engine", "vendor/MetasequoiaImeEngine"),
-    "helpcode": ("metasequoiaime/MSIME-HelpCode", "vendor/MetasequoiaImeHelpCode"),
 }
 
 # The databases CMakeLists.txt installs into the packages, plus the checksum file the release

@@ -14,7 +14,7 @@ settings_executable="$build_root/metasequoia-ime-settings"
 tools_executable="$build_root/metasequoia-ime-tools"
 voice_executable="$build_root/metasequoia-ime-voice"
 toolbar_executable="$build_root/metasequoia-ime-toolbar"
-helpcode_source_dir="$project_root/vendor/MetasequoiaImeHelpCode/helpcodes"
+helpcode_source_dir="$project_root/vendor/MetasequoiaImeEngine/helpcode/helpcodes"
 helpcode_files=(
     helpcode.txt
     zrm_helpcode_big_unique.txt

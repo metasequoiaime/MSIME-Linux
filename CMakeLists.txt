@@ -126,7 +126,7 @@ set(METASEQUOIA_IME_OTHERS_DICTIONARY "${CMAKE_CURRENT_SOURCE_DIR}/vendor/Metase
 set(METASEQUOIA_IME_ENGLISH_DICTIONARY "${CMAKE_CURRENT_SOURCE_DIR}/vendor/MetasequoiaImeDict/out/english.db"
     CACHE FILEPATH "Path to english.db")
 set(METASEQUOIA_IME_HELPCODE_DIRECTORY
-    "${CMAKE_CURRENT_SOURCE_DIR}/vendor/MetasequoiaImeHelpCode/helpcodes"
+    "${CMAKE_CURRENT_SOURCE_DIR}/vendor/MetasequoiaImeEngine/helpcode/helpcodes"
     CACHE PATH "Path to the Metasequoia helpcode data directory")
 # Written by scripts/product_lock.py during a release so the installed package can say which source commit, which gitlinks and which dictionary release it was built from. Empty by default: a local build has nothing to attest, and a stale manifest would be worse than none.
 set(METASEQUOIA_IME_PRODUCT_MANIFEST "" CACHE FILEPATH "Path to the generated product manifest to install")
