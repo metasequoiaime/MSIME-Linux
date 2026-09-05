@@ -400,10 +400,42 @@ The packages install dictionary and helpcode data built from these repositories:
 Installed as msime.db, others.db, english.db and helpcodes/*.txt under the
 package data directory.
 
-Neither repository currently declares a license. Redistributors who need an
-explicit grant for this data should ask the Metasequoia IME maintainers before
-relying on it. This notice will be updated once those repositories state their
-terms.
+Neither repository declares a license of its own, because most of their content
+is not their own work. They aggregate word lists and code tables from upstream
+projects. The upstream terms, which travel with the data, are as follows.
+
+Sources of msime.db, others.db and english.db, via MSIME-Dict:
+
+  rime-ice                GPL-3.0    https://github.com/iDvel/rime-ice
+  CustomPinyinDictionary  none       https://github.com/wuhgit/CustomPinyinDictionary
+  pinyin-data             MIT        https://github.com/mozillazg/pinyin-data
+  rime-wubi86-jidian      Apache-2.0 https://github.com/KyleBing/rime-wubi86-jidian
+  rime_kaomoji_dict       MIT        https://github.com/aoguai/rime_kaomoji_dict
+  ECDICT                  MIT        https://github.com/skywind3000/ECDICT
+  Windows-classic-samples MIT        https://github.com/microsoft/Windows-classic-samples
+  Google count_1w         see source https://www.norvig.com/ngrams/count_1w.txt
+
+The Chinese tables that msime.db is built from (cn/BaseDictAllV1Part1.txt and
+cn/BaseDictAllV1Part2.txt) merge rime-ice with CustomPinyinDictionary. rime-ice
+is licensed under the GNU General Public License version 3, which is the same
+license this project is distributed under, so its terms are satisfied by the
+distribution as a whole; this notice serves as its attribution, and its source
+remains available at the URL above.
+
+Sources of helpcodes/*.txt, via MetasequoiaImeHelpCode:
+
+  helpcode.txt                    lantian      蓝天小雨点 helpcode scheme
+  zrm_helpcode_big_unique.txt     ziranma      自然码, derived from
+                                               https://github.com/copperay/ZRM_Aux-code
+  shouyou2_0_helpcode.txt         shouyou2_0   首右 2.0 helpcode scheme
+  shouyouplus_helpcode.txt        shouyouplus  首右 plus helpcode scheme
+  xiaohe_helpcode.txt             xiaohe       小鹤 shape-code scheme
+
+Unresolved: CustomPinyinDictionary and ZRM_Aux-code publish no license, and the
+helpcode tables reproduce input schemes whose rights belong to their respective
+authors. Redistributors who need an explicit grant for those parts should raise
+it with the Metasequoia IME maintainers rather than assume one. This notice will
+be updated as those terms are clarified.
 
 
 ------------------------------------------------------------------------------
