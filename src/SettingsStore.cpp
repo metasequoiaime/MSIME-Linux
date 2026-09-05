@@ -27,6 +27,7 @@ constexpr const char *kAiGroup = "ai";
 constexpr const char *kTranslationGroup = "translation";
 constexpr const char *kUtilityGroup = "utility";
 constexpr const char *kVoiceGroup = "voice";
+constexpr const char *kKeybindingsGroup = "keybindings";
 constexpr std::size_t kMinimumPageSize = 3;
 constexpr std::size_t kMaximumPageSize = 9;
 constexpr int kMinimumFrequencyValue = 1;
@@ -903,6 +904,9 @@ InputSettings SettingsStore::load(std::string *warning) const
     load_string(kTranslationGroup, "endpoint", settings.online.translation_endpoint, valid_https_endpoint);
     load_boolean(kUtilityGroup, "clipboard-history", settings.clipboard_history_enabled);
     load_boolean(kUtilityGroup, "floating-toolbar", settings.floating_toolbar_enabled);
+    load_boolean(kKeybindingsGroup, "switch-language-shift", settings.switch_language_shift);
+    load_boolean(kKeybindingsGroup, "switch-language-ctrl", settings.switch_language_ctrl);
+    load_boolean(kKeybindingsGroup, "switch-language-ctrl-alt-space", settings.switch_language_ctrl_alt_space);
     load_boolean(kVoiceGroup, "enabled", settings.voice.enabled);
     load_string(kVoiceGroup, "provider", settings.voice.provider,
                 [](std::string_view value) { return valid_utf8_text(value, 64, false) && !value.empty(); });
@@ -1042,6 +1046,10 @@ bool SettingsStore::save(const InputSettings &settings, std::string *error) cons
     g_key_file_set_boolean(key_file, kGroup, "mixed-kaomoji-candidates", settings.mixed_kaomoji_candidates_enabled);
     g_key_file_set_boolean(key_file, kUtilityGroup, "clipboard-history", settings.clipboard_history_enabled);
     g_key_file_set_boolean(key_file, kUtilityGroup, "floating-toolbar", settings.floating_toolbar_enabled);
+    g_key_file_set_boolean(key_file, kKeybindingsGroup, "switch-language-shift", settings.switch_language_shift);
+    g_key_file_set_boolean(key_file, kKeybindingsGroup, "switch-language-ctrl", settings.switch_language_ctrl);
+    g_key_file_set_boolean(key_file, kKeybindingsGroup, "switch-language-ctrl-alt-space",
+                           settings.switch_language_ctrl_alt_space);
 
     g_key_file_set_boolean(key_file, kOnlineGroup, "cloud-enabled", settings.online.cloud_candidates_enabled);
     g_key_file_set_integer(key_file, kOnlineGroup, "connect-timeout-ms",

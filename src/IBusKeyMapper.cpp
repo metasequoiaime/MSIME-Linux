@@ -38,23 +38,58 @@ bool is_ascii_punctuation(guint keyval)
 }
 } // namespace
 
-bool IBusModeToggleTracker::observe(guint keyval, guint state)
+void IBusModeToggleTracker::configure(const ModeToggleBindings &bindings)
 {
-    const bool is_shift = keyval == IBUS_Shift_L || keyval == IBUS_Shift_R;
-    const bool is_release = (state & IBUS_RELEASE_MASK) != 0;
-    if (!is_shift)
+    bindings_ = bindings;
+    // A binding turned off mid-composition must not leave a half-pressed key able to toggle later.
+    if (!bindings_.shift)
     {
         shift_armed_ = false;
-        return false;
     }
-    if (!is_release)
+    if (!bindings_.ctrl)
     {
-        shift_armed_ = (state & kHostModifierMask) == 0;
+        ctrl_armed_ = false;
+    }
+}
+
+bool IBusModeToggleTracker::observe(guint keyval, guint state)
+{
+    const bool is_release = (state & IBUS_RELEASE_MASK) != 0;
+
+    if (bindings_.ctrl_alt_space && !is_release && keyval == IBUS_space &&
+        (state & kHotkeyModifierMask) == (IBUS_CONTROL_MASK | IBUS_MOD1_MASK))
+    {
+        // A chord this explicit is never an accidental tap, so it does not disturb the arming of
+        // the lone-modifier bindings below.
+        return true;
+    }
+
+    const bool is_shift = keyval == IBUS_Shift_L || keyval == IBUS_Shift_R;
+    const bool is_ctrl = keyval == IBUS_Control_L || keyval == IBUS_Control_R;
+    if (!is_shift && !is_ctrl)
+    {
+        shift_armed_ = false;
+        ctrl_armed_ = false;
         return false;
     }
 
-    const bool should_toggle = shift_armed_ && (state & kHostModifierMask) == 0;
-    shift_armed_ = false;
+    // Ctrl is itself part of kHostModifierMask, so its own press reports it as held. Ask only about
+    // the modifiers that are not the key being tracked.
+    const guint others = is_shift ? kHostModifierMask : (kHostModifierMask & ~IBUS_CONTROL_MASK);
+    bool &armed = is_shift ? shift_armed_ : ctrl_armed_;
+    const bool enabled = is_shift ? bindings_.shift : bindings_.ctrl;
+
+    if (!is_release)
+    {
+        // Pressing one tracked modifier disarms the other: Shift+Ctrl is not either toggle.
+        shift_armed_ = false;
+        ctrl_armed_ = false;
+        armed = enabled && (state & others) == 0;
+        return false;
+    }
+
+    const bool should_toggle = armed && enabled && (state & others) == 0;
+    armed = false;
     return should_toggle;
 }
 
