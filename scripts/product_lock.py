@@ -13,6 +13,7 @@ The dictionary's *source* commit is locked alongside them rather than read from 
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import hashlib
 import json
 import re
@@ -23,6 +24,12 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+_product_spec = importlib.util.spec_from_file_location("dictionary_product", Path(__file__).with_name("dictionary_product.py"))
+_product = importlib.util.module_from_spec(_product_spec)
+_product_spec.loader.exec_module(_product)
+PRODUCT_MANIFEST = _product.MANIFEST_NAME
+LEGACY_DICTIONARY_TAG = "dict-2026.09.05"
+
 
 REPOSITORY = "metasequoiaime/MSIME-Linux"
 DICTIONARY_REPOSITORY = "metasequoiaime/MSIME-Dict"
@@ -57,7 +64,8 @@ def validate(data: dict) -> dict:
     if not SHA.fullmatch(dictionary.get("source_commit", "")):
         raise ValueError("Dictionary source_commit must be the full commit the release tag resolves to")
     assets = dictionary.get("assets", {})
-    if set(assets) != set(ASSETS):
+    expected_assets = set(ASSETS) if dictionary['tag'] == LEGACY_DICTIONARY_TAG else set(ASSETS) | {PRODUCT_MANIFEST}
+    if set(assets) != expected_assets:
         raise ValueError("Dictionary lock must cover every shipped database and the checksum file")
     for name, digest in assets.items():
         if not DIGEST.fullmatch(digest):
@@ -92,6 +100,9 @@ def verify_assets(directory: Path, data: dict) -> None:
         if actual != expected:
             raise ValueError(f"{name} does not match the product lock: expected {expected}, got {actual}")
 
+    if PRODUCT_MANIFEST in data["dictionary"]["assets"]:
+        _product.verify_product(directory, "desktop", set(data["dictionary"]["assets"]) - {"SHA256SUMS.txt", PRODUCT_MANIFEST})
+
 
 def download_assets(tag: str, destination: Path) -> None:
     """Plain HTTPS rather than the GitHub CLI or the API.
@@ -101,7 +112,8 @@ def download_assets(tag: str, destination: Path) -> None:
     if not TAG.fullmatch(tag):
         raise ValueError("Refusing to download from a tag that is not an explicit dict-* release")
     destination.mkdir(parents=True, exist_ok=True)
-    for name in ASSETS:
+    names = ASSETS if tag == LEGACY_DICTIONARY_TAG else (*ASSETS, PRODUCT_MANIFEST)
+    for name in names:
         url = f"https://github.com/{DICTIONARY_REPOSITORY}/releases/download/{tag}/{name}"
         target = destination / name
         last_error: Exception | None = None
@@ -196,7 +208,7 @@ def refresh(tag: str) -> dict:
         download_assets(tag, incoming)
         published = published_checksums(incoming)
         assets = {}
-        for name in ASSETS:
+        for name in (ASSETS if tag == LEGACY_DICTIONARY_TAG else (*ASSETS, PRODUCT_MANIFEST)):
             digest = sha256(incoming / name)
             if name in published and published[name] != digest:
                 raise ValueError(f"{name} does not match the checksums published with {tag}")
