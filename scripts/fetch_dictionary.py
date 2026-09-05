@@ -19,10 +19,10 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import shutil
 import sqlite3
-import subprocess
 import sys
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -39,15 +39,30 @@ DATABASES = ("msime.db", "others.db", "english.db")
 
 
 def download(tag: str, destination: Path) -> None:
+    """Plain HTTPS rather than the GitHub CLI or the API.
+
+    The release assets of a public repository are served unauthenticated from a CDN, so this needs
+    no credentials and no gh, which the bare Ubuntu containers in CI do not have. It also stays off
+    the API, which this repository has already had rate limited to 403 from a single runner address
+    (see scripts/bootstrap_ci_dependencies.sh).
+    """
     destination.mkdir(parents=True, exist_ok=True)
-    patterns: list[str] = []
     for name in (*DATABASES, "SHA256SUMS.txt"):
-        patterns += ["--pattern", name]
-    subprocess.run(
-        ["gh", "release", "download", tag, "--repo", DICTIONARY_REPOSITORY,
-         "--dir", str(destination), "--clobber", *patterns],
-        check=True,
-    )
+        url = f"https://github.com/{DICTIONARY_REPOSITORY}/releases/download/{tag}/{name}"
+        target = destination / name
+        last_error: Exception | None = None
+        for attempt in range(1, 4):
+            try:
+                with urllib.request.urlopen(url, timeout=120) as response, target.open("wb") as out:
+                    while chunk := response.read(1 << 20):
+                        out.write(chunk)
+                break
+            except (urllib.error.URLError, TimeoutError, OSError) as error:
+                last_error = error
+                print(f"  attempt {attempt} for {name} failed: {error}")
+        else:
+            raise SystemExit(f"Could not download {url}: {last_error}")
+        print(f"downloaded {name}")
 
 
 def verify_checksums(destination: Path) -> None:
@@ -138,9 +153,6 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--tag", default=DICTIONARY_RELEASE, help=f"MSIME-Dict release tag (default: {DICTIONARY_RELEASE})")
     args = parser.parse_args()
-
-    if shutil.which("gh") is None:
-        raise SystemExit("The GitHub CLI (gh) is required to download the dictionary release.")
 
     print(f"Fetching {args.tag} from {DICTIONARY_REPOSITORY}")
     download(args.tag, OUTPUT_DIR)
