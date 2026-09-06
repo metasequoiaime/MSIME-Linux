@@ -12,7 +12,7 @@ git submodule update --init --recursive
 
 在 git 传输不可用的环境（包括 CI）里，改用 `scripts/bootstrap_ci_dependencies.sh`，它按 gitlink 中固定的修订版本通过 GitHub 归档 API 取回同样的内容。子模块缺失时 CMake 会直接报错并提示这两条路径。
 
-打包实际使用的词库来自 `product-lock.json` 里锁定的 MSIME-Dict release，按其中已提交的 SHA256 校验，锁文件同时记下该 release tag 解析到的源码提交。词库不是子模块，也不该变回子模块：那个 pin 不会跟着 tag 走，只会让 manifest 记下一个从没被打包过的提交。更换词库版本走 `scripts/product_lock.py refresh`，细节见 [docs/product-release.md](docs/product-release.md)。
+打包实际使用的词库来自 `product-lock.json` 里锁定的 MSIME-Engine release，按其中已提交的 SHA256 校验，锁文件同时记下该 release tag 解析到的源码提交。词库不是子模块，也不该变回子模块：那个 pin 不会跟着 tag 走，只会让 manifest 记下一个从没被打包过的提交。更换词库版本走 `scripts/product_lock.py refresh`，细节见 [docs/product-release.md](docs/product-release.md)。
 
 ## 构建与验证
 
