@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches:
+      - develop
       - main
   pull_request:
   workflow_dispatch:
@@ -20,8 +21,7 @@ permissions:
 # branch gets a real check. Keyed on ref alone the first evicted the second, and the release pull
 # request ended up with no checks at all.
 #
-# This does not reintroduce the double build the original key was written for: push is limited to
-# main, so a branch in this repository only ever produces the pull_request run.
+# This does not reintroduce the double build the original key was written for: push is limited to develop and main, so a feature branch in this repository only ever produces the pull_request run.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
