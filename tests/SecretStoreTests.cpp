@@ -55,5 +55,31 @@ int main(int argc, char **argv)
     require(store.lookup(SecretKind::AiApiToken, ai_provider).status == SecretStatus::NotFound &&
                 store.lookup(SecretKind::TranslationApiToken, translation_provider).status == SecretStatus::NotFound,
             "Removed Secret Service credentials remained accessible.");
+
+    // Erase is the undo half of a settings save, which rolls back secrets whose previous state was NotFound, so
+    // "nothing matched" is a success and must not be dressed up as a Secret Service failure.
+    const std::string absent_provider = "test-absent-" + suffix;
+    require(store.lookup(SecretKind::AiApiToken, absent_provider).status == SecretStatus::NotFound,
+            "The never-stored provider was unexpectedly already present in Secret Service.");
+    require(store.erase(SecretKind::AiApiToken, absent_provider, &diagnostic),
+            "Erasing a provider that was never stored must succeed.");
+    require(diagnostic.empty(), "Erasing a provider that was never stored reported a diagnostic.");
+    require(store.lookup(SecretKind::AiApiToken, absent_provider).status == SecretStatus::NotFound,
+            "A provider that was never stored became visible after being erased.");
+
+    require(store.erase(SecretKind::AiApiToken, ai_provider, &diagnostic),
+            "Erasing an already-erased AI credential must be idempotent.");
+    require(diagnostic.empty(), "A repeated erase of the AI credential reported a diagnostic.");
+    require(store.erase(SecretKind::TranslationApiToken, translation_provider, &diagnostic),
+            "Erasing an already-erased translation credential must be idempotent.");
+    require(diagnostic.empty(), "A repeated erase of the translation credential reported a diagnostic.");
+    require(store.lookup(SecretKind::AiApiToken, ai_provider).status == SecretStatus::NotFound &&
+                store.lookup(SecretKind::TranslationApiToken, translation_provider).status == SecretStatus::NotFound,
+            "A repeated erase resurrected a Secret Service credential.");
+
+    // Idempotence must not degrade into "erase always succeeds": malformed input is still a caller error.
+    require(!store.erase(SecretKind::AiApiToken, "invalid provider!", &diagnostic),
+            "Erase accepted a malformed provider name.");
+    require(!diagnostic.empty(), "Erase rejected a malformed provider without explaining why.");
     return 0;
 }

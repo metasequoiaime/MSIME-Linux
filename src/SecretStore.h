@@ -36,6 +36,9 @@ class SecretStore
     virtual SecretLookupResult lookup(SecretKind kind, std::string_view provider) const = 0;
     virtual bool store(SecretKind kind, std::string_view provider, std::string_view secret,
                        std::string *diagnostic = nullptr) = 0;
+    // Erase is idempotent: it succeeds when the secret is absent afterwards, whether or not anything was there to
+    // remove. A save rollback undoes secrets whose previous state was NotFound, so reporting "nothing matched" as a
+    // failure would announce credential corruption for a keyring that is in fact clean.
     virtual bool erase(SecretKind kind, std::string_view provider, std::string *diagnostic = nullptr) = 0;
 };
 
