@@ -2,6 +2,7 @@
 
 #include "HttpTimeouts.h"
 #include "HttpTransport.h"
+#include <metasequoia/session.h>
 
 #include <cstdint>
 #include <functional>
@@ -45,6 +46,8 @@ class TranslationProvider
   public:
     explicit TranslationProvider(std::string dictionary_path, std::shared_ptr<HttpTransport> transport,
                                  HttpTimeouts timeouts = {});
+    TranslationProvider(const RuntimePaths &paths, std::shared_ptr<HttpTransport> transport,
+                        HttpTimeouts timeouts = {});
     ~TranslationProvider();
 
     TranslationProvider(const TranslationProvider &) = delete;
@@ -59,6 +62,7 @@ class TranslationProvider
 
   private:
     std::string dictionary_path_;
+    std::string translations_path_;
     std::shared_ptr<HttpTransport> transport_;
     HttpTimeouts timeouts_;
     // Opening the dictionary re-reads the custom translation sidecar and re-opens SQLite, which is far too expensive to

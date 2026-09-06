@@ -15,10 +15,10 @@ InputOptions options_with_page_size(std::size_t page_size)
     return options;
 }
 
-SessionOptions session_options(SchemeType scheme, const InputOptions &options)
+SessionOptions session_options(SchemeType scheme, const InputOptions &options, RuntimePaths paths)
 {
     SessionOptions result;
-    result.paths = RuntimePaths::legacy();
+    result.paths = std::move(paths);
     result.scheme = scheme;
     result.helpcode =
         scheme == SchemeType::Shuangpin ? options.shuangpin_helpcode_enabled : options.quanpin_helpcode_enabled;
@@ -59,7 +59,12 @@ ControllerResult::ControllerResult(KeyResult result)
 }
 
 InputController::InputController(SchemeType scheme_type, InputOptions options)
-    : session_(session_options(scheme_type, options)), snapshot_(session_.snapshot()),
+    : InputController(scheme_type, std::move(options), RuntimePaths::legacy())
+{
+}
+
+InputController::InputController(SchemeType scheme_type, InputOptions options, RuntimePaths paths)
+    : session_(session_options(scheme_type, options, std::move(paths))), snapshot_(session_.snapshot()),
       local_mode_options_(options.local_modes), english_input_options_(options.english_input),
       mixed_expressive_options_(options.mixed_expressive), page_size_(options.page_size),
       punctuation_mode_(options.punctuation_mode), character_width_(options.character_width),
