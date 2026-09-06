@@ -78,7 +78,7 @@ def session(root):
         settled()
         after_blur = first.get_text()
         if second.get_text():
-            raise AssertionError('Composition leaked into the newly focused entry')
+            raise AssertionError(f'Composition leaked into the newly focused entry: {second.get_text()!r}')
         key('h', 'a', 'o', 'space')
         wait_for(lambda: bool(second.get_text()), 'Chinese commit did not reach the second GTK entry')
         if not re.search('[\u3400-\u9fff]', second.get_text()):
