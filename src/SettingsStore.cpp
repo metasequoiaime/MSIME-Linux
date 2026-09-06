@@ -293,8 +293,8 @@ bool valid_input_settings(const InputSettings &settings)
            frequency_adjustment_name(settings.frequency_adjustment_mode) != nullptr &&
            valid_character_width(settings.character_width) && settings.page_size >= kMinimumPageSize &&
            settings.page_size <= kMaximumPageSize &&
-           InputSession::is_supported_helpcode_schema(settings.quanpin_helpcode_schema) &&
-           InputSession::is_supported_helpcode_schema(settings.shuangpin_helpcode_schema) &&
+           Session::is_supported_helpcode_schema(settings.quanpin_helpcode_schema) &&
+           Session::is_supported_helpcode_schema(settings.shuangpin_helpcode_schema) &&
            settings.frequency_trigger_count >= kMinimumFrequencyValue &&
            settings.frequency_trigger_count <= kMaximumFrequencyValue &&
            settings.frequency_linear_step >= kMinimumFrequencyValue &&
@@ -614,7 +614,7 @@ InputSettings SettingsStore::load(std::string *warning) const
     if (g_key_file_has_key(key_file, kGroup, "quanpin-helpcode-schema", nullptr))
     {
         gchar *value = g_key_file_get_string(key_file, kGroup, "quanpin-helpcode-schema", nullptr);
-        if (value != nullptr && InputSession::is_supported_helpcode_schema(value))
+        if (value != nullptr && Session::is_supported_helpcode_schema(value))
         {
             settings.quanpin_helpcode_schema = value;
         }
@@ -643,7 +643,7 @@ InputSettings SettingsStore::load(std::string *warning) const
     if (g_key_file_has_key(key_file, kGroup, "shuangpin-helpcode-schema", nullptr))
     {
         gchar *value = g_key_file_get_string(key_file, kGroup, "shuangpin-helpcode-schema", nullptr);
-        if (value != nullptr && InputSession::is_supported_helpcode_schema(value))
+        if (value != nullptr && Session::is_supported_helpcode_schema(value))
         {
             settings.shuangpin_helpcode_schema = value;
         }
@@ -998,8 +998,19 @@ InputSettings SettingsStore::load(const SecretStore &secret_store, std::string *
         }
         else
         {
-            settings.online.ai.enabled = false;
-            append_message(warning, "The AI credential is unavailable; the AI provider was disabled.");
+            // Every AI provider authenticates, so neither answer leaves anything to send and the runtime flag has to
+            // come down for both. Clearing `enabled` instead is what the settings window hands straight back to save(),
+            // so a keyring that happened to be locked at startup was persisted as the user switching AI off and never
+            // asked about again. The intent stays on disk; only this flag and the empty token record that nothing can
+            // be sent. What separates the two answers is what the user has to do about it: Unavailable is a service
+            // that could not be reached and may hand the same credential over on the next attempt, NotFound is a
+            // service that answered and holds no credential at all.
+            settings.online.ai_credential_available = false;
+            append_message(warning, result.status == SecretStatus::Unavailable
+                                        ? "The AI credential could not be read; AI suggestions are inactive until "
+                                          "the credential service is reachable."
+                                        : "No AI credential is stored for the selected provider; AI suggestions are "
+                                          "inactive until one is added.");
         }
     }
 
@@ -1012,11 +1023,20 @@ InputSettings SettingsStore::load(const SecretStore &secret_store, std::string *
         {
             settings.online.translation_token = result.value;
         }
-        else
+        else if (result.status == SecretStatus::Unavailable)
         {
-            settings.online.candidate_translations_enabled = false;
-            append_message(warning, "Translation credentials are unavailable; translation was disabled.");
+            settings.online.translation_credential_available = false;
+            append_message(warning, "The translation credential could not be read; translation is inactive until "
+                                    "the credential service is reachable.");
         }
+        // Translation is the one provider where NotFound is not a fault, which is why it is the only branch that tests
+        // the status instead of taking an else: a stored credential simply not existing is a supported DeepLX
+        // configuration, because a self-hosted endpoint may accept unauthenticated requests and TranslationProvider
+        // sends no Authorization header when the token is empty. Unavailable still comes down, because a service that
+        // could not answer cannot tell us whether the endpoint the user configured has a credential waiting for it, and
+        // sending the request anyway would be the tokenless call to an authenticating endpoint that this flag exists to
+        // prevent. save() draws the same line: it refuses a save that would enable AI or voice with no stored
+        // credential and accepts one for translation.
     }
     if (settings.voice.enabled)
     {
@@ -1027,8 +1047,13 @@ InputSettings SettingsStore::load(const SecretStore &secret_store, std::string *
         }
         else
         {
-            settings.voice.enabled = false;
-            append_message(warning, "Voice credentials are unavailable; voice input was disabled.");
+            // Voice authenticates like AI does, so the same reading applies to both answers.
+            settings.voice_credential_available = false;
+            append_message(warning, result.status == SecretStatus::Unavailable
+                                        ? "The voice credential could not be read; voice input is inactive until "
+                                          "the credential service is reachable."
+                                        : "No voice credential is stored for the selected provider; voice input is "
+                                          "inactive until one is added.");
         }
     }
     return settings;
@@ -1057,17 +1082,39 @@ bool SettingsStore::save(const InputSettings &settings, std::string *error) cons
         return false;
     }
 
+    const std::string config_file = metasequoia::path_to_utf8(config_path_);
     GKeyFile *key_file = g_key_file_new();
     GError *load_error = nullptr;
-    if (!g_key_file_load_from_file(key_file, metasequoia::path_to_utf8(config_path_).c_str(),
+    if (!g_key_file_load_from_file(key_file, config_file.c_str(),
                                    static_cast<GKeyFileFlags>(G_KEY_FILE_KEEP_COMMENTS | G_KEY_FILE_KEEP_TRANSLATIONS),
                                    &load_error) &&
         !g_error_matches(load_error, G_FILE_ERROR, G_FILE_ERROR_NOENT))
     {
+        // load() already treats an unparsable file as "start from the defaults", so refusing to save one left the user
+        // with no way out of the settings window: every save failed until config.ini was deleted by hand. Keep the
+        // broken text beside it for repair and continue with an empty key file, which costs the unknown keys this
+        // branch exists to preserve but only for a file whose keys can no longer be read anyway. A file-access failure
+        // still aborts, because the write below would fail too. The regular-file test is not redundant with the domain:
+        // GLib reports a config path that is a directory or a device as G_KEY_FILE_ERROR_PARSE ("Not a regular file")
+        // rather than as a G_FILE_ERROR, and renaming a whole directory aside to drop a fresh config.ini in its place
+        // is not recovering from corrupt text -- it is destroying something this code has no business touching. Only a
+        // regular file whose contents no longer parse is repaired here; anything else stays a save failure, so a caller
+        // that had already written credentials rolls them back rather than leaving them pointing at a configuration
+        // that was never stored.
+        const bool unparsable = load_error != nullptr && load_error->domain == G_KEY_FILE_ERROR &&
+                                g_file_test(config_file.c_str(), G_FILE_TEST_IS_REGULAR);
         g_clear_error(&load_error);
+        if (!unparsable)
+        {
+            g_key_file_unref(key_file);
+            set_message(error, "Unable to preserve the existing input settings.");
+            return false;
+        }
         g_key_file_unref(key_file);
-        set_message(error, "Unable to preserve the existing input settings.");
-        return false;
+        key_file = g_key_file_new();
+        // A failed rescue is not fatal: the atomic replace below overwrites the unparsable file regardless, and a
+        // directory that cannot be written to reports itself there.
+        (void)g_rename(config_file.c_str(), (config_file + ".corrupt").c_str());
     }
     g_clear_error(&load_error);
 
@@ -1205,22 +1252,98 @@ bool SettingsStore::save(const InputSettings &settings, SecretStore &secret_stor
         SecretKind kind;
         std::string provider;
         std::string value;
+        bool remove = false;
         SecretLookupResult previous;
         bool attempted = false;
     };
 
+    // Which credential belongs to which provider is decided by the configuration that is on disk, not by the one being
+    // saved: load() hydrates a token for the provider that was selected then, and the settings window keeps that string
+    // in memory when the user picks a different provider.
+    const InputSettings persisted = load();
+    const char *persisted_ai_name = ai_provider_name(persisted.online.ai.provider);
+    const std::string persisted_ai_provider =
+        persisted.online.ai.enabled && persisted_ai_name != nullptr ? persisted_ai_name : "";
+    const std::string persisted_translation_provider =
+        persisted.online.candidate_translations_enabled &&
+                persisted.online.translation_provider == TranslationProvider::DeepLX
+            ? translation_provider_name(TranslationProvider::DeepLX)
+            : "";
+    const std::string persisted_voice_provider = persisted.voice.enabled ? persisted.voice.provider : std::string();
+
     std::vector<PendingSecret> pending;
+    // An empty token means "keep whatever Secret Service already holds", not "this provider has no credential": load()
+    // hydrates a token only when it can read one, so rejecting an empty one refused every save made while the keyring
+    // was locked and made enabling a provider impossible, because nothing in the app can put a credential into these
+    // fields in the first place. A token that still equals the one filed under the provider the user just switched away
+    // from is that same hydration rather than something meant for the new provider, and storing it would copy one
+    // provider's key under another provider's name. `missing_message` is null for a provider that may legitimately run
+    // unauthenticated.
+    const auto plan_credential = [&](SecretKind kind, const std::string &provider, const std::string &token,
+                                     const std::string &previous_provider, const char *missing_message) -> bool {
+        std::string value = token;
+        if (!value.empty() && !previous_provider.empty() && previous_provider != provider)
+        {
+            const SecretLookupResult hydrated = secret_store.lookup(kind, previous_provider);
+            if (hydrated.status == SecretStatus::Unavailable)
+            {
+                set_message(error, "Unable to access credentials; the provider configuration was not saved.");
+                return false;
+            }
+            if (hydrated.status == SecretStatus::Found && hydrated.value == value)
+            {
+                value.clear();
+            }
+        }
+        if (!value.empty())
+        {
+            pending.push_back({kind, provider, std::move(value), false, {}, false});
+            return true;
+        }
+        if (missing_message == nullptr)
+        {
+            return true;
+        }
+        // Only a service that answers "there is nothing here" proves the provider has no credential; an unreachable one
+        // leaves both the stored entry and this save alone.
+        if (secret_store.lookup(kind, provider).status == SecretStatus::NotFound)
+        {
+            set_message(error, missing_message);
+            return false;
+        }
+        return true;
+    };
+    // Turning a provider off is the only way a user can drop its credential, so a save that stops using one removes it.
+    // A provider switch deliberately keeps the old entry: nothing in the app can enter a credential again if the user
+    // switches back.
+    const auto plan_removal = [&pending](SecretKind kind, const std::string &previous_provider, bool still_used) {
+        if (still_used || previous_provider.empty())
+        {
+            return;
+        }
+        pending.push_back({kind, previous_provider, {}, true, {}, false});
+    };
+
     if (settings.online.ai.enabled)
     {
         const char *provider = ai_provider_name(settings.online.ai.provider);
-        if (provider == nullptr || settings.online.ai.token.empty())
+        if (provider == nullptr)
         {
             set_message(error, "Unable to store the AI credential; the provider configuration was not saved.");
             return false;
         }
-        pending.push_back({SecretKind::AiApiToken, provider, settings.online.ai.token, {}});
+        if (!plan_credential(SecretKind::AiApiToken, provider, settings.online.ai.token, persisted_ai_provider,
+                             "No AI credential is stored for the selected provider; the provider configuration was "
+                             "not saved."))
+        {
+            return false;
+        }
     }
-    if (!settings.online.translation_token.empty())
+    // Only DeepLX authenticates. Pushing the token whenever it was non-empty filed the DeepL secret under
+    // provider=local as soon as the user switched backends, where nothing ever reads it again.
+    const bool translation_uses_credential = settings.online.candidate_translations_enabled &&
+                                             settings.online.translation_provider == TranslationProvider::DeepLX;
+    if (translation_uses_credential)
     {
         const char *provider = translation_provider_name(settings.online.translation_provider);
         if (provider == nullptr)
@@ -1228,27 +1351,52 @@ bool SettingsStore::save(const InputSettings &settings, SecretStore &secret_stor
             set_message(error, "Unable to store the translation credential; the provider configuration was not saved.");
             return false;
         }
-        pending.push_back({SecretKind::TranslationApiToken, provider, settings.online.translation_token, {}});
+        // A self-hosted DeepLX endpoint may accept unauthenticated requests, so a missing credential is a valid
+        // configuration here rather than a reason to refuse the save.
+        if (!plan_credential(SecretKind::TranslationApiToken, provider, settings.online.translation_token, {}, nullptr))
+        {
+            return false;
+        }
     }
     if (settings.voice.enabled)
     {
-        if (settings.voice.token.empty() || settings.voice.provider.empty())
+        if (settings.voice.provider.empty())
         {
             set_message(error, "Unable to store the voice credential; the provider configuration was not saved.");
             return false;
         }
-        pending.push_back({SecretKind::VoiceApiToken, settings.voice.provider, settings.voice.token, {}});
+        if (!plan_credential(SecretKind::VoiceApiToken, settings.voice.provider, settings.voice.token,
+                             persisted_voice_provider,
+                             "No voice credential is stored for the selected provider; the provider configuration was "
+                             "not saved."))
+        {
+            return false;
+        }
     }
+
+    plan_removal(SecretKind::AiApiToken, persisted_ai_provider, settings.online.ai.enabled);
+    plan_removal(SecretKind::TranslationApiToken, persisted_translation_provider, translation_uses_credential);
+    plan_removal(SecretKind::VoiceApiToken, persisted_voice_provider, settings.voice.enabled);
 
     for (PendingSecret &secret : pending)
     {
         secret.previous = secret_store.lookup(secret.kind, secret.provider);
-        if (secret.previous.status == SecretStatus::Unavailable)
-        {
-            set_message(error, "Unable to access credentials; the provider configuration was not saved.");
-            return false;
-        }
     }
+    // An unreachable credential service is fatal for a credential this save has to write, but it only cancels the
+    // cleanup of one the configuration no longer uses: refusing to turn a provider off because its abandoned token
+    // cannot be reached would leave the provider enabled, which is the opposite of what the user asked for.
+    if (std::any_of(pending.begin(), pending.end(), [](const PendingSecret &secret) {
+            return !secret.remove && secret.previous.status == SecretStatus::Unavailable;
+        }))
+    {
+        set_message(error, "Unable to access credentials; the provider configuration was not saved.");
+        return false;
+    }
+    pending.erase(std::remove_if(pending.begin(), pending.end(),
+                                 [](const PendingSecret &secret) {
+                                     return secret.remove && secret.previous.status != SecretStatus::Found;
+                                 }),
+                  pending.end());
 
     const auto rollback = [&secret_store, &pending]() {
         std::string ignored_diagnostic;
@@ -1277,11 +1425,14 @@ bool SettingsStore::save(const InputSettings &settings, SecretStore &secret_stor
     for (PendingSecret &secret : pending)
     {
         secret.attempted = true;
-        if (!secret_store.store(secret.kind, secret.provider, secret.value, &ignored_diagnostic))
+        const bool applied = secret.remove
+                                 ? secret_store.erase(secret.kind, secret.provider, &ignored_diagnostic)
+                                 : secret_store.store(secret.kind, secret.provider, secret.value, &ignored_diagnostic);
+        if (!applied)
         {
             if (rollback())
             {
-                set_message(error, "Unable to store credentials; the provider configuration was not saved.");
+                set_message(error, "Unable to update credentials; the provider configuration was not saved.");
             }
             else
             {

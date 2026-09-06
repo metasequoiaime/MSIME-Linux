@@ -1161,7 +1161,6 @@ if not any(keyval == IBus.KEY_Left and state == 0 for keyval, _keycode, state in
     raise RuntimeError(f"Paired punctuation did not forward a cursor-left event: {forwarded_keys}")
 
 auxiliary_messages = []
-warning_loop = GLib.MainLoop()
 
 
 def auxiliary_updated(_connection, _sender, _path, _interface, _signal, parameters):
@@ -1169,8 +1168,6 @@ def auxiliary_updated(_connection, _sender, _path, _interface, _signal, paramete
     message = IBus.Serializable.deserialize_object(serialized).get_text()
     visible = parameters.get_child_value(1).get_boolean()
     auxiliary_messages.append((message, visible))
-    if visible:
-        warning_loop.quit()
 
 
 connection.signal_subscribe(
@@ -1182,13 +1179,27 @@ connection.signal_subscribe(
     Gio.DBusSignalFlags.NONE,
     auxiliary_updated,
 )
-settings_path.unlink()
-settings_path.mkdir()
+expected_warning = "Unable to preserve the existing input settings."
+# A self-referential symlink is what makes the save fail here: open() answers ELOOP, which is the "the file is there but its keys cannot be read" case that save() refuses rather than overwrite, and it does so for root as well, which is who runs this smoke test. Making the path a directory no longer works -- glib reports a non-regular file as a key-file parse error, which save() now rescues by moving the file aside and writing a fresh one. Staged under another name and moved into place in one step so that a coalesced save landing between an unlink and a symlink cannot recreate config.ini underneath.
+staged_settings_symlink = settings_path.with_name(settings_path.name + ".loop")
+staged_settings_symlink.symlink_to(settings_path.name)
+os.replace(staged_settings_symlink, settings_path)
 context.property_activate("Scheme.Wubi", IBus.PropState.CHECKED)
+
+
+def settings_warning_published():
+    if (expected_warning, True) in auxiliary_messages:
+        warning_loop.quit()
+        return GLib.SOURCE_REMOVE
+    return GLib.SOURCE_CONTINUE
+
+
+# The engine coalesces settings writes behind a short timer so that a mode toggle never blocks the IBus main loop on the file write, so the warning is published after the property change returns rather than during it. Polled rather than slept on: the delay is an implementation detail of the engine, and a sleep tuned to it turns into a false failure on a loaded runner.
+warning_loop = GLib.MainLoop()
+GLib.timeout_add(20, settings_warning_published)
 GLib.timeout_add_seconds(5, warning_loop.quit)
 warning_loop.run()
 
-expected_warning = "Unable to preserve the existing input settings."
 if (expected_warning, True) not in auxiliary_messages:
     raise RuntimeError(f"A settings save failure did not publish the expected warning: {auxiliary_messages}")
 if not context.process_key_event(IBus.KEY_n, 0, 0):

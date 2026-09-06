@@ -9,6 +9,8 @@
       "others.db": "501bdd6619963bdce79374cd6b7c9ccafe1bf539c59a32cc5311b1fd93c5c8fb",
       "english.db": "e43df2418699fa2eac2d7a0cb49d500eb37e4873752e96946518cc1b03517727",
       "SHA256SUMS.txt": "2d1bd6f9b89feaa59d677504cdb49646071d609b3a4fa80201cdb976b05e0c05",
+      "dict_japanese.dat": "8baafcfc3881d0280cdda8bda7cf3968d8f8fbc94243fea94847cff2b6e2cd66",
+      "mozc_dictionary_oss_README.txt": "6b1de66bc6fa30e0b45dc45b8c8f6c57bd78aff923c261a3efffac8eb86f7bac",
       "dictionary-manifest.json": "bc992419a3923ea3e75f35539b0c0a61932c13cedee92d3a7323f984db6ca9cd"
     }
   }

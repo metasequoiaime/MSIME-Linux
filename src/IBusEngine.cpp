@@ -5,19 +5,24 @@
 
 #include "common/helpcode_utils.h"
 #include "core/data_path.h"
+#include "online/HttpTimeouts.h"
 #include "online/HttpTransport.h"
 #include "online/OnlineCandidateService.h"
 #include "online/TranslationProvider.h"
 
+#include <gio/gio.h>
 #include <ibus.h>
 
 #include <algorithm>
 #include <cstring>
+#include <filesystem>
 #include <limits>
 #include <map>
 #include <memory>
 #include <optional>
 #include <string>
+#include <system_error>
+#include <vector>
 
 namespace
 {
@@ -30,16 +35,30 @@ using metasequoia::linux_ime::InputController;
 using metasequoia::linux_ime::InputMode;
 using metasequoia::linux_ime::InputOptions;
 using metasequoia::linux_ime::InputSettings;
+using metasequoia::linux_ime::PunctuationLock;
 using metasequoia::linux_ime::PunctuationMode;
 using metasequoia::linux_ime::SettingsStore;
 using metasequoia::linux_ime::translate_ibus_key;
 using metasequoia::linux_ime::online::AiSuggestionProvider;
 using metasequoia::linux_ime::online::CurlHttpTransport;
 using metasequoia::linux_ime::online::GoogleCloudProvider;
+using metasequoia::linux_ime::online::HttpTimeouts;
 using metasequoia::linux_ime::online::OnlineCandidateService;
 using metasequoia::linux_ime::online::TranslationBackend;
 using metasequoia::linux_ime::online::TranslationProvider;
 using metasequoia::linux_ime::online::TranslationService;
+
+struct _MetasequoiaEngine;
+
+// The worker threads reach the engine only through this handle. Taking a GObject reference from a
+// worker cannot be made safe: the services are stopped inside finalize, which GObject runs once the
+// reference count has already reached zero, so the reference would be taken on a dying object.
+// finalize clears the handle first, and the main-loop delivery drops the result when it finds the
+// handle empty.
+struct DeliveryHandle
+{
+    _MetasequoiaEngine *engine = nullptr;
+};
 
 struct _MetasequoiaEngine
 {
@@ -50,9 +69,26 @@ struct _MetasequoiaEngine
     bool show_quanpin_helpcode = true;
     bool show_shuangpin_helpcode = true;
     SettingsStore *settings_store = nullptr;
+    // The settings as they were read from disk. Persisting starts from this copy so the keys the
+    // engine does not own -- the utility toggles, the keybindings, the voice provider, everything
+    // else the settings window writes -- survive a save triggered from the key path.
+    InputSettings *settings = nullptr;
+    // Captured once for this input context and never re-resolved: RuntimePaths documents that a
+    // later environment change must not redirect a live session, and the reload path below reads it
+    // too, so it cannot be a local in init.
+    metasequoia::RuntimePaths *paths = nullptr;
+    guint settings_save_source = 0;
+    // Watches config.ini so an edit made in the settings window -- a separate process -- reaches the running engine
+    // instead of being overwritten by the next save of the copy above.
+    GFileMonitor *settings_monitor = nullptr;
+    // What config.ini looked like the last time this engine wrote it or adopted it, so a change event can be told apart
+    // from the echo of the engine's own save. Zero means the file could not be stat'ed.
+    gint64 settings_file_modified = 0;
+    guint64 settings_file_size = 0;
     metasequoia::linux_ime::LibsecretSecretStore *secret_store = nullptr;
     OnlineCandidateService *online_service = nullptr;
     TranslationService *translation_service = nullptr;
+    std::shared_ptr<DeliveryHandle> *delivery_handle = nullptr;
     metasequoia::linux_ime::OnlineSettings *online_settings = nullptr;
     std::map<std::string, std::string> *translation_glosses = nullptr;
     std::string *settings_warning = nullptr;
@@ -230,6 +266,7 @@ bool show_helpcode_hint(const MetasequoiaEngine *engine)
 
 void update_lookup_table(MetasequoiaEngine *engine);
 void refresh_translation(MetasequoiaEngine *engine);
+std::string preceding_context(IBusEngine *engine);
 
 void refresh_online(MetasequoiaEngine *engine)
 {
@@ -246,18 +283,29 @@ void refresh_online(MetasequoiaEngine *engine)
     auto online_request = *request;
     online_request.query.cloud_eligible =
         online_request.query.cloud_eligible && engine->online_settings->cloud_candidates_enabled;
-    online_request.query.ai_eligible = online_request.query.ai_eligible && engine->online_settings->ai.enabled;
+    // An enabled provider whose credential could not be read stays enabled in the configuration and
+    // is only inactive for this run, so the request has to be gated on both.
+    online_request.query.ai_eligible = online_request.query.ai_eligible && engine->online_settings->ai.enabled &&
+                                       engine->online_settings->ai_credential_available;
     if (!online_request.query.cloud_eligible && !online_request.query.ai_eligible)
     {
         engine->online_service->clear();
         return;
     }
-    engine->online_service->submit(std::move(online_request), {}, engine->online_settings->ai);
+    // The AI prompt asks the model to rank by the text in front of the caret and PRIVACY.md declares
+    // that context as part of what an enabled AI provider receives, so it is read here rather than
+    // sent empty. Nothing is read for the cloud-only path, which never sees more than the spelling.
+    std::string context;
+    if (online_request.query.ai_eligible)
+    {
+        context = preceding_context(IBUS_ENGINE(engine));
+    }
+    engine->online_service->submit(std::move(online_request), std::move(context), engine->online_settings->ai);
 }
 
 struct OnlineDelivery
 {
-    MetasequoiaEngine *engine = nullptr;
+    std::shared_ptr<DeliveryHandle> handle;
     metasequoia::linux_ime::OnlineRequest request;
     std::string candidate;
     CandidateSource source = CandidateSource::CloudSuggestion;
@@ -266,22 +314,27 @@ struct OnlineDelivery
 gboolean deliver_online(gpointer user_data)
 {
     std::unique_ptr<OnlineDelivery> delivery(static_cast<OnlineDelivery *>(user_data));
-    auto *engine = delivery->engine;
+    auto *engine = delivery->handle->engine;
+    // Only finalize clears the handle, and it runs on this same main loop, so a non-null engine here
+    // stays alive for the rest of the callback.
+    if (engine == nullptr)
+    {
+        return G_SOURCE_REMOVE;
+    }
     if (engine->controller->apply_online_candidate(delivery->request.generation, delivery->request.query,
                                                    std::move(delivery->candidate), delivery->source))
     {
         update_lookup_table(engine);
         refresh_translation(engine);
     }
-    g_object_unref(engine);
     return G_SOURCE_REMOVE;
 }
 
-void queue_online_result(MetasequoiaEngine *engine, const metasequoia::linux_ime::OnlineRequest &request,
+void queue_online_result(std::shared_ptr<DeliveryHandle> handle, const metasequoia::linux_ime::OnlineRequest &request,
                          std::string candidate, CandidateSource source)
 {
     auto delivery = std::make_unique<OnlineDelivery>();
-    delivery->engine = static_cast<MetasequoiaEngine *>(g_object_ref(engine));
+    delivery->handle = std::move(handle);
     delivery->request = request;
     delivery->candidate = std::move(candidate);
     delivery->source = source;
@@ -290,7 +343,7 @@ void queue_online_result(MetasequoiaEngine *engine, const metasequoia::linux_ime
 
 struct TranslationDelivery
 {
-    MetasequoiaEngine *engine = nullptr;
+    std::shared_ptr<DeliveryHandle> handle;
     std::uint64_t generation = 0;
     std::vector<std::pair<std::string, std::string>> results;
 };
@@ -298,7 +351,11 @@ struct TranslationDelivery
 gboolean deliver_translation(gpointer user_data)
 {
     std::unique_ptr<TranslationDelivery> delivery(static_cast<TranslationDelivery *>(user_data));
-    auto *engine = delivery->engine;
+    auto *engine = delivery->handle->engine;
+    if (engine == nullptr)
+    {
+        return G_SOURCE_REMOVE;
+    }
     if (delivery->generation == engine->controller->online_generation())
     {
         engine->translation_glosses->clear();
@@ -314,23 +371,106 @@ gboolean deliver_translation(gpointer user_data)
         }
         update_lookup_table(engine);
     }
-    g_object_unref(engine);
     return G_SOURCE_REMOVE;
 }
 
-void queue_translation_result(MetasequoiaEngine *engine, std::uint64_t generation,
+void queue_translation_result(std::shared_ptr<DeliveryHandle> handle, std::uint64_t generation,
                               std::vector<std::pair<std::string, std::string>> results)
 {
     auto delivery = std::make_unique<TranslationDelivery>();
-    delivery->engine = static_cast<MetasequoiaEngine *>(g_object_ref(engine));
+    delivery->handle = std::move(handle);
     delivery->generation = generation;
     delivery->results = std::move(results);
     g_main_context_invoke_full(nullptr, G_PRIORITY_DEFAULT, deliver_translation, delivery.release(), nullptr);
 }
 
+// Long enough to collapse a burst -- a held Ctrl+. auto-repeating, or a user flipping modes back and
+// forth -- into a single write, short enough that a toggle is on disk well before the engine goes
+// away.
+constexpr guint kSettingsSaveDelayMs = 500;
+
+struct SettingsFileStamp
+{
+    gint64 modified = 0;
+    guint64 size = 0;
+};
+
+// Identity of the settings file as it is on disk right now. Modification time and size together, because a settings
+// window save and an engine save write the same keys in the same order and can differ only in one value. A file that
+// cannot be stat'ed reports a zero stamp, which never compares equal to a remembered one.
+SettingsFileStamp settings_file_stamp(const std::filesystem::path &path)
+{
+    SettingsFileStamp stamp;
+    std::error_code code;
+    const auto modified = std::filesystem::last_write_time(path, code);
+    if (code)
+    {
+        return stamp;
+    }
+    const auto size = std::filesystem::file_size(path, code);
+    if (code)
+    {
+        return stamp;
+    }
+    stamp.modified = static_cast<gint64>(modified.time_since_epoch().count());
+    stamp.size = static_cast<guint64>(size);
+    return stamp;
+}
+
+void remember_settings_file(MetasequoiaEngine *engine)
+{
+    const SettingsFileStamp stamp = settings_file_stamp(engine->settings_store->config_path());
+    engine->settings_file_modified = stamp.modified;
+    engine->settings_file_size = stamp.size;
+}
+
+void write_settings(MetasequoiaEngine *engine)
+{
+    // The plaintext overload on purpose: nothing reachable from the key path or the property menu
+    // changes a credential, and SettingsStore documents the credential overload as blocking on
+    // Secret Service, which must not happen while the IBus main loop is delivering keys.
+    if (engine->settings_store->save(*engine->settings, engine->settings_warning))
+    {
+        engine->settings_warning->clear();
+    }
+    // Unconditionally, and after the failed save as well: the store writes a temporary file and renames it over the
+    // target, so a save that reported an error may still have replaced the file, and the monitor must not read anything
+    // this process produced back as somebody else's edit.
+    remember_settings_file(engine);
+}
+
+gboolean flush_settings(gpointer user_data)
+{
+    auto *engine = static_cast<MetasequoiaEngine *>(user_data);
+    engine->settings_save_source = 0;
+    write_settings(engine);
+    show_settings_warning(engine);
+    return G_SOURCE_REMOVE;
+}
+
+// Makes a coalesced save durable at the moments the engine may never get another main-loop turn: the client has gone
+// away at focus-out, the user has switched input methods at disable, and finalize is the last turn of all. Only what
+// save_settings already captured is written, so this cannot persist anything the user did not ask for; it only stops
+// the debounce window from being the difference between a toggle surviving a logout and not. The warning is
+// deliberately not published here -- there is no client to show it to at any of these points, and focus_in shows
+// whatever the last write left behind.
+void flush_pending_settings(MetasequoiaEngine *engine)
+{
+    if (engine->settings_save_source == 0)
+    {
+        return;
+    }
+    g_source_remove(engine->settings_save_source);
+    engine->settings_save_source = 0;
+    write_settings(engine);
+}
+
+// Updates the retained settings with everything the controller owns and schedules the write. The
+// fields the engine does not own keep the values that were loaded from disk, so a save from a mode
+// toggle no longer reverts what the settings window stored.
 void save_settings(MetasequoiaEngine *engine)
 {
-    InputSettings settings;
+    InputSettings &settings = *engine->settings;
     settings.mode = engine->controller->mode();
     settings.scheme = engine->controller->scheme();
     settings.page_size = engine->controller->page_size();
@@ -358,12 +498,14 @@ void save_settings(MetasequoiaEngine *engine)
     settings.mixed_english_minimum_prefix = engine->controller->mixed_english_minimum_prefix();
     settings.mixed_emoji_candidates_enabled = engine->controller->mixed_emoji_candidates_enabled();
     settings.mixed_kaomoji_candidates_enabled = engine->controller->mixed_kaomoji_candidates_enabled();
-    settings.online = *engine->online_settings;
-    if (engine->secret_store && engine->settings_store->save(settings, *engine->secret_store, engine->settings_warning))
+    // settings.online is deliberately left as it was read from disk rather than taken from the
+    // running copy in engine->online_settings, which carries the hydrated credentials and the
+    // runtime record of a keyring that could not be read.
+
+    if (engine->settings_save_source == 0)
     {
-        engine->settings_warning->clear();
+        engine->settings_save_source = g_timeout_add(kSettingsSaveDelayMs, flush_settings, engine);
     }
-    show_settings_warning(engine);
 }
 
 void update_preedit(MetasequoiaEngine *engine)
@@ -407,7 +549,8 @@ void update_lookup_table(MetasequoiaEngine *engine)
 void refresh_translation(MetasequoiaEngine *engine)
 {
     if (!engine->translation_service || !engine->online_settings->candidate_translations_enabled ||
-        !engine->controller->has_composition() || engine->controller->candidates().empty())
+        !engine->online_settings->translation_credential_available || !engine->controller->has_composition() ||
+        engine->controller->candidates().empty())
     {
         if (!engine->translation_glosses->empty())
         {
@@ -464,6 +607,12 @@ void apply_result(MetasequoiaEngine *engine, const ControllerResult &result)
     {
         ibus_engine_forward_key_event(IBUS_ENGINE(engine), IBUS_Left, 0, 0);
     }
+    // Typing over a closing mark the controller inserted earlier commits nothing, so without this the
+    // keystroke would be swallowed and the caret would stay behind the mark.
+    for (std::size_t index = 0; index < result.cursor_right; ++index)
+    {
+        ibus_engine_forward_key_event(IBUS_ENGINE(engine), IBUS_Right, 0, 0);
+    }
 
     update_preedit(engine);
     update_lookup_table(engine);
@@ -471,24 +620,38 @@ void apply_result(MetasequoiaEngine *engine, const ControllerResult &result)
     refresh_translation(engine);
 }
 
-std::optional<char32_t> preceding_character(IBusEngine *engine)
+// The client's surrounding text once it is known to be usable: present, valid UTF-8, with the caret
+// past the start of it and no selection. Returns nullptr otherwise, which includes every client that
+// does not implement the capability at all. On success *cursor holds the caret offset in characters.
+const gchar *validated_surrounding_text(IBusEngine *engine, guint *cursor)
 {
     IBusText *surrounding = nullptr;
-    guint cursor = 0;
     guint anchor = 0;
-    ibus_engine_get_surrounding_text(engine, &surrounding, &cursor, &anchor);
-    if (surrounding == nullptr || cursor == 0 || cursor != anchor)
+    *cursor = 0;
+    ibus_engine_get_surrounding_text(engine, &surrounding, cursor, &anchor);
+    if (surrounding == nullptr || *cursor == 0 || *cursor != anchor)
     {
-        return std::nullopt;
+        return nullptr;
     }
 
     const gchar *contents = ibus_text_get_text(surrounding);
     if (contents == nullptr || !g_utf8_validate(contents, -1, nullptr))
     {
-        return std::nullopt;
+        return nullptr;
     }
     const glong length = g_utf8_strlen(contents, -1);
-    if (length < 0 || cursor > static_cast<guint>(length))
+    if (length < 0 || *cursor > static_cast<guint>(length))
+    {
+        return nullptr;
+    }
+    return contents;
+}
+
+std::optional<char32_t> preceding_character(IBusEngine *engine)
+{
+    guint cursor = 0;
+    const gchar *contents = validated_surrounding_text(engine, &cursor);
+    if (contents == nullptr)
     {
         return std::nullopt;
     }
@@ -508,15 +671,36 @@ std::optional<char32_t> preceding_character(IBusEngine *engine)
     return static_cast<char32_t>(value);
 }
 
+// Bounded to the characters that plausibly disambiguate the next word: the provider caps the field
+// at 2048 bytes anyway, and a shorter window keeps a whole paragraph of the user's document out of
+// the request.
+constexpr glong kContextCharacters = 32;
+
+std::string preceding_context(IBusEngine *engine)
+{
+    guint cursor = 0;
+    const gchar *contents = validated_surrounding_text(engine, &cursor);
+    if (contents == nullptr)
+    {
+        return {};
+    }
+
+    const glong end_offset = static_cast<glong>(cursor);
+    const glong start_offset = std::max<glong>(0, end_offset - kContextCharacters);
+    const gchar *start = g_utf8_offset_to_pointer(contents, start_offset);
+    const gchar *end = g_utf8_offset_to_pointer(contents, end_offset);
+    return std::string(start, static_cast<std::size_t>(end - start));
+}
+
 void commit_for_passthrough(MetasequoiaEngine *engine)
 {
     metasequoia::linux_ime::FrontendKeyEvent event;
     event.host_shortcut = true;
     const auto result = engine->controller->handle_key(event);
-    if (result.commit.has_value())
-    {
-        apply_result(engine, result);
-    }
+    // The host_shortcut branch always ends the composition, even in the cases that produce no text
+    // to commit, so the preedit and the lookup table have to be resynchronised either way or the
+    // client keeps drawing a composition the engine no longer has.
+    apply_result(engine, result);
 }
 
 gboolean process_key_event(IBusEngine *ibus_engine, guint keyval, guint keycode, guint state)
@@ -530,7 +714,17 @@ gboolean process_key_event(IBusEngine *ibus_engine, guint keyval, guint keycode,
         apply_result(engine, result);
         save_settings(engine);
         sync_properties(engine);
-        return FALSE;
+        // The chord is the IME's own key and reporting it as unhandled would run the application's
+        // binding for it as well. The Shift and Ctrl bindings instead toggle on the modifier
+        // release, which the client still has to see.
+        return engine->mode_toggle->chord_held() ? TRUE : FALSE;
+    }
+    if (engine->mode_toggle->chord_held())
+    {
+        // The auto-repeat presses that follow the chord toggle. They must not reach
+        // translate_ibus_key, which would read the held modifiers as a host shortcut and commit the
+        // composition once per repeat.
+        return TRUE;
     }
 
     auto translation = translate_ibus_key(keyval, state);
@@ -580,12 +774,15 @@ void focus_in(IBusEngine *ibus_engine)
 void focus_out(IBusEngine *ibus_engine)
 {
     auto *engine = METASEQUOIA_ENGINE(ibus_engine);
-    commit_for_passthrough(engine);
-    engine->controller->invalidate_context();
+    // GTK may already have switched its input context when this asynchronous
+    // notification arrives. Committing here can type into the newly focused
+    // widget; cancel the old composition and invalidate its pending requests.
+    engine->controller->reset();
     ibus_engine_hide_preedit_text(ibus_engine);
     update_lookup_table(engine);
     refresh_online(engine);
     refresh_translation(engine);
+    flush_pending_settings(engine);
 }
 
 void reset(IBusEngine *ibus_engine)
@@ -612,6 +809,14 @@ void enable(IBusEngine *ibus_engine)
     }
     engine->controller->invalidate_context();
     ibus_engine_get_surrounding_text(ibus_engine, nullptr, nullptr, nullptr);
+}
+
+void disable(IBusEngine *ibus_engine)
+{
+    // The counterpart of enable: the user has switched to another input method, and the daemon is
+    // free to tear this engine down -- or the whole process, on the way out of a session -- without
+    // ever running the pending timer.
+    flush_pending_settings(METASEQUOIA_ENGINE(ibus_engine));
 }
 
 void candidate_clicked(IBusEngine *ibus_engine, guint index, guint button, guint state)
@@ -724,6 +929,24 @@ void dispose(GObject *object)
 void finalize(GObject *object)
 {
     auto *engine = METASEQUOIA_ENGINE(object);
+    // Before anything is torn down: a worker may already be inside its callback, and a delivery it
+    // queues from now on has to find an empty handle instead of a half-destroyed engine.
+    if (engine->delivery_handle != nullptr)
+    {
+        (*engine->delivery_handle)->engine = nullptr;
+    }
+    // Cancelled before anything is freed: an event that is already queued would otherwise reach a callback whose
+    // controller and settings are being torn down under it.
+    if (engine->settings_monitor != nullptr)
+    {
+        g_file_monitor_cancel(engine->settings_monitor);
+        g_clear_object(&engine->settings_monitor);
+    }
+    // A deferred save still has to reach disk, and this is the last moment the settings it would
+    // write are alive.
+    flush_pending_settings(engine);
+    delete engine->delivery_handle;
+    engine->delivery_handle = nullptr;
     delete engine->online_service;
     engine->online_service = nullptr;
     delete engine->translation_service;
@@ -740,6 +963,10 @@ void finalize(GObject *object)
     engine->mode_toggle = nullptr;
     delete engine->settings_store;
     engine->settings_store = nullptr;
+    delete engine->settings;
+    engine->settings = nullptr;
+    delete engine->paths;
+    engine->paths = nullptr;
     delete engine->settings_warning;
     engine->settings_warning = nullptr;
     g_clear_object(&engine->properties);
@@ -753,6 +980,7 @@ void metasequoia_engine_class_init(MetasequoiaEngineClass *klass)
     engine_class->focus_in = focus_in;
     engine_class->focus_out = focus_out;
     engine_class->enable = enable;
+    engine_class->disable = disable;
     engine_class->reset = reset;
     engine_class->page_up = page_up;
     engine_class->page_down = page_down;
@@ -764,29 +992,8 @@ void metasequoia_engine_class_init(MetasequoiaEngineClass *klass)
     G_OBJECT_CLASS(klass)->finalize = finalize;
 }
 
-void metasequoia_engine_init(MetasequoiaEngine *engine)
+InputOptions build_input_options(const InputSettings &settings)
 {
-    engine->settings_store = new SettingsStore();
-    engine->settings_warning = new std::string();
-    engine->secret_store = new metasequoia::linux_ime::LibsecretSecretStore();
-    InputSettings settings = engine->settings_store->load(engine->settings_warning);
-    // Reuse the settings warning channel: without this a missing or empty
-    // dictionary just yields no candidates, which looks like the input method
-    // being broken rather than its data being absent.
-    if (engine->settings_warning->empty())
-    {
-        *engine->settings_warning = metasequoia::linux_ime::describe_unusable_dictionary();
-    }
-    // Avoid synchronously waking Secret Service for the common offline configuration. If an
-    // online provider is explicitly enabled, hydrate its credentials before starting workers.
-    if (settings.online.ai.enabled ||
-        (settings.online.candidate_translations_enabled &&
-         settings.online.translation_provider == metasequoia::linux_ime::TranslationProvider::DeepLX))
-    {
-        settings = engine->settings_store->load(*engine->secret_store, engine->settings_warning);
-    }
-    engine->online_settings = new metasequoia::linux_ime::OnlineSettings(settings.online);
-    engine->translation_glosses = new std::map<std::string, std::string>();
     InputOptions options;
     options.page_size = settings.page_size;
     options.punctuation_mode = settings.punctuation_mode;
@@ -817,41 +1024,207 @@ void metasequoia_engine_init(MetasequoiaEngine *engine)
     options.english_input.minimum_prefix = settings.mixed_english_minimum_prefix;
     options.mixed_expressive.emoji_candidates = settings.mixed_emoji_candidates_enabled;
     options.mixed_expressive.kaomoji_candidates = settings.mixed_kaomoji_candidates_enabled;
-    engine->controller = new InputController(settings.scheme, options);
-    (void)engine->controller->set_mode(settings.mode);
+    return options;
+}
+
+// A controller that reflects `settings` exactly. InputController takes its options once, at construction, and exposes
+// no way to hand it new ones, so this is what a settings reload has to go through as well.
+InputController *create_controller(const InputSettings &settings, const metasequoia::RuntimePaths &paths)
+{
+    auto *controller = new InputController(settings.scheme, build_input_options(settings), paths);
+    (void)controller->set_mode(settings.mode);
     // After set_mode, which early-returns when the mode is already the default and so would not
     // apply the lock itself.
-    engine->controller->set_punctuation_lock(settings.punctuation_lock);
+    controller->set_punctuation_lock(settings.punctuation_lock);
+    if (settings.punctuation_lock == PunctuationLock::Follow)
+    {
+        // Follow recomputes the punctuation from the language, which is right on a language switch
+        // but not here: restoring a session is not a switch, so the persisted punctuation -- a
+        // manual toggle or the settings window's choice -- has to be put back.
+        (void)controller->set_punctuation_mode(settings.punctuation_mode);
+    }
+    return controller;
+}
+
+// The settings the engine itself reads rather than the controller. mode_toggle has to exist already.
+void adopt_engine_settings(MetasequoiaEngine *engine, const InputSettings &settings)
+{
     engine->default_mode = settings.default_mode;
     engine->show_quanpin_helpcode = settings.show_quanpin_helpcode_in_candidates;
     engine->show_shuangpin_helpcode = settings.show_shuangpin_helpcode_in_candidates;
-    engine->mode_toggle = new IBusModeToggleTracker();
     engine->mode_toggle->configure(
         {settings.switch_language_shift, settings.switch_language_ctrl, settings.switch_language_ctrl_alt_space});
+}
+
+// Takes the settings file as the newer truth after somebody else has written it. Two things depend on this: the
+// retained copy the engine saves from the key path is no longer stale, so a save stops reverting what the settings
+// window just stored, and everything the reloaded file changes takes effect now rather than at the next login.
+void reload_settings(MetasequoiaEngine *engine)
+{
+    std::string warning;
+    // The plaintext overload for the same reason write_settings uses it: the credential-aware load blocks on Secret
+    // Service, and this runs on the IBus main loop.
+    InputSettings settings = engine->settings_store->load(&warning);
+    if (warning.empty())
+    {
+        warning = metasequoia::linux_ime::describe_unusable_dictionary(engine->paths->dictionaries);
+    }
+    *engine->settings_warning = warning;
+
+    // Credentials are never in config.ini -- they live in Secret Service, and the lookup that reads them is the
+    // blocking call this path must not make -- so what the running configuration already holds is carried over. A token
+    // is only carried while the provider it was fetched for is still the selected one; after a switch it belongs to
+    // somebody else's endpoint. A copy rather than a reference: the running configuration is overwritten a few lines
+    // below, and reading the old values out of the object being replaced would depend on the order of these statements.
+    const metasequoia::linux_ime::OnlineSettings live = *engine->online_settings;
+    metasequoia::linux_ime::OnlineSettings online = settings.online;
+    // A non-empty token is the only proof this process actually holds an AI credential: the hydration happens once, at
+    // startup, so AI that was off then has no token now and no worker either, and it stays inactive until the engine is
+    // restarted rather than sending an unauthenticated request.
+    const bool ai_credential_still_applies = !live.ai.token.empty() && online.ai.provider == live.ai.provider;
+    online.ai.token = ai_credential_still_applies ? live.ai.token : std::string();
+    online.ai_credential_available = ai_credential_still_applies && live.ai_credential_available;
+    // Translation is the provider where having no credential is a supported configuration -- a self-hosted DeepLX
+    // endpoint may accept unauthenticated requests, which is why load() only clears this flag when the credential
+    // service could not be reached -- so a provider switch drops the token that belonged to the other backend without
+    // also blocking the request.
+    const bool translation_credential_still_applies = online.translation_provider == live.translation_provider;
+    online.translation_token = translation_credential_still_applies ? live.translation_token : std::string();
+    online.translation_credential_available =
+        translation_credential_still_applies ? live.translation_credential_available : true;
+
+    // The retained copy stays what is on disk, credentials excluded, exactly as it is at startup.
+    *engine->settings = settings;
+    *engine->online_settings = online;
+    // connect_timeout and total_timeout are deliberately not re-applied: the providers capture them when they are
+    // constructed, and replacing the services would mean joining workers that may be inside a request, which the main
+    // loop cannot wait for. They take effect at the next start.
+
+    // Nothing the controller reads can be changed after it exists, so a new page size, scheme or helpcode schema means
+    // a new controller. The composition in progress belongs to the old one and is committed first, the way focus_out
+    // ends one.
+    commit_for_passthrough(engine);
+    delete engine->controller;
+    engine->controller = create_controller(settings, *engine->paths);
+    adopt_engine_settings(engine, settings);
+    engine->translation_glosses->clear();
+
+    update_preedit(engine);
+    update_lookup_table(engine);
+    sync_properties(engine);
+    show_settings_warning(engine);
+    refresh_online(engine);
+    refresh_translation(engine);
+}
+
+// The engine writes this file itself, and every one of those writes comes back as an event; adopting them would rebuild
+// the controller after every mode toggle. Which write it was is decided by the remembered stamp rather than by the
+// event type, because a save arrives as a temporary file renamed over the target and surfaces as anything from CREATED
+// to CHANGES_DONE_HINT depending on the monitor backend.
+void settings_file_changed(GFileMonitor *monitor, GFile *file, GFile *other_file, GFileMonitorEvent event_type,
+                           gpointer user_data)
+{
+    (void)monitor;
+    (void)file;
+    (void)other_file;
+    (void)event_type;
+    auto *engine = static_cast<MetasequoiaEngine *>(user_data);
+    const SettingsFileStamp stamp = settings_file_stamp(engine->settings_store->config_path());
+    if (stamp.modified == 0)
+    {
+        // No readable file at this instant: it was deleted, or this is the moment between a writer's temporary file and
+        // its rename. There is nothing to adopt, and the rename raises another event with the file back in place.
+        return;
+    }
+    if (stamp.modified == engine->settings_file_modified && stamp.size == engine->settings_file_size)
+    {
+        return;
+    }
+    engine->settings_file_modified = stamp.modified;
+    engine->settings_file_size = stamp.size;
+    reload_settings(engine);
+}
+
+void metasequoia_engine_init(MetasequoiaEngine *engine)
+{
+    engine->paths = new metasequoia::RuntimePaths(metasequoia::RuntimePaths::legacy());
+    engine->settings_store = new SettingsStore();
+    engine->settings_warning = new std::string();
+    engine->secret_store = new metasequoia::linux_ime::LibsecretSecretStore();
+    InputSettings settings = engine->settings_store->load(engine->settings_warning);
+    // Reuse the settings warning channel: without this a missing or empty
+    // dictionary just yields no candidates, which looks like the input method
+    // being broken rather than its data being absent.
+    if (engine->settings_warning->empty())
+    {
+        *engine->settings_warning = metasequoia::linux_ime::describe_unusable_dictionary(engine->paths->dictionaries);
+    }
+    // Retained before the credential hydration below, so that what the engine writes back is what
+    // was on disk. The hydrated copy additionally carries the live tokens and the runtime flags that
+    // record a keyring which could not be read, and neither belongs in a save made from the key path.
+    engine->settings = new InputSettings(settings);
+    // Avoid synchronously waking Secret Service for the common offline configuration. If an
+    // online provider is explicitly enabled, hydrate its credentials before starting workers.
+    if (settings.online.ai.enabled ||
+        (settings.online.candidate_translations_enabled &&
+         settings.online.translation_provider == metasequoia::linux_ime::TranslationProvider::DeepLX))
+    {
+        settings = engine->settings_store->load(*engine->secret_store, engine->settings_warning);
+    }
+    engine->online_settings = new metasequoia::linux_ime::OnlineSettings(settings.online);
+    engine->translation_glosses = new std::map<std::string, std::string>();
+    engine->controller = create_controller(settings, *engine->paths);
+    engine->mode_toggle = new IBusModeToggleTracker();
+    adopt_engine_settings(engine, settings);
     initialize_properties(engine);
     update_property_values(engine);
 
+    // The configured deadlines reach curl only through the providers, each of which takes a copy when it is
+    // constructed. A provider built without them falls back to the built-in defaults without saying so, which is what
+    // left connect-timeout-ms and total-timeout-ms as settings that changed nothing.
+    const HttpTimeouts timeouts{engine->online_settings->connect_timeout, engine->online_settings->total_timeout};
     const auto transport = std::make_shared<CurlHttpTransport>();
-    const auto cloud_provider = std::make_shared<GoogleCloudProvider>(transport);
+    const auto cloud_provider = std::make_shared<GoogleCloudProvider>(transport, timeouts);
     std::shared_ptr<AiSuggestionProvider> ai_provider;
-    if (engine->online_settings->ai.enabled)
+    if (engine->online_settings->ai.enabled && engine->online_settings->ai_credential_available)
     {
-        ai_provider = std::make_shared<AiSuggestionProvider>(transport);
+        ai_provider = std::make_shared<AiSuggestionProvider>(transport, false, timeouts);
     }
+    const auto handle = std::make_shared<DeliveryHandle>();
+    handle->engine = engine;
+    engine->delivery_handle = new std::shared_ptr<DeliveryHandle>(handle);
     engine->online_service = new OnlineCandidateService(
         cloud_provider,
-        [engine](const metasequoia::linux_ime::OnlineRequest &request, std::string candidate, CandidateSource source) {
-            queue_online_result(engine, request, std::move(candidate), source);
+        [handle](const metasequoia::linux_ime::OnlineRequest &request, std::string candidate, CandidateSource source) {
+            queue_online_result(handle, request, std::move(candidate), source);
         },
         std::chrono::milliseconds(500), ai_provider);
 
-    const auto translation_provider = std::make_shared<TranslationProvider>(
-        metasequoia::path_to_utf8(metasequoia::data_file_path("english.db")), transport);
+    const auto translation_provider = std::make_shared<TranslationProvider>(*engine->paths, transport, timeouts);
     engine->translation_service = new TranslationService(
         translation_provider,
-        [engine](std::uint64_t generation, std::vector<std::pair<std::string, std::string>> results) {
-            queue_translation_result(engine, generation, std::move(results));
+        [handle](std::uint64_t generation, std::vector<std::pair<std::string, std::string>> results) {
+            queue_translation_result(handle, generation, std::move(results));
         });
+
+    // Last, so an event arriving on the next main-loop turn finds a fully built engine. The settings window is a
+    // separate process: without this watch the engine would go on writing the copy it read here over whatever the user
+    // has changed since.
+    remember_settings_file(engine);
+    GFile *config_file = g_file_new_for_path(metasequoia::path_to_utf8(engine->settings_store->config_path()).c_str());
+    GError *monitor_error = nullptr;
+    engine->settings_monitor = g_file_monitor_file(config_file, G_FILE_MONITOR_NONE, nullptr, &monitor_error);
+    g_object_unref(config_file);
+    if (engine->settings_monitor != nullptr)
+    {
+        g_signal_connect(engine->settings_monitor, "changed", G_CALLBACK(settings_file_changed), engine);
+    }
+    else
+    {
+        g_warning("Unable to watch the input settings file: %s",
+                  monitor_error != nullptr ? monitor_error->message : "unknown error");
+    }
+    g_clear_error(&monitor_error);
 }
 
 void bus_disconnected(IBusBus *bus, gpointer user_data)
@@ -869,13 +1242,21 @@ int main(int argc, char **argv)
     // A packaged install leaves the dictionaries in a system directory that the
     // engine never reads. Seed the per-user directory before anything opens a
     // database, or the engine creates an empty one and produces no candidates.
-    // Seeding stops at the first failure, so a non-zero count says nothing about whether the rest arrived. Report
-    // whatever the error channel holds, or a partial seed leaves the emoji, kaomoji and English data missing silently.
-    std::string seed_error;
-    metasequoia::linux_ime::seed_user_data(&seed_error);
-    if (!seed_error.empty())
+    // Seeding attempts every file even after one of them fails, so what comes back is a partial success: `seeded`
+    // counts what was placed and every file that could not be comes back separately. Both halves matter. Reporting only
+    // the first failure would hide an unreadable helpcode set behind an unreadable database, and a non-zero count is
+    // not success either -- the run that copies the main dictionary and then fails on the others leaves an installation
+    // that produces Chinese candidates but no Emoji, kaomoji or English ones, with nothing said about why.
+    std::vector<std::string> seed_errors;
+    const std::size_t seeded = metasequoia::linux_ime::seed_user_data(&seed_errors);
+    for (const std::string &failure : seed_errors)
     {
-        g_warning("Unable to seed the user data directory: %s", seed_error.c_str());
+        g_warning("Unable to seed the user data directory: %s", failure.c_str());
+    }
+    if (!seed_errors.empty())
+    {
+        g_warning("The user data directory is incomplete: %zu file(s) seeded, %zu could not be.", seeded,
+                  seed_errors.size());
     }
     ibus_init();
     IBusBus *bus = ibus_bus_new();

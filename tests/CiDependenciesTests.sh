@@ -77,8 +77,17 @@ curl --fail --location --silent --show-error \
     | cmp - "$checkout_root/vendor/MetasequoiaImeEngine/core/input_session.cpp"
 
 engine_tree="$test_root/engine-tree.json"
+# Same reasoning as the bootstrap this test drives: the unauthenticated ceiling of 60 an hour is counted per source address and GitHub-hosted runners share addresses between customers, so an unrelated job can spend it and turn this call into a 403 that fails CI for no reason. .github/workflows/ci.yml already puts GITHUB_TOKEN in this step's environment. The header only ever reaches api.github.com, whose host is a literal here, and --location rather than --location-trusted keeps curl from forwarding it across a redirect to another host. It stays off the raw.githubusercontent.com fetches, which are on a separate quota and need no credential.
+github_api_headers=(
+    --header 'Accept: application/vnd.github+json'
+    --header 'X-GitHub-Api-Version: 2022-11-28'
+)
+if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+    github_api_headers+=(--header "Authorization: Bearer $GITHUB_TOKEN")
+fi
 curl --fail --location --silent --show-error \
     --retry 3 --retry-all-errors \
+    "${github_api_headers[@]}" \
     "https://api.github.com/repos/$engine_repository/git/trees/$engine_revision?recursive=1" \
     --output "$engine_tree"
 googlepinyin_revision=$(python3 - "$engine_tree" <<'PYTHON'

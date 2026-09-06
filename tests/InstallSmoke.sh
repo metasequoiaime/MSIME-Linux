@@ -17,7 +17,10 @@ trap cleanup EXIT
 
 export HOME="$smoke_root/home"
 export XDG_DATA_HOME="$smoke_root/data"
+# The installer resolves the environment.d file it writes from XDG_CONFIG_HOME first and only falls back to HOME, so without this a caller who has that variable set gets the file written into their real config directory, naming a component directory inside the temporary tree this test deletes on exit.
+export XDG_CONFIG_HOME="$smoke_root/config"
 export METASEQUOIA_IME_BUILD_DIR="$build_dir"
+mkdir -p "$HOME" "$XDG_DATA_HOME" "$XDG_CONFIG_HOME"
 
 "$project_root/scripts/install.sh"
 
@@ -36,6 +39,8 @@ test -f "$XDG_DATA_HOME/applications/metasequoia-ime-toolbar.desktop"
 test -f "$data_dir/msime.db"
 test -f "$data_dir/others.db"
 test -f "$data_dir/english.db"
+test -f "$data_dir/dict_japanese.dat"
+test -f "$data_dir/mozc_dictionary_oss_README.txt"
 test -f "$data_dir/helpcodes/helpcode.txt"
 test -f "$data_dir/helpcodes/zrm_helpcode_big_unique.txt"
 test -f "$data_dir/helpcodes/shouyou2_0_helpcode.txt"
@@ -43,6 +48,12 @@ test -f "$data_dir/helpcodes/shouyouplus_helpcode.txt"
 test -f "$data_dir/helpcodes/xiaohe_helpcode.txt"
 grep -F "<exec>$HOME/.local/libexec/metasequoia-ime-ibus --ibus</exec>" \
     "$XDG_DATA_HOME/ibus/component/metasequoiaime.xml"
+# The Japanese scheme this frontend advertises degrades to single-word candidates without the model, and the decoder reports nothing when it fails to load one, so check the magic the Engine actually reads rather than only the file name.
+test "$(head -c 7 "$data_dir/dict_japanese.dat")" = MSJPDT1
+# IBUS_COMPONENT_PATH replaces the IBus search path rather than extending it, so the line has to name the system directory as well as this run's own component directory. Deriving the system directory the way the installer does also proves the file landed in the sandbox instead of the invoking user's real config directory.
+system_component_dir=$(pkg-config --variable=pkgdatadir ibus-1.0 2>/dev/null || true)
+grep -Fqx "IBUS_COMPONENT_PATH=${system_component_dir:-/usr/share/ibus}/component:$XDG_DATA_HOME/ibus/component" \
+    "$XDG_CONFIG_HOME/environment.d/10-metasequoiaime.conf"
 
 python3 - "$data_dir" <<'PYTHON'
 import sqlite3

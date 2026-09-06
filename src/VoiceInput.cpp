@@ -6,6 +6,7 @@
 #include <msime/voice/stt_service.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <string>
@@ -23,6 +24,34 @@ namespace metasequoia::linux_ime
 namespace
 {
 constexpr std::size_t kMaximumAudioBytes = voice::maximum_encoded_audio_bytes;
+constexpr std::chrono::milliseconds kFallbackConnectTimeout{2500};
+constexpr std::chrono::milliseconds kFallbackTotalTimeout{8000};
+// Hard ceiling so a stalled upload still fails instead of pinning the caller indefinitely; the largest payload the
+// shared protocol accepts (20 MiB) stays well below it at the assumed rate.
+constexpr std::chrono::milliseconds kMaximumTotalTimeout{300000};
+// Deliberately pessimistic uplink floor (1 Mbit/s) used to turn the request body into an upload allowance.
+constexpr std::uint64_t kAssumedUploadBytesPerSecond = 128 * 1024;
+
+std::chrono::milliseconds connect_timeout_for(const VoiceInputConfig &config)
+{
+    // A non-positive value means "no limit" to libcurl, which is never what a misconfigured setting should buy.
+    return config.connect_timeout.count() > 0 ? config.connect_timeout : kFallbackConnectTimeout;
+}
+
+// CURLOPT_TIMEOUT_MS bounds the whole transfer, so a flat budget rejects the recordings this repo itself advertises:
+// 120 s of 16 kHz mono S16_LE is roughly 3.8 MB, which cannot even leave the machine within the 8 s default. Spend the
+// configured total timeout on connection setup and server-side processing, then add time proportional to the bytes
+// actually being uploaded.
+std::chrono::milliseconds total_timeout_for(const VoiceInputConfig &config, std::size_t body_bytes)
+{
+    const std::chrono::milliseconds base =
+        config.total_timeout.count() > 0 ? config.total_timeout : kFallbackTotalTimeout;
+    const std::uint64_t upload_allowance =
+        static_cast<std::uint64_t>(body_bytes) * 1000U / kAssumedUploadBytesPerSecond;
+    const std::uint64_t budget = std::min(static_cast<std::uint64_t>(base.count()) + upload_allowance,
+                                          static_cast<std::uint64_t>(kMaximumTotalTimeout.count()));
+    return std::chrono::milliseconds(static_cast<std::chrono::milliseconds::rep>(budget));
+}
 
 void set_error(std::string *error, const char *message)
 {
@@ -90,6 +119,8 @@ std::optional<std::string> VoiceInputProvider::transcribe(std::string_view audio
     request.url = config.endpoint;
     request.headers = {"Authorization: Bearer " + config.token, "Content-Type: " + payload.content_type};
     request.body = payload.body;
+    request.connect_timeout = connect_timeout_for(config);
+    request.total_timeout = total_timeout_for(config, request.body.size());
     request.max_response_bytes = 256 * 1024;
     if (cancelled && cancelled())
     {
@@ -143,6 +174,8 @@ std::optional<std::string> VoiceInputProvider::polish(std::string_view text, con
         set_error(error, "Voice polish configuration or text was invalid.");
         return std::nullopt;
     }
+    request.connect_timeout = connect_timeout_for(config);
+    request.total_timeout = total_timeout_for(config, request.body.size());
     request.max_response_bytes = 256 * 1024;
     if (cancelled && cancelled())
     {

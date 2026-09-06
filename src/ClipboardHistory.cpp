@@ -120,8 +120,11 @@ bool write_file_atomically(const std::filesystem::path &path, const std::string 
         }
         written += result;
     }
-    if (fsync(descriptor) != 0 || !close_descriptor() ||
-        rename(writable.data(), metasequoia::path_to_utf8(path).c_str()) != 0)
+    // Both steps run before the verdict: short-circuiting on fsync would skip the close, and the leaked descriptor
+    // would pin the unlinked inode for the lifetime of a long-running tools process that retries on every poll tick.
+    const bool synced = fsync(descriptor) == 0;
+    const bool closed = close_descriptor();
+    if (!synced || !closed || rename(writable.data(), metasequoia::path_to_utf8(path).c_str()) != 0)
     {
         unlink(writable.data());
         set_error(error, "Unable to atomically replace clipboard history.");
@@ -160,15 +163,15 @@ bool ClipboardHistory::set_enabled(bool value, std::string *error)
     SettingsStore settings;
     InputSettings current = settings.load();
     current.clipboard_history_enabled = value;
-    if (!settings.save(current, error))
+    // Discard the stored history before the setting is committed. The config and the history live in different
+    // directories, so a failed clear must leave both untouched: persisting first would tell the caller the toggle did
+    // not take while config.ini already said otherwise, and the plaintext history would still be on disk. Clearing
+    // first is safe because add() re-reads the setting on every call and clearing an empty store is a no-op.
+    if (!value && !clear(error))
     {
         return false;
     }
-    if (!value)
-    {
-        return clear(error);
-    }
-    return true;
+    return settings.save(current, error);
 }
 
 std::vector<std::string> ClipboardHistory::load(std::string *error) const

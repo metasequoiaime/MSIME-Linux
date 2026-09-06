@@ -1,6 +1,7 @@
 #include "../src/InputController.h"
 #include "../src/online/AiSuggestionProvider.h"
 #include "../src/online/GoogleCloudProvider.h"
+#include "../src/online/HttpTimeouts.h"
 #include "../src/online/HttpTransport.h"
 #include "../src/online/OnlineCandidateService.h"
 #include "../vendor/MetasequoiaImeEngine/core/data_path.h"
@@ -37,6 +38,7 @@ using metasequoia::linux_ime::online::CancellationCheck;
 using metasequoia::linux_ime::online::GoogleCloudProvider;
 using metasequoia::linux_ime::online::HttpRequest;
 using metasequoia::linux_ime::online::HttpResponse;
+using metasequoia::linux_ime::online::HttpTimeouts;
 using metasequoia::linux_ime::online::HttpTransport;
 using metasequoia::linux_ime::online::OnlineCandidateService;
 
@@ -549,6 +551,17 @@ int main()
                 std::string::npos,
             "The AI cache key exposed an API token.");
 
+    auto timed_ai_transport = std::make_shared<FakeTransport>();
+    timed_ai_transport->queue({{200, ai_response("超时"), {}}});
+    AiSuggestionProvider timed_ai_provider(timed_ai_transport, false, HttpTimeouts{300ms, 1500ms});
+    require(timed_ai_provider.fetch(ai_query("nihao"), "前文", deepseek_config, [] { return false; }) == "超时",
+            "The AI provider built with configured timeouts did not complete its request.");
+    const auto timed_ai_requests = timed_ai_transport->requests();
+    require(timed_ai_requests.size() == 1 && timed_ai_requests[0].connect_timeout == 300ms &&
+                timed_ai_requests[0].total_timeout == 1500ms && ai_requests[0].connect_timeout == 2500ms &&
+                ai_requests[0].total_timeout == 8000ms,
+            "The AI request ignored the configured connect and total timeouts.");
+
     auto invalid_ai_transport = std::make_shared<FakeTransport>();
     AiSuggestionProvider invalid_ai_provider(invalid_ai_transport);
     auto custom_config = ai_config(AiProvider::Custom);
@@ -727,6 +740,70 @@ int main()
                     deliveries[0].request.generation == 91 && deliveries[0].source == CandidateSource::AiSuggestion,
                 "A newer generation did not cancel and replace the active AI request.");
     }
+
+    // The engine reads at most 32 characters of the text in front of the caret and hands them to the service, so
+    // the window here is 96 bytes of Chinese: it has to survive request construction verbatim, well below the
+    // provider's own 2048-byte context ceiling.
+    std::string context_window;
+    for (int index = 0; index < 32; ++index)
+    {
+        context_window += "前";
+    }
+    auto context_cloud_transport = std::make_shared<FakeTransport>();
+    auto context_ai_transport = std::make_shared<FakeTransport>();
+    context_ai_transport->queue({{200, ai_response("上文候选"), {}}});
+    auto context_cloud_provider = std::make_shared<GoogleCloudProvider>(context_cloud_transport);
+    auto context_ai_provider =
+        std::make_shared<AiSuggestionProvider>(context_ai_transport, false, HttpTimeouts{300ms, 1500ms});
+    auto context_deliveries = std::make_shared<DeliveryLog>();
+    {
+        OnlineCandidateService service(
+            context_cloud_provider,
+            [context_deliveries](const OnlineRequest &online_request, std::string candidate, CandidateSource source) {
+                context_deliveries->append(online_request, std::move(candidate), source);
+            },
+            0ms, context_ai_provider);
+        service.submit({110, ai_query("nihao", 110)}, context_window, deepseek_config);
+        require(context_ai_transport->wait_for_calls(1, 1s),
+                "The AI request carrying the preceding context never started.");
+        require(context_deliveries->wait_for_size(1, 1s),
+                "The AI candidate answered from the preceding context was not delivered.");
+    }
+    const auto context_requests = context_ai_transport->requests();
+    const auto context_body = boost::json::parse(context_requests[0].body).as_object();
+    const auto &context_messages = context_body.at("messages").as_array();
+    const auto context_input =
+        boost::json::parse(context_messages[1].as_object().at("content").as_string()).as_object();
+    const auto &context_field = context_input.at("context").as_string();
+    const std::string sent_context(context_field.data(), context_field.size());
+    require(context_window.size() == 96U && sent_context == context_window &&
+                context_requests[0].connect_timeout == 300ms && context_requests[0].total_timeout == 1500ms,
+            "The AI request lost the engine's 32-character context window or its configured timeouts.");
+
+    auto silent_cloud_transport = std::make_shared<FakeTransport>();
+    silent_cloud_transport->queue({{200, kSuccess, {}}});
+    auto silent_ai_transport = std::make_shared<FakeTransport>();
+    silent_ai_transport->queue({{200, ai_response("不应发送"), {}}});
+    auto silent_cloud_provider = std::make_shared<GoogleCloudProvider>(silent_cloud_transport);
+    auto silent_ai_provider = std::make_shared<AiSuggestionProvider>(silent_ai_transport);
+    auto silent_deliveries = std::make_shared<DeliveryLog>();
+    {
+        OnlineCandidateService service(
+            silent_cloud_provider,
+            [silent_deliveries](const OnlineRequest &online_request, std::string candidate, CandidateSource source) {
+                silent_deliveries->append(online_request, std::move(candidate), source);
+            },
+            0ms, silent_ai_provider);
+        auto silent_query = ai_query("nihao", 120);
+        silent_query.ai_eligible = false;
+        service.submit({120, silent_query}, context_window, deepseek_config);
+        require(silent_deliveries->wait_for_size(1, 1s),
+                "The cloud half of an AI-ineligible request was not delivered.");
+    }
+    const auto silent_values = silent_deliveries->values();
+    require(silent_ai_transport->requests().empty() && silent_values.size() == 1 &&
+                silent_values[0].source == CandidateSource::CloudSuggestion,
+            "An AI-ineligible request sent the user's preceding context to the AI transport.");
 
     auto concurrent_stop_cloud_transport = std::make_shared<FakeTransport>();
     concurrent_stop_cloud_transport->queue({{200, kSuccess, {}}});

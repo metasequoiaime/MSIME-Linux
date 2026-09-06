@@ -29,6 +29,16 @@ struct OnlineSettings
     std::string translation_token;
     std::chrono::milliseconds connect_timeout{2500};
     std::chrono::milliseconds total_timeout{8000};
+    // Whether Secret Service handed out the credential an enabled provider needs. These are runtime state that save()
+    // never writes to config.ini: a locked or absent keyring is not the user turning a provider off, and persisting it
+    // as such silently loses the intent for good. `enabled` is the user's persisted intent and only the user changes
+    // it; these flags are this run's answer about whether that intent can be acted on. Consumers gate a request on
+    // `enabled && <provider>_credential_available`, and the credential-aware load() is the only thing that clears them.
+    // AI needs a credential either way, so both a service that could not be reached (SecretStatus::Unavailable) and one
+    // that answered with nothing stored (SecretStatus::NotFound) clear its flag; translation only clears on
+    // Unavailable, because a self-hosted DeepLX endpoint may legitimately accept unauthenticated requests.
+    bool ai_credential_available = true;
+    bool translation_credential_available = true;
 };
 
 struct InputSettings
@@ -84,6 +94,9 @@ struct InputSettings
     bool switch_language_ctrl = false;
     bool switch_language_ctrl_alt_space = true;
     VoiceInputConfig voice;
+    // The voice twin of the online credential flags above: runtime only, never persisted, and cleared by either
+    // non-Found answer because the voice provider authenticates.
+    bool voice_credential_available = true;
     OnlineSettings online;
 };
 

@@ -1,4 +1,6 @@
 #include "TranslationProvider.h"
+#include "contracts/assets/assets.h"
+#include "core/data_path.h"
 
 #include "EndpointPolicy.h"
 
@@ -10,6 +12,8 @@
 #include <cctype>
 #include <chrono>
 #include <condition_variable>
+#include <cstddef>
+#include <memory>
 #include <mutex>
 #include <stdexcept>
 #include <utility>
@@ -19,6 +23,15 @@ namespace metasequoia::linux_ime::online
 namespace
 {
 thread_local const TranslationService *active_translation_service = nullptr;
+
+// A remote gloss costs one HTTPS round trip per candidate while the engine hands us up to a hundred of them, so the
+// remote backend stops just past the first lookup table page (the largest page size the settings accept is nine)
+// instead of shipping the whole list to a third party on every composition. The local dictionary keeps glossing
+// everything because it never leaves the machine.
+constexpr std::size_t kMaximumRemoteCandidates = 12;
+
+// Glosses are published as they accumulate so an interrupted run still shows what it already resolved.
+constexpr std::size_t kPublishBatchSize = 4;
 
 std::string trim(std::string_view value)
 {
@@ -69,13 +82,28 @@ std::size_t utf8_prefix(std::string_view value, std::size_t maximum)
 }
 } // namespace
 
-TranslationProvider::TranslationProvider(std::string dictionary_path, std::shared_ptr<HttpTransport> transport)
-    : dictionary_path_(std::move(dictionary_path)), transport_(std::move(transport))
+TranslationProvider::TranslationProvider(std::string dictionary_path, std::shared_ptr<HttpTransport> transport,
+                                         HttpTimeouts timeouts)
+    : dictionary_path_(std::move(dictionary_path)), transport_(std::move(transport)), timeouts_(timeouts)
 {
     if (!transport_)
     {
         throw std::invalid_argument("Translation provider requires an HTTP transport.");
     }
+}
+
+// Defined here because the cached dictionary is only a forward declaration in the header.
+TranslationProvider::~TranslationProvider() = default;
+
+// The overrides are assigned in the body rather than the initialiser list because the delegated constructor owns the
+// members. That is still before any lookup can run, which is what matters now that the dictionary is opened once and
+// cached: it reads translations_path_ when it is first built, not on every call.
+TranslationProvider::TranslationProvider(const RuntimePaths &paths, std::shared_ptr<HttpTransport> transport,
+                                         HttpTimeouts timeouts)
+    : TranslationProvider(path_to_utf8(paths.dictionary(assets::english_dictionary)), std::move(transport), timeouts)
+{
+    paths.validate();
+    translations_path_ = path_to_utf8(paths.resource(assets::translations));
 }
 
 std::optional<std::string> TranslationProvider::lookup(std::string_view candidate, std::string_view target_language,
@@ -90,11 +118,15 @@ std::optional<std::string> TranslationProvider::lookup(std::string_view candidat
 
     if (target_language == "en" && !dictionary_path_.empty())
     {
-        EnglishDictionary dictionary(dictionary_path_, false);
-        std::string local = dictionary.query_chinese_gloss(std::string(candidate));
+        std::lock_guard dictionary_lock(dictionary_mutex_);
+        if (!dictionary_)
+        {
+            dictionary_ = std::make_unique<EnglishDictionary>(dictionary_path_, false, translations_path_);
+        }
+        std::string local = dictionary_->query_chinese_gloss(std::string(candidate));
         if (local.empty())
         {
-            local = dictionary.query_english_gloss(std::string(candidate));
+            local = dictionary_->query_english_gloss(std::string(candidate));
         }
         local = format_gloss(local);
         if (!local.empty())
@@ -123,6 +155,8 @@ std::optional<std::string> TranslationProvider::lookup(std::string_view candidat
         request.headers.push_back("Authorization: Bearer " + std::string(token));
     }
     request.body = boost::json::serialize(body);
+    request.connect_timeout = timeouts_.connect;
+    request.total_timeout = timeouts_.total;
     const HttpResponse response = transport_->perform(request, cancelled);
     if (response.status_code < 200 || response.status_code >= 300 || response.body.empty() ||
         (cancelled && cancelled()))
@@ -327,28 +361,44 @@ void TranslationService::worker_loop()
             return state->stopping || state->token != observed_token;
         };
         std::vector<std::pair<std::string, std::string>> results;
-        for (const auto &candidate : request->candidates)
+        std::size_t published = 0;
+        // Every delivery carries the whole accumulated set because the frontend replaces its gloss map with what it
+        // receives.
+        const auto publish = [&] {
+            try
+            {
+                callback_(request->generation, results);
+            }
+            catch (...)
+            {
+            }
+            published = results.size();
+        };
+        for (std::size_t index = 0; index < request->candidates.size(); ++index)
         {
             if (cancelled())
             {
                 break;
             }
+            // Candidates past the remote budget still get a local gloss, which costs nothing beyond a cached dictionary
+            // query; only the network round trips are rationed.
+            const TranslationBackend backend =
+                index < kMaximumRemoteCandidates ? request->config.backend : TranslationBackend::Local;
+            const auto &candidate = request->candidates[index];
             const auto gloss = provider_->lookup(candidate, request->config.target_language, request->config.endpoint,
-                                                 request->config.token, cancelled, request->config.backend);
+                                                 request->config.token, cancelled, backend);
             if (gloss.has_value())
             {
                 results.emplace_back(candidate, *gloss);
             }
+            if (results.size() - published >= kPublishBatchSize && !cancelled())
+            {
+                publish();
+            }
         }
-        if (!results.empty() && !cancelled())
+        if (results.size() > published && !cancelled())
         {
-            try
-            {
-                callback_(request->generation, std::move(results));
-            }
-            catch (...)
-            {
-            }
+            publish();
         }
         lock.lock();
     }

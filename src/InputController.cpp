@@ -15,6 +15,23 @@ InputOptions options_with_page_size(std::size_t page_size)
     return options;
 }
 
+SessionOptions session_options(SchemeType scheme, const InputOptions &options, RuntimePaths paths)
+{
+    SessionOptions result;
+    result.paths = std::move(paths);
+    result.scheme = scheme;
+    result.helpcode =
+        scheme == SchemeType::Shuangpin ? options.shuangpin_helpcode_enabled : options.quanpin_helpcode_enabled;
+    result.helpcode_schema =
+        scheme == SchemeType::Shuangpin ? options.shuangpin_helpcode_schema : options.quanpin_helpcode_schema;
+    result.frequency = {options.frequency_adjustment_mode, options.frequency_trigger_count,
+                        options.frequency_linear_step};
+    result.local_modes = options.local_modes;
+    result.english = options.english_input;
+    result.expressive = options.mixed_expressive;
+    return result;
+}
+
 bool valid_preedit_style(PreeditStyle style)
 {
     return style == PreeditStyle::Raw || style == PreeditStyle::Pinyin || style == PreeditStyle::Hidden;
@@ -42,10 +59,17 @@ ControllerResult::ControllerResult(KeyResult result)
 }
 
 InputController::InputController(SchemeType scheme_type, InputOptions options)
-    : session_(scheme_type), page_size_(options.page_size), punctuation_mode_(options.punctuation_mode),
-      character_width_(options.character_width), comma_period_paging_(options.comma_period_paging),
-      word_to_character_(options.word_to_character), bracket_paging_(options.bracket_paging),
-      smart_punctuation_(options.smart_punctuation),
+    : InputController(scheme_type, std::move(options), RuntimePaths::legacy())
+{
+}
+
+InputController::InputController(SchemeType scheme_type, InputOptions options, RuntimePaths paths)
+    : session_(session_options(scheme_type, options, std::move(paths))), snapshot_(session_.snapshot()),
+      local_mode_options_(options.local_modes), english_input_options_(options.english_input),
+      mixed_expressive_options_(options.mixed_expressive), page_size_(options.page_size),
+      punctuation_mode_(options.punctuation_mode), character_width_(options.character_width),
+      comma_period_paging_(options.comma_period_paging), word_to_character_(options.word_to_character),
+      bracket_paging_(options.bracket_paging), smart_punctuation_(options.smart_punctuation),
       smart_punctuation_repeat_to_chinese_(options.smart_punctuation_repeat_to_chinese),
       paired_punctuation_(options.paired_punctuation), preedit_style_(options.preedit_style),
       quanpin_helpcode_enabled_(options.quanpin_helpcode_enabled),
@@ -60,25 +84,11 @@ InputController::InputController(SchemeType scheme_type, InputOptions options)
     {
         throw std::invalid_argument("Candidate page size must be greater than zero.");
     }
-    if (!valid_preedit_style(preedit_style_) || !InputSession::is_supported_helpcode_schema(quanpin_helpcode_schema_) ||
-        !InputSession::is_supported_helpcode_schema(shuangpin_helpcode_schema_))
+    if (!valid_preedit_style(preedit_style_) || !Session::is_supported_helpcode_schema(quanpin_helpcode_schema_) ||
+        !Session::is_supported_helpcode_schema(shuangpin_helpcode_schema_))
     {
         throw std::invalid_argument("Preedit or helpcode options were outside the supported range.");
     }
-    session_.set_quanpin_helpcode_enabled(quanpin_helpcode_enabled_);
-    session_.set_shuangpin_helpcode_enabled(shuangpin_helpcode_enabled_);
-    session_.set_local_mode_options(options.local_modes);
-    if (!session_.set_english_input_options(options.english_input))
-    {
-        throw std::invalid_argument("English input options were outside the supported range.");
-    }
-    session_.set_mixed_expressive_options(options.mixed_expressive);
-    if (!session_.set_frequency_adjustment(
-            {frequency_adjustment_mode_, frequency_trigger_count_, frequency_linear_step_}))
-    {
-        throw std::invalid_argument("Frequency adjustment options were outside the supported range.");
-    }
-    select_active_helpcode_schema();
 }
 
 InputController::InputController(SchemeType scheme_type, std::size_t page_size)
@@ -116,13 +126,19 @@ ControllerResult InputController::handle_key(const FrontendKeyEvent &event)
 
     if (mode_ == InputMode::Ime)
     {
-        select_active_helpcode_schema();
+        // The session owns its keymap; another input context cannot change it.
         ControllerResult result;
         switch (event.key)
         {
         case FrontendKey::Character:
-            result = session_.handle_character(event.character, event.shift_only);
-            return finish_composition_mutation(std::move(result));
+            result = session_.character(event.character, event.shift_only);
+            if (result.handled || has_composition())
+            {
+                return finish_composition_mutation(std::move(result));
+            }
+            // A character the engine refuses outside a composition (an uppercase letter, say) is still ours to widen,
+            // so it falls through to the shared tail the way Space and Digit do.
+            break;
         case FrontendKey::Punctuation:
             if (local_input_mode() != LocalInputMode::None)
             {
@@ -155,7 +171,7 @@ ControllerResult InputController::handle_key(const FrontendKeyEvent &event)
                         return move_page(event.character == '.');
                     }
                 }
-                result = session_.handle_character(event.character, event.shift_only);
+                result = session_.character(event.character, event.shift_only);
                 if (result.handled)
                 {
                     return finish_composition_mutation(std::move(result));
@@ -164,7 +180,7 @@ ControllerResult InputController::handle_key(const FrontendKeyEvent &event)
             }
             if (event.character == '\'' && has_composition())
             {
-                result = session_.handle_character(event.character);
+                result = session_.character(event.character);
                 return finish_composition_mutation(std::move(result));
             }
             if (has_composition())
@@ -175,9 +191,9 @@ ControllerResult InputController::handle_key(const FrontendKeyEvent &event)
                 }
                 if (word_to_character_ && !bracket_paging_ && (event.character == '[' || event.character == ']'))
                 {
-                    result = session_.select_candidate_edge(highlighted_candidate_, event.character == '['
-                                                                                        ? CandidateEdge::FirstHan
-                                                                                        : CandidateEdge::LastHan);
+                    result =
+                        session_.select_edge(highlighted_candidate_,
+                                             event.character == '[' ? CandidateEdge::FirstHan : CandidateEdge::LastHan);
                     if (result.handled)
                     {
                         return finish_composition_mutation(std::move(result));
@@ -198,13 +214,13 @@ ControllerResult InputController::handle_key(const FrontendKeyEvent &event)
             }
             return commit_punctuation(event.character, event.preceding_character);
         case FrontendKey::Backspace:
-            result = session_.handle_command(Command::Backspace);
+            result = session_.command(Command::Backspace);
             return finish_composition_mutation(std::move(result));
         case FrontendKey::Enter:
-            result = session_.handle_command(Command::CommitRaw);
+            result = session_.command(Command::CommitRaw);
             return finish_composition_mutation(std::move(result));
         case FrontendKey::Escape:
-            result = session_.handle_command(Command::Cancel);
+            result = session_.command(Command::Cancel);
             return finish_composition_mutation(std::move(result));
         case FrontendKey::Space:
             if (has_composition())
@@ -215,7 +231,7 @@ ControllerResult InputController::handle_key(const FrontendKeyEvent &event)
         case FrontendKey::Digit:
             if (local_input_mode() == LocalInputMode::Unicode && !event.shift_only)
             {
-                result = session_.handle_character(static_cast<char>('0' + event.digit));
+                result = session_.character(static_cast<char>('0' + event.digit));
                 return finish_composition_mutation(std::move(result));
             }
             if (!has_composition())
@@ -277,7 +293,7 @@ ControllerResult InputController::handle_key(const FrontendKeyEvent &event)
 
 ControllerResult InputController::select_candidate(std::size_t absolute_index)
 {
-    return finish_composition_mutation(session_.select_candidate(absolute_index));
+    return finish_composition_mutation(session_.select(absolute_index));
 }
 
 ControllerResult InputController::select_page_candidate(std::size_t page_index)
@@ -301,8 +317,11 @@ ControllerResult InputController::set_mode(InputMode mode)
     if (mode == InputMode::Direct)
     {
         result = finish_composition();
-        session_.set_dedicated_english_mode(false);
     }
+    // Dedicated English is a sub-state of the IME mode, so it has to be dropped in both directions; clearing it only on
+    // the way out let it survive a Direct round trip and hijack Chinese input with no on-screen indication.
+    session_.set_dedicated_english(false);
+    snapshot_ = session_.snapshot();
     mode_ = mode;
     apply_punctuation_lock();
     result.handled = true;
@@ -379,22 +398,38 @@ ControllerResult InputController::toggle_character_width()
 ControllerResult InputController::toggle_dedicated_english_mode()
 {
     clear_smart_punctuation_history();
-    session_.set_dedicated_english_mode(!session_.dedicated_english_mode());
+    if (mode_ != InputMode::Ime)
+    {
+        // The hotkey reaches the controller in Direct mode too. Swallowing it there keeps the flag from being flipped
+        // behind the user's back and then surfacing the next time they return to the IME mode.
+        return {true, std::nullopt};
+    }
+
+    // Session::set_dedicated_english drops the composition, so the typed text has to be committed first, exactly like
+    // switch_scheme below.
+    ControllerResult result = finish_composition();
+    session_.set_dedicated_english(!dedicated_english_mode());
+    snapshot_ = session_.snapshot();
+    result.handled = true;
     reset_highlight();
     ++online_generation_;
-    return {true, std::nullopt};
+    return result;
 }
 
 ControllerResult InputController::switch_scheme(SchemeType scheme_type)
 {
     clear_smart_punctuation_history();
-    if (session_.scheme() == scheme_type && session_.local_input_mode() == LocalInputMode::None)
+    if (scheme() == scheme_type && local_input_mode() == LocalInputMode::None)
     {
         return {};
     }
 
     ControllerResult result = finish_composition();
+    // Picking a scheme is a request for Chinese input through that scheme, so dedicated English must not stay on and
+    // keep routing keystrokes to the English dictionary while scheme() reports the new scheme.
+    session_.set_dedicated_english(false);
     session_.switch_scheme(scheme_type);
+    snapshot_ = session_.snapshot();
     select_active_helpcode_schema();
     result.handled = true;
     reset_highlight();
@@ -404,13 +439,16 @@ ControllerResult InputController::switch_scheme(SchemeType scheme_type)
 
 void InputController::reset()
 {
-    (void)finish_composition_mutation(session_.handle_command(Command::Cancel));
+    (void)finish_composition_mutation(session_.command(Command::Cancel));
     invalidate_context();
 }
 
 void InputController::invalidate_context()
 {
     clear_smart_punctuation_history();
+    // Once the caret has moved or the client changed, nothing guarantees an automatically inserted closing mark is
+    // still to the right of it.
+    pending_paired_closings_.clear();
     punctuation_formatter_.reset();
     ++online_generation_;
 }
@@ -438,6 +476,7 @@ bool InputController::apply_online_candidate(std::uint64_t generation, const Onl
     {
         return false;
     }
+    snapshot_ = session_.snapshot();
     if (candidates().size() != previous_count && !candidates().empty())
     {
         highlighted_candidate_ = std::min(highlighted_candidate_, candidates().size() - 1);
@@ -537,62 +576,62 @@ int InputController::frequency_linear_step() const
 
 LocalInputMode InputController::local_input_mode() const
 {
-    return session_.local_input_mode();
+    return snapshot_.local_mode;
 }
 
 bool InputController::unicode_mode_enabled() const
 {
-    return session_.local_mode_options().unicode;
+    return local_mode_options_.unicode;
 }
 
 bool InputController::super_jianpin_mode_enabled() const
 {
-    return session_.local_mode_options().super_jianpin;
+    return local_mode_options_.super_jianpin;
 }
 
 bool InputController::temporary_english_mode_enabled() const
 {
-    return session_.local_mode_options().temporary_english;
+    return local_mode_options_.temporary_english;
 }
 
 bool InputController::temporary_japanese_mode_enabled() const
 {
-    return session_.local_mode_options().temporary_japanese;
+    return local_mode_options_.temporary_japanese;
 }
 
 bool InputController::mixed_english_candidates_enabled() const
 {
-    return session_.english_input_options().mixed_candidates;
+    return english_input_options_.mixed_candidates;
 }
 
 std::size_t InputController::mixed_english_minimum_prefix() const
 {
-    return session_.english_input_options().minimum_prefix;
+    return english_input_options_.minimum_prefix;
 }
 
 bool InputController::mixed_emoji_candidates_enabled() const
 {
-    return session_.mixed_expressive_options().emoji_candidates;
+    return mixed_expressive_options_.emoji_candidates;
 }
 
 bool InputController::mixed_kaomoji_candidates_enabled() const
 {
-    return session_.mixed_expressive_options().kaomoji_candidates;
+    return mixed_expressive_options_.kaomoji_candidates;
 }
 
 bool InputController::dedicated_english_mode() const
 {
-    return session_.dedicated_english_mode();
+    return snapshot_.dedicated_english;
 }
 
 SchemeType InputController::scheme() const
 {
-    return session_.scheme();
+    return snapshot_.scheme;
 }
 
 bool InputController::has_composition() const
 {
-    return session_.has_composition();
+    return !snapshot_.preedit.empty();
 }
 
 const std::string &InputController::preedit() const
@@ -606,19 +645,19 @@ const std::string &InputController::preedit() const
     {
         if (scheme() == SchemeType::Quanpin)
         {
-            return session_.raw_segmentation();
+            return snapshot_.raw_segmentation;
         }
         if (scheme() == SchemeType::Shuangpin)
         {
-            return session_.normalized_segmentation();
+            return snapshot_.normalized_segmentation;
         }
     }
-    return session_.preedit();
+    return snapshot_.preedit;
 }
 
 const std::vector<WordItem> &InputController::candidates() const
 {
-    return session_.candidates();
+    return snapshot_.candidates;
 }
 
 std::size_t InputController::highlighted_candidate() const
@@ -645,14 +684,14 @@ ControllerResult InputController::commit_highlighted()
 
     if (candidates().empty())
     {
-        return finish_composition_mutation(session_.handle_command(Command::CommitCandidate));
+        return finish_composition_mutation(session_.command(Command::CommitCandidate));
     }
     return select_candidate(highlighted_candidate_);
 }
 
 ControllerResult InputController::finish_composition()
 {
-    return finish_composition_mutation(session_.finish_composition(highlighted_candidate_));
+    return finish_composition_mutation(session_.finish(highlighted_candidate_));
 }
 
 ControllerResult InputController::commit_punctuation(char ascii, std::optional<char32_t> preceding_character)
@@ -692,6 +731,13 @@ ControllerResult InputController::commit_punctuation(char ascii, std::optional<c
         else
         {
             punctuation = punctuation_formatter_.chinese(ascii);
+            // The Chinese formatter passes ~ @ # % & * { } through unchanged, and without this the else-if below would
+            // never run for them, making the width toggle a no-op for exactly those keys.
+            if (!had_composition && character_width_ == CharacterWidth::Full && punctuation.size() == 1 &&
+                punctuation.front() == ascii)
+            {
+                punctuation = to_full_width(ascii);
+            }
         }
     }
     else if (!had_composition && character_width_ == CharacterWidth::Full)
@@ -728,6 +774,17 @@ ControllerResult InputController::commit_punctuation(char ascii, std::optional<c
         {
             punctuation += closing;
             result.cursor_left = 1;
+            pending_paired_closings_.push_back(std::move(closing));
+        }
+        else if (!pending_paired_closings_.empty() && pending_paired_closings_.back() == punctuation)
+        {
+            // This exact mark was already inserted for the user and still sits to the right of the caret, so the
+            // natural reflex of typing it must step over it rather than produce a second one.
+            pending_paired_closings_.pop_back();
+            clear_smart_punctuation_history();
+            result.handled = true;
+            result.cursor_right = 1;
+            return result;
         }
     }
     if (result.commit.has_value())
@@ -804,6 +861,7 @@ ControllerResult InputController::move_page(bool forward)
 
 ControllerResult InputController::finish_composition_mutation(ControllerResult result)
 {
+    snapshot_ = session_.snapshot();
     if (result.handled)
     {
         ++online_generation_;
@@ -828,11 +886,14 @@ void InputController::select_active_helpcode_schema()
 {
     if (scheme() == SchemeType::Quanpin)
     {
-        (void)InputSession::select_helpcode_schema(quanpin_helpcode_schema_);
+        session_.set_helpcode_enabled(quanpin_helpcode_enabled_);
+        (void)session_.set_helpcode_schema(quanpin_helpcode_schema_);
     }
     else if (scheme() == SchemeType::Shuangpin)
     {
-        (void)InputSession::select_helpcode_schema(shuangpin_helpcode_schema_);
+        session_.set_helpcode_enabled(shuangpin_helpcode_enabled_);
+        (void)session_.set_helpcode_schema(shuangpin_helpcode_schema_);
     }
+    snapshot_ = session_.snapshot();
 }
 } // namespace metasequoia::linux_ime

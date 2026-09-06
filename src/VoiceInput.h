@@ -2,6 +2,7 @@
 
 #include "online/HttpTransport.h"
 
+#include <chrono>
 #include <cstddef>
 #include <filesystem>
 #include <memory>
@@ -23,6 +24,12 @@ struct VoiceInputConfig
     std::string polish_endpoint = "https://api.openai.com/v1/chat/completions";
     std::string polish_model = "gpt-4o-mini";
     std::string polish_prompt = "整理语音转写，修正明显错别字并补充标点，只输出整理后的文本。";
+    // Transport budget for the voice requests, mirroring the OnlineSettings defaults so the caller can hand the user's
+    // configured online timeouts straight through. VoiceInputProvider spends total_timeout on connection setup and
+    // server-side processing and adds time for pushing the audio, which no flat wall clock covers once a recording runs
+    // to megabytes.
+    std::chrono::milliseconds connect_timeout{2500};
+    std::chrono::milliseconds total_timeout{8000};
 };
 
 class VoiceInputProvider
