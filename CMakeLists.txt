@@ -182,7 +182,9 @@ if(METASEQUOIA_IME_BUILD_IBUS)
         endif()
 
         add_executable(metasequoia-ime-tools src/DesktopToolsUi.cpp)
-        target_link_libraries(metasequoia-ime-tools PRIVATE MetasequoiaImeLinuxDesktopTools PkgConfig::GTK3)
+        # Handwriting recognition now runs on a std::thread so a stroke does not fork tesseract on the GTK main loop; the build image happens to carry pthread_create in libc, which hides the missing link until someone builds on a toolchain that does not.
+        target_link_libraries(metasequoia-ime-tools PRIVATE MetasequoiaImeLinuxDesktopTools PkgConfig::GTK3
+                                                           Threads::Threads)
         target_compile_options(metasequoia-ime-tools PRIVATE -Wall -Wextra -Wpedantic -Werror)
         install(TARGETS metasequoia-ime-tools RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
         configure_file(resources/metasequoia-ime-tools.desktop.in
@@ -280,6 +282,15 @@ if(METASEQUOIA_IME_BUILD_IBUS)
         install(FILES "${dictionary_directory}/dictionary-manifest.json"
                 DESTINATION ${CMAKE_INSTALL_DATADIR}/metasequoiaime)
     endif()
+    # JapaneseSentenceDecoder::Load resolves dict_japanese.dat through the same data directory as the databases, and it reports nothing when the file is absent: the provider simply stores a null decoder, so the Japanese scheme this frontend advertises degrades to single-word candidates with no diagnostic. The Mozc notice carries the IPAdic, ICOT and Okinawa attributions the model is derived from, so its licences require shipping it alongside. scripts/install.sh installs both for a single user; these two entries are what puts them in the deb, rpm and tarball.
+    foreach(payload IN ITEMS "dict_japanese.dat" "mozc_dictionary_oss_README.txt")
+        if(EXISTS "${dictionary_directory}/${payload}")
+            install(FILES "${dictionary_directory}/${payload}"
+                    DESTINATION ${CMAKE_INSTALL_DATADIR}/metasequoiaime)
+        else()
+            message(WARNING "Japanese payload not found at ${dictionary_directory}/${payload}; without dict_japanese.dat Japanese sentence conversion degrades to single-word candidates at runtime, and without mozc_dictionary_oss_README.txt the package would ship the model without the notice its licences require to travel with it.")
+        endif()
+    endforeach()
     if(EXISTS "${METASEQUOIA_IME_HELPCODE_DIRECTORY}")
         install(DIRECTORY "${METASEQUOIA_IME_HELPCODE_DIRECTORY}/"
                 DESTINATION ${CMAKE_INSTALL_DATADIR}/metasequoiaime/helpcodes

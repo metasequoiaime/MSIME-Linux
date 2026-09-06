@@ -1,6 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# The engine is the authority on where its data lives, and metasequoia::data_directory() (vendor/MetasequoiaImeEngine/core/data_path.h) answers with METASEQUOIA_IME_DATA_DIR when that is absolute, then XDG_DATA_HOME/metasequoiaime when that is, and only then $HOME/.local/share/metasequoiaime. This mirrors that order instead of deriving a second answer: a user with the override set otherwise installs the dictionaries into one directory while the engine opens another, and sees an install that succeeded and an input method with no candidates. Relative values are ignored exactly as the engine ignores them, rather than being resolved against whatever directory the script was run from.
+resolve_data_dir() {
+    if [[ ${METASEQUOIA_IME_DATA_DIR:-} == /* ]]; then
+        printf '%s\n' "$METASEQUOIA_IME_DATA_DIR"
+    elif [[ ${XDG_DATA_HOME:-} == /* ]]; then
+        printf '%s\n' "$XDG_DATA_HOME/metasequoiaime"
+    elif [[ ${HOME:-} == /* ]]; then
+        printf '%s\n' "$HOME/.local/share/metasequoiaime"
+    else
+        return 1
+    fi
+}
+
 project_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 build_root=${METASEQUOIA_IME_BUILD_DIR:-"$project_root/build"}
 user_prefix="$HOME/.local"
@@ -8,7 +21,10 @@ libexec_dir="$user_prefix/libexec"
 bin_dir="$user_prefix/bin"
 applications_dir="${XDG_DATA_HOME:-$user_prefix/share}/applications"
 component_dir="${XDG_DATA_HOME:-$user_prefix/share}/ibus/component"
-data_dir="${XDG_DATA_HOME:-$user_prefix/share}/metasequoiaime"
+if ! data_dir=$(resolve_data_dir); then
+    echo "No data directory: set METASEQUOIA_IME_DATA_DIR to an absolute path, or set XDG_DATA_HOME or HOME." >&2
+    exit 1
+fi
 replay_executable="$build_root/metasequoia-ime-dictionary-replay"
 settings_executable="$build_root/metasequoia-ime-settings"
 tools_executable="$build_root/metasequoia-ime-tools"
@@ -33,6 +49,7 @@ database_swap_complete=false
 had_live_main_database=false
 had_live_others_database=false
 had_live_english_database=false
+original_install_prefix=""
 cleanup() {
     if [[ "$database_swap_started" == true && "$database_swap_complete" != true ]]; then
         if [[ "$had_live_main_database" == true && -e "$backup_main_database" ]]; then
@@ -72,6 +89,11 @@ cleanup() {
     if [[ -n "$backup_english_database" && -e "$backup_english_database" ]]; then
         rm -f -- "$backup_english_database"
     fi
+    # CMAKE_INSTALL_PREFIX is a cache variable, so configuring the caller's build tree for this user's prefix is sticky. Left that way, a later cpack in the same tree packages everything under that prefix, and the smoke tests, which drive this script with a throwaway HOME, would point the shared tree at a directory they are about to delete. Hand the tree back exactly as it was found, on every exit path including the ones that fail on purpose. Last, because the live databases above must be back in place before anything slow runs.
+    if [[ -n "$original_install_prefix" && "$original_install_prefix" != "$user_prefix" ]]; then
+        cmake -S "$project_root" -B "$build_root" -DCMAKE_INSTALL_PREFIX="$original_install_prefix" \
+            >/dev/null || true
+    fi
 }
 trap cleanup EXIT
 
@@ -99,8 +121,6 @@ if engine_is_running; then
     exit 1
 fi
 
-cmake -S "$project_root" -B "$build_root" -DCMAKE_INSTALL_PREFIX="$user_prefix"
-
 if [[ ! -x "$build_root/metasequoia-ime-ibus" ]]; then
     echo "Build output is missing. Run scripts/build.sh first." >&2
     exit 1
@@ -127,12 +147,29 @@ if [[ ! -f "$project_root/vendor/MetasequoiaImeDict/out/english.db" ]]; then
     echo "English dictionary is missing. Run scripts/fetch_dictionary.py first." >&2
     exit 1
 fi
+if [[ ! -f "$project_root/vendor/MetasequoiaImeDict/out/dict_japanese.dat" ]]; then
+    echo "Japanese sentence model is missing. Run scripts/fetch_dictionary.py first." >&2
+    exit 1
+fi
+if [[ ! -f "$project_root/vendor/MetasequoiaImeDict/out/mozc_dictionary_oss_README.txt" ]]; then
+    echo "Mozc dictionary notice is missing. Run scripts/fetch_dictionary.py first." >&2
+    exit 1
+fi
 for helpcode_file in "${helpcode_files[@]}"; do
     if [[ ! -f "$helpcode_source_dir/$helpcode_file" ]]; then
         echo "Helpcode data is missing. Run git submodule update --init --recursive first." >&2
         exit 1
     fi
 done
+
+if [[ ! -f "$build_root/CMakeCache.txt" ]]; then
+    echo "Build directory is not configured: $build_root. Run scripts/build.sh first." >&2
+    exit 1
+fi
+
+# The generated component and desktop files name an absolute prefix, so the tree has to be reconfigured for the prefix this script installs into. Read the caller's own prefix out of the cache first so cleanup() can hand it back; a CMake cache holds each key exactly once, so this yields a single line or nothing.
+original_install_prefix=$(sed -n 's/^CMAKE_INSTALL_PREFIX:PATH=//p' "$build_root/CMakeCache.txt")
+cmake -S "$project_root" -B "$build_root" -DCMAKE_INSTALL_PREFIX="$user_prefix"
 
 mkdir -p "$libexec_dir" "$bin_dir" "$component_dir" "$applications_dir" "$data_dir/helpcodes"
 install -m 0755 "$build_root/metasequoia-ime-ibus" "$libexec_dir/metasequoia-ime-ibus"
@@ -155,6 +192,11 @@ install -m 0644 "$project_root/vendor/MetasequoiaImeDict/out/english.db" "$stage
 for helpcode_file in "${helpcode_files[@]}"; do
     install -m 0644 "$helpcode_source_dir/$helpcode_file" "$data_dir/helpcodes/$helpcode_file"
 done
+# The engine loads the Japanese sentence model from the data directory beside msime.db, and the Mozc licences require its notice to be distributed with it. Neither is touched by the journal replay, so both go in directly instead of through the transactional swap the databases need.
+install -m 0644 "$project_root/vendor/MetasequoiaImeDict/out/dict_japanese.dat" \
+    "$data_dir/dict_japanese.dat"
+install -m 0644 "$project_root/vendor/MetasequoiaImeDict/out/mozc_dictionary_oss_README.txt" \
+    "$data_dir/mozc_dictionary_oss_README.txt"
 if [[ -f "$data_dir/msime_user.db" ]]; then
     "$replay_executable" --data-dir "$data_dir" --main-db "$staged_main_database" \
         --english-db "$staged_english_database"

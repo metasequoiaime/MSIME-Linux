@@ -399,7 +399,7 @@ The packages install dictionary and helpcode data built from these repositories:
   MSIME-Engine/helpcode    https://github.com/metasequoiaime/MSIME-Engine/tree/main/helpcode
   (imported from the archived MSIME-Dict and MSIME-HelpCode; upstream attribution below is retained)
 
-Installed as msime.db, others.db, english.db and helpcodes/*.txt under the package data directory.
+Installed as msime.db, others.db, english.db, dict_japanese.dat, mozc_dictionary_oss_README.txt and helpcodes/*.txt under the package data directory.
 
 The imported data directories do not declare a license of their own, because most of their content is not their own work. They aggregate word lists and code tables from upstream projects. The upstream terms, which travel with the data, are as follows.
 
@@ -417,6 +417,17 @@ Sources of msime.db, others.db and english.db:
   OALD word forms         none       extracted headword list; rights with the dictionary's publisher
 
 The Chinese tables that msime.db is built from (cn/BaseDictAllV1Part1.txt and cn/BaseDictAllV1Part2.txt) merge rime-ice with CustomPinyinDictionary. rime-ice is licensed under the GNU General Public License version 3, which is the same license this project is distributed under, so its terms are satisfied by the distribution as a whole; this notice serves as its attribution, and its source remains available at the URL above.
+
+Sources of dict_japanese.dat:
+
+  Mozc dictionary_oss     see notice     https://github.com/google/mozc (src/data/dictionary_oss)
+  IPAdic 2.7.0            see notice     mecab-ipadic-2.7.0-20070801, Nara Institute of Science and Technology
+  ICOT Free Software      see notice     reproduced within the IPAdic notice
+  Okinawa dictionary      public domain  http://sourceforge.jp/projects/o-dic/
+
+dict_japanese.dat is the read-only Viterbi model the engine's Japanese sentence decoder loads. MSIME-Engine/dictionary builds it from the open source Mozc dictionary at a pinned revision (src/data/dictionary_oss: dictionary00-09.txt, connection_single_column.txt and id.def), so the entries and connection costs in it are that data, transformed rather than added to. Mozc publishes a README beside those files stating the terms the data travels under, and both those terms and MSIME-Engine/dictionary require it to be distributed with the model. The packages install it unchanged next to dict_japanese.dat as mozc_dictionary_oss_README.txt; it is the authoritative text and is not duplicated here.
+
+What that notice states, summarised without adding to it: the open source Mozc dictionary's vocabulary is basically that of IPAdic, enriched with named entities from the Okinawa dictionary, extra adjectives and verbs added by Google, katakana words collected from web text, and compound words collected with MeCab and IPAdic. IPAdic is Copyright 2000, 2001, 2002, 2003 Nara Institute of Science and Technology; use, reproduction and distribution are permitted, and any copy, whether original or modified, must include both its copyright notice and the paragraphs following it, which disclaim all warranties. A large portion of the entries originates from ICOT Free Software, whose conditions apply to the dictionary as well: each user may freely distribute it, original or modified, provided the NO WARRANTY section always appears on or is attached to what is distributed. The Okinawa dictionary is stated to be public domain data, with no restriction placed on use, modification or distribution.
 
 Sources of helpcodes/*.txt, via MSIME-Engine/helpcode (formerly the archived MSIME-HelpCode):
 
