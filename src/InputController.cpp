@@ -116,7 +116,7 @@ ControllerResult InputController::handle_key(const FrontendKeyEvent &event)
 
     if (mode_ == InputMode::Ime)
     {
-        select_active_helpcode_schema();
+        // The session owns its keymap; another input context cannot change it.
         ControllerResult result;
         switch (event.key)
         {
@@ -828,11 +828,11 @@ void InputController::select_active_helpcode_schema()
 {
     if (scheme() == SchemeType::Quanpin)
     {
-        (void)InputSession::select_helpcode_schema(quanpin_helpcode_schema_);
+        (void)session_.set_helpcode_schema(quanpin_helpcode_schema_);
     }
     else if (scheme() == SchemeType::Shuangpin)
     {
-        (void)InputSession::select_helpcode_schema(shuangpin_helpcode_schema_);
+        (void)session_.set_helpcode_schema(shuangpin_helpcode_schema_);
     }
 }
 } // namespace metasequoia::linux_ime
