@@ -14,14 +14,15 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
-import hashlib
 import json
 import re
 import subprocess
 import tempfile
-import urllib.error
-import urllib.request
 from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import product_lock_shared as shared
 
 ROOT = Path(__file__).resolve().parents[1]
 _product_spec = importlib.util.spec_from_file_location("dictionary_product", Path(__file__).with_name("dictionary_product.py"))
@@ -89,29 +90,17 @@ def write_json(path: Path, data: dict) -> None:
 
 
 def sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as source:
-        for chunk in iter(lambda: source.read(1 << 20), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+    return shared.sha256(path)
 
 
 def verify_assets(directory: Path, data: dict) -> None:
     """Fail on the committed digest, never on the checksum file that shipped with the data."""
-    for name, expected in data["dictionary"]["assets"].items():
-        path = directory / name
-        if not path.is_file():
-            raise ValueError(f"Locked dictionary asset is missing: {name}")
-        actual = sha256(path)
-        if actual != expected:
-            raise ValueError(f"{name} does not match the product lock: expected {expected}, got {actual}")
+    shared.verify_digests(directory, data["dictionary"]["assets"])
 
     if PRODUCT_MANIFEST in data["dictionary"]["assets"]:
-        manifest = _product.verify_product(directory, "desktop", set(data["dictionary"]["assets"]) - {"SHA256SUMS.txt", PRODUCT_MANIFEST})
-        source = manifest.get("source", {})
-        if (source.get("repository") != data["dictionary"]["repository"] or
-                source.get("commit") != data["dictionary"]["source_commit"] or source.get("dirty") is not False):
-            raise ValueError("Dictionary manifest provenance does not match the reviewed source commit")
+        required_files = set(data["dictionary"]["assets"]) - {"SHA256SUMS.txt", PRODUCT_MANIFEST}
+        shared.verify_manifest_provenance(directory, PRODUCT_MANIFEST, _product.verify_product, required_files,
+                                          data["dictionary"]["repository"], data["dictionary"]["source_commit"])
 
 
 def download_assets(tag: str, destination: Path, repository: str = DICTIONARY_REPOSITORY) -> None:
@@ -128,18 +117,7 @@ def download_assets(tag: str, destination: Path, repository: str = DICTIONARY_RE
     for name in names:
         url = f"https://github.com/{repository}/releases/download/{tag}/{name}"
         target = destination / name
-        last_error: Exception | None = None
-        for attempt in range(1, 4):
-            try:
-                with urllib.request.urlopen(url, timeout=120) as response, target.open("wb") as out:
-                    while chunk := response.read(1 << 20):
-                        out.write(chunk)
-                break
-            except (urllib.error.URLError, TimeoutError, OSError) as error:
-                last_error = error
-                print(f"  attempt {attempt} for {name} failed: {error}")
-        else:
-            raise ValueError(f"Could not download {url}: {last_error}")
+        shared.download_with_retries(url, target)
         print(f"downloaded {name} ({target.stat().st_size} bytes)")
 
 
@@ -150,36 +128,11 @@ def resolve_tag_commit(tag: str) -> str:
     already had the API rate limited to 403 from a single runner address. ls-remote needs no
     credentials and no gh, and git is present anywhere the submodules can be checked out.
     """
-    if not TAG.fullmatch(tag):
-        raise ValueError("Refusing to resolve a tag that is not an explicit dict-* release")
-    # Both refs are requested by name. ls-remote filters on the ref as written, and the peeled ref
-    # is literally named refs/tags/<tag>^{}, so asking only for refs/tags/<tag> gets an annotated
-    # tag's tag object and nothing else. A trailing glob would return the peeled ref too, but it
-    # would also match dict-2026.01.01-rc1.
-    output = subprocess.check_output(
-        ["git", "ls-remote", DICTIONARY_URL, f"refs/tags/{tag}", f"refs/tags/{tag}^{{}}"], text=True
-    )
-    references = {}
-    for line in output.splitlines():
-        commit, _, reference = line.partition("\t")
-        references[reference.strip()] = commit.strip()
-    # An annotated tag lists the tag object under the plain name and the commit it points at under
-    # ^{}; a lightweight one only has the plain reference. Locking the tag object's own SHA would
-    # record something that is not a commit in MSIME-Dict's history at all, and it is 40 hex digits
-    # like any other object, so nothing downstream would notice.
-    commit = references.get(f"refs/tags/{tag}^{{}}") or references.get(f"refs/tags/{tag}")
-    if not commit or not SHA.fullmatch(commit):
-        raise ValueError(f"{tag} does not resolve to a commit in {DICTIONARY_REPOSITORY}")
-    return commit
+    return shared.resolve_tag_commit(DICTIONARY_URL, tag)
 
 
 def published_checksums(directory: Path) -> dict[str, str]:
-    checksums = {}
-    for line in (directory / "SHA256SUMS.txt").read_text(encoding="utf-8").splitlines():
-        digest, _, name = line.partition("  ")
-        if name.strip():
-            checksums[name.strip()] = digest.strip()
-    return checksums
+    return shared.published_checksums(directory / "SHA256SUMS.txt")
 
 
 def git(directory: Path, *args: str) -> str:
