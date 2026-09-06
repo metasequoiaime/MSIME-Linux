@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.9.0](https://github.com/metasequoiaime/MSIME-Linux/compare/v0.8.2...v0.9.0) (2026-09-06)
+
+
+### Features
+
+* **release:** separate the automatic build channel from the release channel ([13a07a5](https://github.com/metasequoiaime/MSIME-Linux/commit/13a07a55c6f7d402d43b3c024b8a24b0d0cb306d))
+* **release:** separate the automatic build channel from the release channel ([0fc7b2d](https://github.com/metasequoiaime/MSIME-Linux/commit/0fc7b2d814bb9769a93f50f50b8cbb9e96449269))
+
+
+### Bug Fixes
+
+* repository-wide audit — 30 defects across input, settings, tools, online and packaging ([#86](https://github.com/metasequoiaime/MSIME-Linux/issues/86)) ([6c7a88d](https://github.com/metasequoiaime/MSIME-Linux/commit/6c7a88d841ca5ea2497e1f69dd6994c85e696663))
+
 ## [0.8.2](https://github.com/metasequoiaime/MSIME-Linux/compare/v0.8.1...v0.8.2) (2026-09-06)
 
 

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(MetasequoiaImeLinux VERSION 0.8.2 LANGUAGES CXX) # x-release-please-version
+project(MetasequoiaImeLinux VERSION 0.9.0 LANGUAGES CXX) # x-release-please-version
 
 include(CTest)
 include(GNUInstallDirs)
