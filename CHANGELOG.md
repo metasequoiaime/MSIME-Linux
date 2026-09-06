@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.9.1](https://github.com/metasequoiaime/MSIME-Linux/compare/v0.9.0...v0.9.1) (2026-09-06)
+
+
+### Bug Fixes
+
+* **ci:** separate automatic and manual release locks ([ad389c6](https://github.com/metasequoiaime/MSIME-Linux/commit/ad389c6ead0857befd83cc7eecd7ef04fc58cf4c))
+* **ci:** separate automatic and manual release locks ([78fc7af](https://github.com/metasequoiaime/MSIME-Linux/commit/78fc7af451cd2c07957afd2394ff4b4881e4f50a))
+* **packaging:** 修正 ibus 依赖等级，并让发行版能离线构建 ([966139d](https://github.com/metasequoiaime/MSIME-Linux/commit/966139da8574f12868fa78c505a3b1c139612fb4))
+
 ## [0.9.0](https://github.com/metasequoiaime/MSIME-Linux/compare/v0.8.2...v0.9.0) (2026-09-06)
 
 
