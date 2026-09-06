@@ -1,7 +1,7 @@
 #pragma once
 
 #include "TextTransform.h"
-#include "core/input_session.h"
+#include <metasequoia/session.h>
 
 #include <chrono>
 #include <cstddef>
@@ -184,7 +184,11 @@ class InputController
     void clear_smart_punctuation_history();
     void select_active_helpcode_schema();
 
-    InputSession session_;
+    Session session_;
+    SessionSnapshot snapshot_;
+    const LocalModeOptions local_mode_options_;
+    const EnglishInputOptions english_input_options_;
+    const MixedExpressiveOptions mixed_expressive_options_;
     InputMode mode_ = InputMode::Ime;
     std::size_t page_size_ = 9;
     std::size_t highlighted_candidate_ = 0;

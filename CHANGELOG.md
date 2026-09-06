@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.2](https://github.com/metasequoiaime/MSIME-Linux/compare/v0.8.1...v0.8.2) (2026-09-06)
+
+
+### Bug Fixes
+
+* **ibus:** prevent stale composition from entering newly focused GTK fields ([#85](https://github.com/metasequoiaime/MSIME-Linux/issues/85)) ([af3fc18](https://github.com/metasequoiaime/MSIME-Linux/commit/af3fc18617f0470d3db07ebf5c5956bc14508e69))
+* 修复在线工作线程生命周期、词库播种静默失败与工具栏语音结果丢失 ([#81](https://github.com/metasequoiaime/MSIME-Linux/issues/81)) ([f724ecd](https://github.com/metasequoiaime/MSIME-Linux/commit/f724ecd5fa3945856fbd1ce48a3b753948681a26))
+
 ## [0.8.1](https://github.com/metasequoiaime/MSIME-Linux/compare/v0.8.0...v0.8.1) (2026-09-05)
 
 

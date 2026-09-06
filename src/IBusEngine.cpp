@@ -770,8 +770,10 @@ void focus_in(IBusEngine *ibus_engine)
 void focus_out(IBusEngine *ibus_engine)
 {
     auto *engine = METASEQUOIA_ENGINE(ibus_engine);
-    commit_for_passthrough(engine);
-    engine->controller->invalidate_context();
+    // GTK may already have switched its input context when this asynchronous
+    // notification arrives. Committing here can type into the newly focused
+    // widget; cancel the old composition and invalidate its pending requests.
+    engine->controller->reset();
     ibus_engine_hide_preedit_text(ibus_engine);
     update_lookup_table(engine);
     refresh_online(engine);
