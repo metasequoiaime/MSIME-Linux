@@ -1,8 +1,10 @@
 #include "../src/VoiceInput.h"
 
+#include <chrono>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
+#include <string>
 
 using namespace metasequoia::linux_ime;
 using namespace metasequoia::linux_ime::online;
@@ -106,6 +108,66 @@ int main()
                 "Voice recorder accepted an empty output path.");
         require(!recorder.record("/tmp/metasequoia-voice-test.wav", 0, &recording_error) && !recording_error.empty(),
                 "Voice recorder accepted an invalid duration.");
+
+        // The total timeout bounds the whole transfer, so it has to grow with the audio being uploaded: 120 s of
+        // 16 kHz mono S16_LE is roughly 3.8 MB, which cannot leave the machine inside a flat budget. These checks pin
+        // the growth, the configured base, the fallback and the ceiling.
+        transport->response = {200, R"({"text":"ok"})", {}};
+        VoiceInputConfig timeout_config = config;
+        const std::string audio_one_mebibyte(1024 * 1024, '\x01');
+        const std::string audio_two_mebibytes(2 * 1024 * 1024, '\x01');
+        require(provider.transcribe(audio_one_mebibyte, timeout_config, [] { return false; }).has_value(),
+                "Transcribing a mebibyte of audio failed.");
+        const auto total_for_one_mebibyte = transport->request.total_timeout;
+        require(provider.transcribe(audio_two_mebibytes, timeout_config, [] { return false; }).has_value(),
+                "Transcribing two mebibytes of audio failed.");
+        const auto total_for_two_mebibytes = transport->request.total_timeout;
+        require(total_for_one_mebibyte >= std::chrono::milliseconds(16000),
+                "The transcribe total timeout did not budget any upload time for a mebibyte of audio.");
+        require(total_for_two_mebibytes - total_for_one_mebibyte >= std::chrono::milliseconds(7900),
+                "The transcribe total timeout did not scale with the size of the uploaded audio.");
+        require(total_for_two_mebibytes <= std::chrono::milliseconds(300000),
+                "The transcribe total timeout lost its upper bound.");
+
+        timeout_config.connect_timeout = std::chrono::milliseconds(4500);
+        timeout_config.total_timeout = std::chrono::milliseconds(45000);
+        const std::string short_audio("RIFF\0short", 10);
+        require(provider.transcribe(short_audio, timeout_config, [] { return false; }).has_value(),
+                "Transcribing a short recording failed.");
+        require(transport->request.total_timeout >= std::chrono::milliseconds(45000) &&
+                    transport->request.total_timeout < std::chrono::milliseconds(46000),
+                "The configured total timeout was not used as the transcribe budget base.");
+        require(transport->request.connect_timeout == std::chrono::milliseconds(4500),
+                "The configured connect timeout never reached the transcribe request.");
+        require(provider.transcribe(audio_one_mebibyte, timeout_config, [] { return false; }).has_value(),
+                "Transcribing a mebibyte of audio with a configured budget failed.");
+        require(transport->request.total_timeout >= std::chrono::milliseconds(53000),
+                "The configured total timeout replaced the upload allowance instead of being its base.");
+
+        timeout_config.connect_timeout = std::chrono::milliseconds(0);
+        timeout_config.total_timeout = std::chrono::milliseconds(0);
+        require(provider.transcribe(audio_one_mebibyte, timeout_config, [] { return false; }).has_value(),
+                "Transcribing with unset timeouts failed.");
+        require(transport->request.connect_timeout == std::chrono::milliseconds(2500) &&
+                    transport->request.total_timeout >= std::chrono::milliseconds(16000),
+                "A non-positive configured timeout did not fall back to a bounded, size-aware budget.");
+
+        timeout_config.connect_timeout = std::chrono::milliseconds(2500);
+        timeout_config.total_timeout = std::chrono::milliseconds(299000);
+        require(provider.transcribe(audio_one_mebibyte, timeout_config, [] { return false; }).has_value(),
+                "Transcribing with a near-ceiling budget failed.");
+        require(transport->request.total_timeout == std::chrono::milliseconds(300000),
+                "The transcribe total timeout was not clamped to its ceiling.");
+
+        transport->response = {200, R"({"choices":[{"message":{"content":"整理后的文本"}}]})", {}};
+        VoiceInputConfig polish_timeout_config = config;
+        polish_timeout_config.connect_timeout = std::chrono::milliseconds(4500);
+        polish_timeout_config.total_timeout = std::chrono::milliseconds(45000);
+        require(provider.polish("原始文本", polish_timeout_config, [] { return false; }).has_value(),
+                "Polishing with configured timeouts failed.");
+        require(transport->request.connect_timeout == std::chrono::milliseconds(4500) &&
+                    transport->request.total_timeout >= std::chrono::milliseconds(45000),
+                "The configured timeouts never reached the polish request.");
 
         std::cout << "Voice input tests passed.\n";
         return 0;

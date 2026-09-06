@@ -158,9 +158,13 @@ bool LibsecretSecretStore::erase(SecretKind kind, std::string_view provider, std
 
     const std::string provider_value(provider);
     GError *error = nullptr;
-    const gboolean erased = secret_password_clear_sync(&kCredentialSchema, nullptr, &error, "kind", kind_value,
-                                                       "provider", provider_value.c_str(), nullptr);
-    if (!erased || error != nullptr)
+    // secret_password_clear_sync() reports whether an item was removed, not whether the service worked: a provider that
+    // was never stored yields FALSE with no GError. Erase is the undo half of a settings save, which rolls back secrets
+    // whose previous state was NotFound, so only a GError may be reported as a failure here.
+    const gboolean removed = secret_password_clear_sync(&kCredentialSchema, nullptr, &error, "kind", kind_value,
+                                                        "provider", provider_value.c_str(), nullptr);
+    (void)removed;
+    if (error != nullptr)
     {
         g_clear_error(&error);
         set_diagnostic(diagnostic, kUnavailableDiagnostic);

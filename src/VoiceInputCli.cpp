@@ -127,10 +127,15 @@ int main(int argc, char **argv)
         }
         return 1;
     }
+    // The provider only receives the voice block, so the user's configured transport budget has to be carried across
+    // here; the provider then extends it by the size of the audio being uploaded.
+    VoiceInputConfig voice = settings.voice;
+    voice.connect_timeout = settings.online.connect_timeout;
+    voice.total_timeout = settings.online.total_timeout;
     auto transport = std::make_shared<online::CurlHttpTransport>();
     VoiceInputProvider provider(transport);
     std::string error;
-    auto text = provider.transcribe(audio, settings.voice, [] { return false; }, &error);
+    auto text = provider.transcribe(audio, voice, [] { return false; }, &error);
     if (!text)
     {
         std::cerr << (error.empty() ? "Voice transcription failed." : error) << '\n';
@@ -141,10 +146,10 @@ int main(int argc, char **argv)
         }
         return 1;
     }
-    if (settings.voice.polish_enabled)
+    if (voice.polish_enabled)
     {
         std::string polish_error;
-        const auto polished = provider.polish(*text, settings.voice, [] { return false; }, &polish_error);
+        const auto polished = provider.polish(*text, voice, [] { return false; }, &polish_error);
         if (polished)
         {
             text = polished;

@@ -55,12 +55,21 @@ installed=true
 # user who only installed the package would get.
 test -x /usr/libexec/metasequoia-ime-ibus
 test -f /usr/share/ibus/component/metasequoiaime.xml
-for database in msime.db others.db english.db; do
-    if [[ ! -s "/usr/share/metasequoiaime/$database" ]]; then
-        echo "The package did not install $database." >&2
+# The Japanese sentence model and the Mozc notice its licences require to travel with it are packaged from the same
+# install rules as the databases, and a package missing the model produces a Japanese scheme that loads without
+# complaint and only ever offers single-word candidates.
+for payload in msime.db others.db english.db dict_japanese.dat mozc_dictionary_oss_README.txt; do
+    if [[ ! -s "/usr/share/metasequoiaime/$payload" ]]; then
+        echo "The package did not install $payload." >&2
         exit 1
     fi
 done
+# Check the header the Engine's decoder actually reads, not just the file name: a truncated or wrong-format model fails
+# Load() and leaves the provider holding a null decoder without reporting anything.
+if [[ $(head -c 7 /usr/share/metasequoiaime/dict_japanese.dat) != MSJPDT1 ]]; then
+    echo "The packaged Japanese sentence model does not carry the MSJPDT1 header." >&2
+    exit 1
+fi
 
 export HOME="$smoke_root/home"
 export XDG_DATA_HOME="$smoke_root/data"
@@ -135,13 +144,17 @@ settle(1500)
 if committed != ["你好"]:
     raise SystemExit(f"The packaged engine did not commit the expected text: {committed}")
 
-# The dictionaries ship under /usr, where the engine does not look, so the
-# engine seeds the per-user directory on first run. If that stopped working the
-# commit above would already have failed, but name the file so a future failure
-# points at the cause rather than at pinyin conversion.
-seeded = pathlib.Path(os.environ["XDG_DATA_HOME"]) / "metasequoiaime" / "msime.db"
-if not seeded.is_file() or seeded.stat().st_size == 0:
-    raise SystemExit(f"The packaged engine did not seed {seeded}.")
+# The data ships under /usr, where the engine does not look, so the engine seeds
+# the per-user directory on first run. A missing msime.db would already have
+# failed the commit above, but name the file so a future failure points at the
+# cause rather than at pinyin conversion. The Japanese model and its Mozc notice
+# fail silently instead: the decoder reports nothing when it cannot load one, so
+# the seeding is the only thing that can be asserted from here.
+user_data_dir = pathlib.Path(os.environ["XDG_DATA_HOME"]) / "metasequoiaime"
+for name in ("msime.db", "others.db", "english.db", "dict_japanese.dat", "mozc_dictionary_oss_README.txt"):
+    seeded = user_data_dir / name
+    if not seeded.is_file() or seeded.stat().st_size == 0:
+        raise SystemExit(f"The packaged engine did not seed {seeded}.")
 
 print("Packaged install smoke passed.")
 PYTHON

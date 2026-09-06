@@ -70,6 +70,9 @@ struct ControllerResult
     std::optional<std::string> diagnostic;
     std::size_t delete_before = 0;
     std::size_t cursor_left = 0;
+    // Counterpart of cursor_left: the caret steps over text that is already to its right, which is how typing over an
+    // automatically inserted closing mark is expressed without re-emitting it.
+    std::size_t cursor_right = 0;
 
     ControllerResult() = default;
     ControllerResult(bool handled, std::optional<std::string> commit, std::size_t delete_before = 0,
@@ -211,6 +214,9 @@ class InputController
     bool smart_punctuation_history_active_ = false;
     char smart_punctuation_history_key_ = 0;
     std::chrono::steady_clock::time_point smart_punctuation_history_time_{};
+    // Closing marks this controller inserted automatically and that still sit to the right of the caret, innermost
+    // last. Typing one of them types over it instead of doubling it.
+    std::vector<std::string> pending_paired_closings_;
     PunctuationFormatter punctuation_formatter_;
     std::uint64_t online_generation_ = 0;
 };

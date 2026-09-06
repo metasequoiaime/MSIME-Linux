@@ -5,12 +5,28 @@ set -euo pipefail
 # data is kept unless --purge is given, because msime_user.db is the one thing
 # here that cannot be recreated from the repository.
 
+# Kept identical to scripts/install.sh, which mirrors metasequoia::data_directory() (vendor/MetasequoiaImeEngine/core/data_path.h): METASEQUOIA_IME_DATA_DIR when it is absolute, then XDG_DATA_HOME/metasequoiaime, then $HOME/.local/share/metasequoiaime. An uninstall that resolved this differently would sweep a directory the install never wrote and leave the real one, including the 67 MB Japanese model, in place.
+resolve_data_dir() {
+    if [[ ${METASEQUOIA_IME_DATA_DIR:-} == /* ]]; then
+        printf '%s\n' "$METASEQUOIA_IME_DATA_DIR"
+    elif [[ ${XDG_DATA_HOME:-} == /* ]]; then
+        printf '%s\n' "$XDG_DATA_HOME/metasequoiaime"
+    elif [[ ${HOME:-} == /* ]]; then
+        printf '%s\n' "$HOME/.local/share/metasequoiaime"
+    else
+        return 1
+    fi
+}
+
 user_prefix="$HOME/.local"
 libexec_dir="$user_prefix/libexec"
 bin_dir="$user_prefix/bin"
 applications_dir="${XDG_DATA_HOME:-$user_prefix/share}/applications"
 component_dir="${XDG_DATA_HOME:-$user_prefix/share}/ibus/component"
-data_dir="${XDG_DATA_HOME:-$user_prefix/share}/metasequoiaime"
+if ! data_dir=$(resolve_data_dir); then
+    echo "No data directory: set METASEQUOIA_IME_DATA_DIR to an absolute path, or set XDG_DATA_HOME or HOME." >&2
+    exit 1
+fi
 environment_file="${XDG_CONFIG_HOME:-$HOME/.config}/environment.d/10-metasequoiaime.conf"
 config_file="${XDG_CONFIG_HOME:-$HOME/.config}/metasequoiaime/config.ini"
 
@@ -69,6 +85,9 @@ remove_path "$environment_file"
 remove_path "$data_dir/msime.db"
 remove_path "$data_dir/others.db"
 remove_path "$data_dir/english.db"
+# The Japanese sentence model and the Mozc notice that its licences require to travel with it are installed straight into the data directory rather than through the staged database swap, so they need removing here too. At 67 MB the model is by far the largest thing an uninstall would otherwise leave behind.
+remove_path "$data_dir/dict_japanese.dat"
+remove_path "$data_dir/mozc_dictionary_oss_README.txt"
 remove_path "$data_dir/helpcodes"
 # Interrupted installs can leave these behind, and they are large.
 for leftover in "$data_dir"/.msime.db.* "$data_dir"/.others.db.* "$data_dir"/.english.db.* "$data_dir"/*.seeding; do
@@ -79,7 +98,10 @@ if [[ "$purge" == true ]]; then
     remove_path "$data_dir/msime_user.db"
     remove_path "$data_dir/clipboard_history.json"
     remove_path "$config_file"
-    remove_path "$data_dir"
+    # --purge takes the data directory itself, to catch anything the lists above do not name. That is safe for a path this project chose, but METASEQUOIA_IME_DATA_DIR can point the directory at somewhere that holds far more than one input method, and recursively deleting that on the strength of an environment variable is not a trade worth making. Only recurse into a directory named after the project; otherwise the removals above plus the rmdir below still take it when nothing else lives there.
+    if [[ "$data_dir" == */metasequoiaime ]]; then
+        remove_path "$data_dir"
+    fi
 elif [[ -f "$data_dir/msime_user.db" ]]; then
     echo "kept $data_dir/msime_user.db (learned words); pass --purge to remove it"
 fi

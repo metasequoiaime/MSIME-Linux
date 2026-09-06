@@ -1,5 +1,6 @@
 #pragma once
 
+#include "HttpTimeouts.h"
 #include "HttpTransport.h"
 #include <metasequoia/session.h>
 
@@ -13,7 +14,7 @@ namespace metasequoia::linux_ime::online
 class GoogleCloudProvider
 {
   public:
-    explicit GoogleCloudProvider(std::shared_ptr<HttpTransport> transport);
+    explicit GoogleCloudProvider(std::shared_ptr<HttpTransport> transport, HttpTimeouts timeouts = {});
 
     std::optional<std::string> fetch(const OnlineQuery &query, const CancellationCheck &cancelled) const;
     static std::string build_url(const OnlineQuery &query);
@@ -21,5 +22,6 @@ class GoogleCloudProvider
 
   private:
     std::shared_ptr<HttpTransport> transport_;
+    HttpTimeouts timeouts_;
 };
 } // namespace metasequoia::linux_ime::online

@@ -45,7 +45,12 @@ SUBMODULES = {
 # publishes beside them. The checksum file is locked too so a rewritten one is caught rather than
 # trusted.
 DATABASES = ("msime.db", "others.db", "english.db")
-ASSETS = (*DATABASES, "SHA256SUMS.txt")
+# The Japanese sentence model the Engine loads from the data directory beside msime.db, and the Mozc notice its licences require to be distributed with the model. Without the model the Japanese scheme this frontend advertises silently degrades to single-word candidates, because JapaneseSentenceDecoder::Load fails and the provider stores a null decoder instead of reporting anything.
+JAPANESE_MODEL = ("dict_japanese.dat", "mozc_dictionary_oss_README.txt")
+# Releases old enough to predate the dictionary product manifest publish neither the manifest nor the
+# Japanese model, so the archived tag is held to the smaller set.
+LEGACY_ASSETS = (*DATABASES, "SHA256SUMS.txt")
+ASSETS = (*LEGACY_ASSETS, *JAPANESE_MODEL)
 
 SHA = re.compile(r"[0-9a-f]{40}\Z")
 DIGEST = re.compile(r"[0-9a-f]{64}\Z")
@@ -65,9 +70,9 @@ def validate(data: dict) -> dict:
     if not SHA.fullmatch(dictionary.get("source_commit", "")):
         raise ValueError("Dictionary source_commit must be the full commit the release tag resolves to")
     assets = dictionary.get("assets", {})
-    expected_assets = set(ASSETS) if dictionary['tag'] == LEGACY_DICTIONARY_TAG else set(ASSETS) | {PRODUCT_MANIFEST}
+    expected_assets = set(LEGACY_ASSETS) if dictionary['tag'] == LEGACY_DICTIONARY_TAG else set(ASSETS) | {PRODUCT_MANIFEST}
     if set(assets) != expected_assets:
-        raise ValueError("Dictionary lock must cover every shipped database and the checksum file")
+        raise ValueError("Dictionary lock must cover every shipped payload and the checksum file")
     for name, digest in assets.items():
         if not DIGEST.fullmatch(digest):
             raise ValueError(f"Invalid SHA256 for {name}")
@@ -119,7 +124,7 @@ def download_assets(tag: str, destination: Path, repository: str = DICTIONARY_RE
     if repository not in (DICTIONARY_REPOSITORY, "metasequoiaime/MSIME-Dict"):
         raise ValueError("Unexpected dictionary repository")
     destination.mkdir(parents=True, exist_ok=True)
-    names = ASSETS if tag == LEGACY_DICTIONARY_TAG else (*ASSETS, PRODUCT_MANIFEST)
+    names = LEGACY_ASSETS if tag == LEGACY_DICTIONARY_TAG else (*ASSETS, PRODUCT_MANIFEST)
     for name in names:
         url = f"https://github.com/{repository}/releases/download/{tag}/{name}"
         target = destination / name
@@ -215,12 +220,13 @@ def refresh(tag: str) -> dict:
         download_assets(tag, incoming)
         published = published_checksums(incoming)
         assets = {}
-        for name in (ASSETS if tag == LEGACY_DICTIONARY_TAG else (*ASSETS, PRODUCT_MANIFEST)):
+        legacy = tag == LEGACY_DICTIONARY_TAG
+        for name in (LEGACY_ASSETS if legacy else (*ASSETS, PRODUCT_MANIFEST)):
             digest = sha256(incoming / name)
             if name in published and published[name] != digest:
                 raise ValueError(f"{name} does not match the checksums published with {tag}")
             assets[name] = digest
-        for name in DATABASES:
+        for name in (DATABASES if legacy else (*DATABASES, *JAPANESE_MODEL)):
             if name not in published:
                 raise ValueError(f"{name} has no entry in the SHA256SUMS.txt published with {tag}")
     source_commit = resolve_tag_commit(tag)

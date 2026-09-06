@@ -13,8 +13,10 @@ Linux 桌面工具包含一个 GTK 设置程序、一个剪贴板历史存储与
 Debian／Ubuntu：
 
 ```sh
-sudo apt install build-essential cmake pkg-config libibus-1.0-dev libboost-dev libfmt-dev libspdlog-dev libsqlite3-dev libcurl4-openssl-dev nlohmann-json3-dev libsecret-1-dev libgtk-3-dev gnome-keyring python3 python3-gi python3-pypinyin gir1.2-ibus-1.0 ibus dbus-x11 iso-codes
+sudo apt install build-essential cmake pkg-config libibus-1.0-dev libboost-dev libboost-json-dev libfmt-dev libspdlog-dev libsqlite3-dev libcurl4-openssl-dev nlohmann-json3-dev libsecret-1-dev libgtk-3-dev gnome-keyring python3 python3-gi python3-pypinyin gir1.2-ibus-1.0 ibus dbus-x11 iso-codes
 ```
+
+`libboost-json-dev` 必须与 `libboost-dev` 一起装：Boost.JSON 是编译型组件，头文件元包不提供 `find_package(Boost REQUIRED COMPONENTS json)` 所需的配置文件与库，缺了它 CMake 配置阶段就会失败。
 
 若需要本地中文手写识别，还需安装 `tesseract-ocr` 与 `tesseract-ocr-chi-sim`。缺少它们时桌面工具仍可使用，并会在状态栏说明缺失的后端。
 
@@ -39,7 +41,7 @@ ctest --test-dir build --output-on-failure
 ./scripts/install.sh
 ```
 
-安装脚本把引擎放到 `~/.local/libexec`，并把 IBus 组件描述文件、三个词库和五个辅助码数据文件安装到 `${XDG_DATA_HOME:-$HOME/.local/share}` 下。
+安装脚本把引擎放到 `~/.local/libexec`，把 IBus 组件描述文件与 desktop 入口放到 `${XDG_DATA_HOME:-$HOME/.local/share}` 下，并把三个词库、日语整句模型 `dict_japanese.dat` 及其必须随附的 Mozc 声明，以及五个辅助码数据文件装进引擎自己解析出的数据目录——绝对路径的 `METASEQUOIA_IME_DATA_DIR` 优先，其次是 `$XDG_DATA_HOME/metasequoiaime`，最后是 `$HOME/.local/share/metasequoiaime`。这个顺序与引擎的 `metasequoia::data_directory()` 完全一致，卸载脚本也按同样的顺序解析，否则设了该变量的用户会装进一个引擎根本不读的目录。它会为当前用户的前缀重新配置构建目录以生成这些文件，并在退出时把 `CMAKE_INSTALL_PREFIX` 还原成原值，因此同一个构建目录之后仍可直接用于 `cpack`。
 
 IBus 只扫描自己的包数据目录（通常是 `/usr/share/ibus/component`）与 `IBUS_COMPONENT_PATH`，**不会**扫描 `XDG_DATA_HOME`。因此安装脚本还会写一个 `${XDG_CONFIG_HOME:-$HOME/.config}/environment.d/10-metasequoiaime.conf`，把系统目录和当前用户目录一并列进 `IBUS_COMPONENT_PATH`（该变量是替换而非追加，所以系统目录必须显式写上，否则其他输入法会消失）。**注销后重新登录**该文件才会生效，然后重启 IBus，在桌面的输入源设置中选择“Metasequoia IME”。
 
@@ -64,10 +66,12 @@ IBUS_COMPONENT_PATH=/usr/share/ibus/component:${XDG_DATA_HOME:-$HOME/.local/shar
 CMake 配置内置 CPack，可生成 TGZ、DEB 与 RPM 三种包，它们共用同一份安装清单：
 
 ```sh
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
 cmake --build build --parallel
 cd build && cpack -G "TGZ;DEB"
 ```
+
+`CMAKE_INSTALL_PREFIX` 必须显式写上：CPack 以它作为包内布局的根，缺省的 `/usr/local` 会让 IBus 组件描述文件里的 `<exec>` 指向发行版包不该使用的路径。CI 打包时用的也是 `/usr`。
 
 DEB 生成需要 `dpkg-dev` 和 `file`（CPack 用它解析二进制以生成 shlibs 依赖），RPM 生成需要 `rpm`（Debian／Ubuntu 上是 `rpm` 包）。CI 在每次构建中验证 TGZ 与 DEB 生成。
 
@@ -78,7 +82,7 @@ DEB 生成需要 `dpkg-dev` 和 `file`（CPack 用它解析二进制以生成 sh
 - 单独轻敲任一 Shift 键在中文转换与直接输入之间切换。与其他键组合使用的 Shift 不受影响。
 - 按 `Ctrl+.` 在中英文标点之间切换。按 `Ctrl+Shift+Space` 在半角与全角输入之间切换。两个状态也可在 IBus 语言栏菜单中访问。
 - 使用 IBus 语言栏菜单选择全拼、双拼、五笔或日语罗马音。
-- 使用上／下键移动候选光标。PageUp／PageDown、`-`／`=` 以及 Shift+Tab／Tab 用于翻页。逗号／句号翻页是可选设置，默认关闭。
+- 使用上／下键移动候选光标。PageUp／PageDown、`-`／`=` 以及 Shift+Tab／Tab 用于翻页。逗号／句号翻页默认开启，与 Windows 版一致；设置 `comma-period-paging=false` 可关闭，之后组词中的逗号与句号直接作为标点提交。
 - 使用 `1`–`9` 或小键盘 `1`–`9` 从当前页选择。空格提交高亮候选，回车提交原始输入，Esc 取消。有活动组词时，标点会与高亮候选一并提交；单引号仍作为拼音分隔符。
 - 全拼或双拼下，无活动组词时按 `Shift+U` 进入 Unicode 模式。输入十六进制标量，如 `4e00` 或 `+1f600`；空格提交高亮字符，`Shift+1`–`Shift+9` 选择其他可见候选。设置 `unicode-mode=false` 可禁用该模式。
 - 全拼或双拼下，无活动组词时按 `Shift+T` 输出本地日期／时间。`rq`、`riqi` 或 `date` 取当前日期；`sj`、`shijian` 或 `time` 取当前时间；`xq`、`xingqi` 或 `week` 取当前星期。
@@ -87,7 +91,7 @@ DEB 生成需要 `dpkg-dev` 和 `file`（CPack 用它解析二进制以生成 sh
 - 全拼或双拼下，无活动组词时按 `Shift+J` 进入超级简拼模式。之后的每个字母代表一个声母；双拼的声母键遵循当前方案。翻页与选择照常，或设置 `super-jianpin-mode=false` 禁用该模式。
 - 全拼或双拼下且无活动组词时，按 `Shift+Y` 进行一次临时英文组词（先原始文本，后补全），或按 `Shift+R` 进行一次临时日语罗马音组词。提交、取消或删空前缀后即返回原来的中文方案。设置 `temporary-english-mode=false` 或 `temporary-japanese-mode=false` 可分别禁用这两个快捷键。
 - 按 `Ctrl+Shift+E` 进入或退出专用英文模式。输入字母查询纯英文前缀候选；空格选择高亮候选，回车提交并学习原始字母输入且不退出该模式。
-- 设置 `mixed-english-candidates=true`、`mixed-emoji-candidates=true` 或 `mixed-kaomoji-candidates=true`，可把这些本地来源合并进普通的全拼与双拼候选。与 Windows 一致的优先级是：首个中文候选，然后是第一个英文、Emoji 与颜文字匹配，之后是其余本地候选与来源分组候选，并做稳定去重。Emoji 与颜文字从输入两个字符起生效；`mixed-english-minimum-prefix` 控制英文阈值，取值 1–8。三个混合来源默认全部关闭，英文阈值默认为 2。
+- `mixed-english-candidates`、`mixed-emoji-candidates` 与 `mixed-kaomoji-candidates` 控制是否把这些本地来源合并进普通的全拼与双拼候选。与 Windows 一致的优先级是：首个中文候选，然后是第一个英文、Emoji 与颜文字匹配，之后是其余本地候选与来源分组候选，并做稳定去重。Emoji 与颜文字从输入两个字符起生效；`mixed-english-minimum-prefix` 控制英文阈值，取值 1–8。与 Windows 版一致，混合英文与混合 Emoji 默认开启、混合颜文字默认关闭，英文阈值默认为 2。
 - 在线候选默认开启，在 500 毫秒空闲后异步获取。Google 云输入建议占据第二个候选位。网络失败、超时、重置、失焦以及过期的请求代次都不会阻塞或改变本地输入。在 `[online]` 中设置 `cloud-enabled=false` 可禁用。
 - AI 建议使用 OpenAI 兼容的服务商（`deepseek`、`openai`、`siliconflow`、`groq` 或 `custom`），占据第三个候选位。非机密项在 `[ai]` 中配置（`enabled`、`provider`、`endpoint`、`model`、`prompt`、`candidate-limit`）；API 令牌存放在桌面 Secret Service 中，绝不写入 `config.ini` 或诊断信息。运行时只接受 HTTPS 端点。
 - 候选翻译作为展示元数据显示（`候选 · 释义`），绝不改变提交的候选文本。优先使用本地英汉释义；在 `[translation]` 中设置 `provider=deeplx` 可启用 HTTPS DeepLX 兼容的回退。在 `[translation]` 中配置 `target-language` 与 `endpoint`；其 Bearer 令牌存放在 Secret Service 中。翻译出错只会清空释义，候选选择仍然可用。
@@ -97,7 +101,7 @@ DEB 生成需要 `dpkg-dev` 和 `file`（CPack 用它解析二进制以生成 sh
 - 设置 `preedit-style=raw`、`pinyin` 或 `hidden`，分别显示所敲按键、切分后的拼音，或不显示内联预编辑。隐藏内联预编辑不会隐藏候选查找表。
 - 全拼与双拼的辅助码分别由 `quanpin-helpcode` 与 `shuangpin-helpcode` 控制。其方案键接受 `lantian`、`ziranma`、`shouyou2_0`、`shouyouplus` 或 `xiaohe`；辅助码只在完整的基础拼写之后才生效。
 - 本地候选学习使用 `frequency-adjustment=disabled|pin|halve|linear|promote`。`pin` 把选中的非首位候选移到最前，`halve` 将其名次减半，`linear` 按 `frequency-linear-step` 前进，`promote` 前进一位、位置较靠后时则前进到第五位。`frequency-trigger-count` 控制触发一次调整所需的选择次数；两个数值设置均取值 1–10。
-- 启动 `metasequoia-ime-settings`（也可从桌面应用菜单打开）即可编辑同一套 XDG 设置，无需手改 `config.ini`。Secret Service 中的凭据有意不出现在表单里。启动 `metasequoia-ime-tools` 使用剪贴板历史、可把文本送入剪贴板的屏幕键盘，以及手写工作区。启动 `metasequoia-ime-toolbar` 获得一个置顶的快捷栏，用于打开上述桌面工具。
+- 启动 `metasequoia-ime-settings`（也可从桌面应用菜单打开）即可编辑同一套 XDG 设置，无需手改 `config.ini`。AI、翻译与语音的 API 令牌各有一个只写的密码框：已保存的凭据不会回填到表单里，留空即表示保持 Secret Service 中现有的凭据不变，填入新值才会覆盖。启动 `metasequoia-ime-tools` 使用剪贴板历史、可把文本送入剪贴板的屏幕键盘，以及手写工作区。启动 `metasequoia-ime-toolbar` 获得一个置顶的快捷栏，用于打开上述桌面工具。
 - 在设置程序中设置 `voice.enabled=true` 并配置 `[voice]` 的端点／模型，然后运行 `metasequoia-ime-voice --file recording.wav` 或 `metasequoia-ime-voice --record 5`。设置 `voice.polish-enabled=true` 可在打印前把转写文本送入配置好的 Chat Completions 端点润色。API 令牌按语音服务商存放在 Secret Service 中，绝不写入 `config.ini`；转写或可选润色失败都不会影响本地输入引擎。
 
 设置存放在 `$XDG_CONFIG_HOME/metasequoiaime/config.ini`，回退到 `~/.config/metasequoiaime/config.ini`。`[input]` 组保存上面列出的本地输入设置。在线相关的非机密项分别保存在 `[online]`（`cloud-enabled`、`connect-timeout-ms`、`total-timeout-ms`）、`[ai]`（`enabled`、`provider`、`endpoint`、`model`、`prompt`、`candidate-limit`）与 `[translation]`（`enabled`、`provider`、`target-language`、`endpoint`）。工具显示状态保存在 `[utility]`（`clipboard-history`、`floating-toolbar`），语音选项保存在 `[voice]`（`enabled`、`provider`、`endpoint`、`model`、`language`、`polish-enabled`、`polish-endpoint`、`polish-model`、`polish-prompt`）。AI、翻译与语音的令牌按服务商隔离的属性存放在桌面 Secret Service 中，绝不写入本文件。请在引擎未运行时编辑或删除该文件；下一次属性或热键变更后它会被原子写入。学习到的权重与英文原始条目记录在 `${XDG_DATA_HOME:-$HOME/.local/share}/metasequoiaime/msime_user.db` 中；重新运行 `scripts/install.sh` 会把该日志重放进暂存的 `msime.db`、`others.db` 与 `english.db`，再作为一个整体替换线上词库。
@@ -157,4 +161,4 @@ DEB 生成需要 `dpkg-dev` 和 `file`（CPack 用它解析二进制以生成 sh
 
 ### 词库产品格式
 
-Engine 词库发布除摘要外必须提供 `dictionary-manifest.json`，下载阶段使用与固定 Engine 一致的公共校验器检查格式版本、桌面 profile 和实际消费的数据库。`dict-2026.09.05` 是唯一保留的无清单兼容版本。清单随安装数据一起打包。
+Engine 词库发布除摘要外必须提供 `dictionary-manifest.json`，下载阶段使用与固定 Engine 一致的公共校验器检查格式版本、桌面 profile 和实际消费的载荷。桌面 profile 的载荷是三个数据库、日语整句模型 `dict_japanese.dat` 以及 `mozc_dictionary_oss_README.txt`；`product-lock.json` 锁定全部五个，校验器另外核对模型的 `MSJPDT1` 头。`dict-2026.09.05` 是唯一保留的无清单兼容版本，它早于该模型，因此只锁定三个数据库。清单随安装数据一起打包。

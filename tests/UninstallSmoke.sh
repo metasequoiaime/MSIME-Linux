@@ -38,6 +38,11 @@ installed=(
     "$XDG_DATA_HOME/metasequoiaime/msime.db"
     "$XDG_DATA_HOME/metasequoiaime/others.db"
     "$XDG_DATA_HOME/metasequoiaime/english.db"
+    # The Japanese sentence model and the Mozc notice its licences require to travel with it go in outside the staged
+    # database swap, so nothing else here would notice if only one of the two scripts learned about them. At 67 MB the
+    # model is also the largest thing an asymmetric uninstall could leave behind.
+    "$XDG_DATA_HOME/metasequoiaime/dict_japanese.dat"
+    "$XDG_DATA_HOME/metasequoiaime/mozc_dictionary_oss_README.txt"
     "$XDG_CONFIG_HOME/environment.d/10-metasequoiaime.conf"
 )
 for path in "${installed[@]}"; do

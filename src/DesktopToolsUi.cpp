@@ -5,13 +5,22 @@
 
 #include <algorithm>
 #include <cmath>
+#include <mutex>
 #include <string>
+#include <thread>
+#include <utility>
 #include <vector>
 
 using namespace metasequoia::linux_ime;
 
 namespace
 {
+struct HandwritingOutcome
+{
+    std::vector<std::string> candidates;
+    std::string error;
+};
+
 struct ToolState
 {
     ClipboardHistory history;
@@ -25,12 +34,24 @@ struct ToolState
     std::vector<HandwritingStroke> handwriting_strokes;
     bool handwriting_drawing = false;
     guint clipboard_poll_id = 0;
+    guint handwriting_debounce_id = 0;
+    // Recognition runs on a worker thread, so the outcome is handed back under the mutex and the worker is joined
+    // before ToolState dies.
+    std::thread handwriting_worker;
+    std::mutex handwriting_mutex;
+    HandwritingOutcome handwriting_outcome;
+    bool handwriting_running = false;
+    bool handwriting_restart = false;
+    bool handwriting_stale = false;
+    // Set from the "destroy" handler, which can run re-entrantly from inside a blocking clipboard wait; every widget
+    // pointer above is dangling once it is true.
+    bool shutting_down = false;
 };
 
-void show_error(GtkWindow *parent, const std::string &message)
+void show_error(GtkWidget *parent, const std::string &message)
 {
-    GtkWidget *dialog =
-        gtk_message_dialog_new(parent, GTK_DIALOG_MODAL, GTK_MESSAGE_ERROR, GTK_BUTTONS_OK, "%s", message.c_str());
+    GtkWidget *dialog = gtk_message_dialog_new(parent == nullptr ? nullptr : GTK_WINDOW(parent), GTK_DIALOG_MODAL,
+                                               GTK_MESSAGE_ERROR, GTK_BUTTONS_OK, "%s", message.c_str());
     gtk_dialog_run(GTK_DIALOG(dialog));
     gtk_widget_destroy(dialog);
 }
@@ -69,6 +90,33 @@ void refresh_clipboard_list(ToolState &state)
     gtk_widget_show_all(state.clipboard_list);
 }
 
+// Ask what the owner is offering before asking for the text: a password manager marks its content so history tools
+// leave it alone. An owner that will not describe itself is treated as concealed rather than as safe, because the
+// marker only ever arrives as a target name, so a failed TARGETS query is exactly the case where a marker would go
+// unseen.
+bool clipboard_content_is_recordable(GtkClipboard *clipboard)
+{
+    GdkAtom *targets = nullptr;
+    gint target_count = 0;
+    if (!gtk_clipboard_wait_for_targets(clipboard, &targets, &target_count))
+    {
+        return false;
+    }
+    std::vector<std::string> names;
+    names.reserve(static_cast<std::size_t>(target_count));
+    for (gint index = 0; index < target_count; ++index)
+    {
+        gchar *name = gdk_atom_name(targets[index]);
+        if (name != nullptr)
+        {
+            names.emplace_back(name);
+            g_free(name);
+        }
+    }
+    g_free(targets);
+    return !metasequoia::linux_ime::ClipboardHistory::marked_sensitive(names);
+}
+
 gboolean poll_clipboard(gpointer user_data)
 {
     auto &state = *static_cast<ToolState *>(user_data);
@@ -77,34 +125,38 @@ gboolean poll_clipboard(gpointer user_data)
         return G_SOURCE_CONTINUE;
     }
     GtkClipboard *clipboard = gtk_clipboard_get(GDK_SELECTION_CLIPBOARD);
-    // Ask what the owner is offering before asking for the text: a password
-    // manager marks its content so history tools leave it alone.
-    GdkAtom *targets = nullptr;
-    gint target_count = 0;
-    if (gtk_clipboard_wait_for_targets(clipboard, &targets, &target_count))
+    const bool recordable = clipboard_content_is_recordable(clipboard);
+    // Every gtk_clipboard_wait_* call spins a nested main loop that dispatches pending events, including the toplevel's
+    // delete event, so the window and all of its children can be finalized while this callback is parked inside one.
+    // g_source_remove cannot cancel a callback that is already dispatching, which leaves this the only place that can
+    // stop it from touching freed widgets.
+    if (state.shutting_down)
     {
-        std::vector<std::string> names;
-        names.reserve(static_cast<std::size_t>(target_count));
-        for (gint index = 0; index < target_count; ++index)
-        {
-            gchar *name = gdk_atom_name(targets[index]);
-            if (name != nullptr)
-            {
-                names.emplace_back(name);
-                g_free(name);
-            }
-        }
-        g_free(targets);
-        if (metasequoia::linux_ime::ClipboardHistory::marked_sensitive(names))
-        {
-            return G_SOURCE_CONTINUE;
-        }
+        return G_SOURCE_REMOVE;
+    }
+    if (!recordable)
+    {
+        return G_SOURCE_CONTINUE;
     }
     gchar *text = gtk_clipboard_wait_for_text(clipboard);
+    if (state.shutting_down)
+    {
+        g_free(text);
+        return G_SOURCE_REMOVE;
+    }
     if (text != nullptr)
     {
+        // The targets query and the text query are separate round trips to whoever owns the selection right now, so
+        // re-check the owner: a password manager that took ownership in between would otherwise have its secret stored
+        // under the previous owner's clearance.
+        const bool still_recordable = clipboard_content_is_recordable(clipboard);
+        if (state.shutting_down)
+        {
+            g_free(text);
+            return G_SOURCE_REMOVE;
+        }
         std::string error;
-        if (state.history.add(text, &error))
+        if (still_recordable && state.history.add(text, &error))
         {
             refresh_clipboard_list(state);
         }
@@ -123,7 +175,7 @@ void enabled_toggled(GtkToggleButton *button, gpointer user_data)
         g_signal_handlers_block_by_func(button, reinterpret_cast<gpointer>(enabled_toggled), user_data);
         gtk_toggle_button_set_active(button, !enabled);
         g_signal_handlers_unblock_by_func(button, reinterpret_cast<gpointer>(enabled_toggled), user_data);
-        show_error(GTK_WINDOW(state.window), error.empty() ? "Unable to update clipboard history." : error);
+        show_error(state.window, error.empty() ? "Unable to update clipboard history." : error);
         return;
     }
     refresh_clipboard_list(state);
@@ -135,7 +187,7 @@ void clear_clipboard(GtkButton *, gpointer user_data)
     std::string error;
     if (!state.history.clear(&error))
     {
-        show_error(GTK_WINDOW(state.window), error);
+        show_error(state.window, error);
         return;
     }
     refresh_clipboard_list(state);
@@ -228,27 +280,111 @@ void refresh_handwriting_candidates(ToolState &state, const std::vector<std::str
     gtk_widget_show_all(state.handwriting_candidates);
 }
 
-void recognize_handwriting(ToolState &state)
+void set_handwriting_status(ToolState &state, const std::string &message)
 {
+    if (state.handwriting_status == nullptr)
+    {
+        return;
+    }
+    gtk_label_set_text(GTK_LABEL(state.handwriting_status), message.c_str());
+}
+
+void cancel_handwriting_debounce(ToolState &state)
+{
+    if (state.handwriting_debounce_id != 0)
+    {
+        g_source_remove(state.handwriting_debounce_id);
+        state.handwriting_debounce_id = 0;
+    }
+}
+
+void start_handwriting_recognition(ToolState &state);
+
+gboolean deliver_handwriting_result(gpointer user_data)
+{
+    auto &state = *static_cast<ToolState *>(user_data);
+    HandwritingOutcome outcome;
+    {
+        const std::lock_guard<std::mutex> guard(state.handwriting_mutex);
+        outcome = std::move(state.handwriting_outcome);
+        state.handwriting_outcome = HandwritingOutcome{};
+    }
+    state.handwriting_running = false;
+    if (state.handwriting_worker.joinable())
+    {
+        state.handwriting_worker.join();
+    }
+    const bool stale = state.handwriting_stale;
+    state.handwriting_stale = false;
+    if (state.shutting_down)
+    {
+        return G_SOURCE_REMOVE;
+    }
+    if (!stale)
+    {
+        refresh_handwriting_candidates(state, outcome.candidates);
+        // The recognizer reports a missing tesseract install through the same channel as a failed run, so the status
+        // label is where the user learns which one happened.
+        set_handwriting_status(state, outcome.error.empty() ? "点击候选字即可复制到剪贴板。" : outcome.error);
+    }
+    if (state.handwriting_restart)
+    {
+        state.handwriting_restart = false;
+        start_handwriting_recognition(state);
+    }
+    return G_SOURCE_REMOVE;
+}
+
+void start_handwriting_recognition(ToolState &state)
+{
+    if (state.handwriting_running)
+    {
+        // The strokes drawn since the running pass started are not in its bitmap, so recognize once more when it lands.
+        state.handwriting_restart = true;
+        return;
+    }
     if (state.handwriting_canvas == nullptr || state.handwriting_strokes.empty())
     {
-        gtk_label_set_text(GTK_LABEL(state.handwriting_status), "请先在画板上书写。");
+        set_handwriting_status(state, "请先在画板上书写。");
         return;
     }
     const int width = gtk_widget_get_allocated_width(state.handwriting_canvas);
     const int height = gtk_widget_get_allocated_height(state.handwriting_canvas);
-    HandwritingRecognizer recognizer;
-    std::string error;
-    const auto candidates = recognizer.recognize(state.handwriting_strokes, width, height, &error);
-    refresh_handwriting_candidates(state, candidates);
-    if (!error.empty())
+    if (state.handwriting_worker.joinable())
     {
-        gtk_label_set_text(GTK_LABEL(state.handwriting_status), error.c_str());
+        state.handwriting_worker.join();
     }
-    else
-    {
-        gtk_label_set_text(GTK_LABEL(state.handwriting_status), "点击候选字即可复制到剪贴板。");
-    }
+    state.handwriting_running = true;
+    set_handwriting_status(state, "正在识别…");
+    // Recognition fork/execs tesseract and waits for it, which is hundreds of milliseconds to several seconds; on the
+    // GTK main thread that freezes every tab, the clipboard poll and the window's own close button for the whole run.
+    std::vector<HandwritingStroke> strokes = state.handwriting_strokes;
+    state.handwriting_worker = std::thread([&state, strokes = std::move(strokes), width, height]() {
+        HandwritingRecognizer recognizer;
+        HandwritingOutcome outcome;
+        outcome.candidates = recognizer.recognize(strokes, width, height, &outcome.error);
+        {
+            const std::lock_guard<std::mutex> guard(state.handwriting_mutex);
+            state.handwriting_outcome = std::move(outcome);
+        }
+        g_idle_add(deliver_handwriting_result, &state);
+    });
+}
+
+gboolean handwriting_debounce_elapsed(gpointer user_data)
+{
+    auto &state = *static_cast<ToolState *>(user_data);
+    state.handwriting_debounce_id = 0;
+    start_handwriting_recognition(state);
+    return G_SOURCE_REMOVE;
+}
+
+void schedule_handwriting_recognition(ToolState &state)
+{
+    // Recognizing on every stroke release costs one tesseract run per stroke, so wait for the pen to settle and spend a
+    // single run on the finished character.
+    cancel_handwriting_debounce(state);
+    state.handwriting_debounce_id = g_timeout_add(400, handwriting_debounce_elapsed, &state);
 }
 
 gboolean handwriting_button_press(GtkWidget *widget, GdkEventButton *event, gpointer user_data)
@@ -290,26 +426,33 @@ gboolean handwriting_button_release(GtkWidget *, GdkEventButton *event, gpointer
     }
     auto &state = *static_cast<ToolState *>(user_data);
     state.handwriting_drawing = false;
-    recognize_handwriting(state);
+    schedule_handwriting_recognition(state);
     return TRUE;
 }
 
 void handwriting_clear(GtkButton *, gpointer user_data)
 {
     auto &state = *static_cast<ToolState *>(user_data);
+    cancel_handwriting_debounce(state);
     state.handwriting_strokes.clear();
     state.handwriting_drawing = false;
+    // A pass that started before the clear describes strokes that no longer exist, so drop its result instead of
+    // listing candidates for a blank canvas.
+    state.handwriting_restart = false;
+    state.handwriting_stale = state.handwriting_running;
     refresh_handwriting_candidates(state, {});
     if (state.handwriting_canvas != nullptr)
     {
         gtk_widget_queue_draw(state.handwriting_canvas);
     }
-    gtk_label_set_text(GTK_LABEL(state.handwriting_status), "已清空，请重新书写。");
+    set_handwriting_status(state, "已清空，请重新书写。");
 }
 
 void handwriting_recognize_clicked(GtkButton *, gpointer user_data)
 {
-    recognize_handwriting(*static_cast<ToolState *>(user_data));
+    auto &state = *static_cast<ToolState *>(user_data);
+    cancel_handwriting_debounce(state);
+    start_handwriting_recognition(state);
 }
 
 GtkWidget *build_clipboard_tab(ToolState &state)
@@ -378,6 +521,10 @@ GtkWidget *build_handwriting_tab(ToolState &state)
     gtk_widget_set_margin_top(box, 16);
     state.handwriting_canvas = gtk_drawing_area_new();
     gtk_widget_set_size_request(state.handwriting_canvas, 400, 240);
+    // A drawing area in a vertical box is allocated the full width of the page, and the recognizer refuses a canvas
+    // wider than its bitmap limit, so a maximized window on a wide display would make every recognition fail. Centring
+    // pins the canvas at its requested size instead of stretching it.
+    gtk_widget_set_halign(state.handwriting_canvas, GTK_ALIGN_CENTER);
     gtk_widget_add_events(state.handwriting_canvas,
                           GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK | GDK_POINTER_MOTION_MASK);
     g_signal_connect(state.handwriting_canvas, "draw", G_CALLBACK(handwriting_draw), &state);
@@ -387,6 +534,9 @@ GtkWidget *build_handwriting_tab(ToolState &state)
     gtk_box_pack_start(GTK_BOX(box), state.handwriting_canvas, FALSE, FALSE, 0);
     state.handwriting_status = gtk_label_new("请在画板上书写，松开鼠标后自动识别。");
     gtk_label_set_xalign(GTK_LABEL(state.handwriting_status), 0.0F);
+    // Backend failures arrive here as full sentences ("install tesseract-ocr..."), which would otherwise widen the
+    // window instead of wrapping.
+    gtk_label_set_line_wrap(GTK_LABEL(state.handwriting_status), TRUE);
     gtk_box_pack_start(GTK_BOX(box), state.handwriting_status, FALSE, FALSE, 0);
     GtkWidget *actions = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
     GtkWidget *recognize = gtk_button_new_with_label("Recognize");
@@ -428,8 +578,23 @@ int main(int argc, char **argv)
     gtk_window_set_default_size(GTK_WINDOW(state.window), 620, 560);
     g_signal_connect(state.window, "destroy", G_CALLBACK(+[](GtkWidget *, gpointer user_data) {
                          auto &state = *static_cast<ToolState *>(user_data);
+                         // This can run from inside a blocking clipboard wait, which finalizes every child widget while
+                         // the poll callback is still parked in that nested loop. Forgetting the pointers here is what
+                         // turns the resumed callback into a no-op rather than a use-after-free.
+                         state.shutting_down = true;
                          if (state.clipboard_poll_id != 0)
+                         {
                              g_source_remove(state.clipboard_poll_id);
+                             state.clipboard_poll_id = 0;
+                         }
+                         cancel_handwriting_debounce(state);
+                         state.window = nullptr;
+                         state.clipboard_list = nullptr;
+                         state.clipboard_enabled = nullptr;
+                         state.keyboard_entry = nullptr;
+                         state.handwriting_canvas = nullptr;
+                         state.handwriting_candidates = nullptr;
+                         state.handwriting_status = nullptr;
                          gtk_main_quit();
                      }),
                      &state);
@@ -444,5 +609,10 @@ int main(int argc, char **argv)
     state.clipboard_poll_id = g_timeout_add(500, poll_clipboard, &state);
     gtk_widget_show_all(state.window);
     gtk_main();
+    // The recognition worker holds a reference to state, so it has to be done before this frame goes away.
+    if (state.handwriting_worker.joinable())
+    {
+        state.handwriting_worker.join();
+    }
     return 0;
 }
