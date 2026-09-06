@@ -65,4 +65,4 @@ tests/InstallSmoke.sh build
 
 ## 安全问题
 
-疑似漏洞不要走公开 issue，按 [SECURITY.md](SECURITY.md) 的方式私下上报。
+疑似漏洞不要走公开 issue，按 [SECURITY.md](https://github.com/metasequoiaime/.github/blob/main/SECURITY.md) 的方式私下上报。

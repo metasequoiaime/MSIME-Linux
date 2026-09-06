@@ -26,4 +26,4 @@ API tokens for the AI, translation and voice providers are stored in the desktop
 
 Metasequoia IME does not sell or share personal data, and installing or using it does not create an account. If a future release adds another network-backed feature, this notice must be updated before that feature ships.
 
-Security or privacy concerns should be reported privately as described in [SECURITY.md](SECURITY.md).
+Security or privacy concerns should be reported privately as described in [SECURITY.md](https://github.com/metasequoiaime/.github/blob/main/SECURITY.md).
