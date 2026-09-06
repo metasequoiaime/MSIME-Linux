@@ -270,14 +270,36 @@ jobs:
               exit 1
             fi
           done
+      # A push-triggered release is an automatic per-merge build and a workflow_dispatch one was asked for deliberately, and until now both were promoted with --latest, so the badge pointing users at the recommended download always landed on whatever merged last. GitHub has no channel concept, so the two states it does have carry the two channels: automatic builds are prereleases, dispatched ones are ordinary releases and the newest of those takes the badge. The prerelease flag therefore means "automatic and uncurated" here, not "beta". Kept in step with MSIME-Windows#167.
       - name: Promote the draft
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
           TARGET_SHA: ${{ needs.prepare.outputs.target_sha }}
+          RELEASE_TRIGGER: ${{ github.event_name }}
         run: |
           release_json=$(gh release view "$TAG_NAME" --repo "$GH_REPO" --json isDraft,targetCommitish)
           test "$(jq -er .isDraft <<< "$release_json")" = true
           test "$(jq -er .targetCommitish <<< "$release_json")" = "$TARGET_SHA"
-          gh release edit "$TAG_NAME" --repo "$GH_REPO" --draft=false --latest
+
+          if [[ "$RELEASE_TRIGGER" == push ]]; then
+            # Braces are required: bash takes the full-width bracket that follows as part of the name otherwise.
+            title="${TAG_NAME}（自动构建）"
+            banner='本版本由 CI 在合并到 `main` 后自动构建发布，未经人工挑选，标记为 Pre-release。想要经过挑选的版本，请下载页面上带 Latest 徽章的那个。'
+            channel=(--prerelease)
+          else
+            title="$TAG_NAME"
+            banner=''
+            channel=(--prerelease=false --latest)
+          fi
+
+          # Only ever reached once per release: the isDraft assertion above fails on a second run, because publishing clears the flag.
+          notes=$(mktemp)
+          gh release view "$TAG_NAME" --repo "$GH_REPO" --json body --jq .body > "$notes"
+          if [[ -n "$banner" ]]; then
+            printf '\n> %s\n' "$banner" >> "$notes"
+          fi
+
+          gh release edit "$TAG_NAME" --repo "$GH_REPO" --draft=false "${channel[@]}" --title "$title" --notes-file "$notes"
+          rm -f "$notes"
