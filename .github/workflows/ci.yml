@@ -165,3 +165,42 @@ jobs:
           fi
       - name: Check patches
         run: git diff --check
+
+  # The shared engine runs this same pair of sanitizers on every change (MSIME-Engine's
+  # "Linux ASan and UBSan" job), but the frontend layer had none -- and that is the layer that parses
+  # untrusted input, talks D-Bus and manages IBus lifetimes. The most recent audit-driven fix in the
+  # Windows frontend was a batch of races and null derefs of exactly this kind, none of which the
+  # existing Debug build would have caught.
+  #
+  # One architecture and one release is enough: memory errors are not architecture specific, and this
+  # is about catching them at all rather than catching them everywhere.
+  sanitizers:
+    name: Linux ASan and UBSan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y build-essential cmake file pkg-config libibus-1.0-dev libboost-dev libboost-json-dev libcurl4-openssl-dev nlohmann-json3-dev libfmt-dev libspdlog-dev libsqlite3-dev libsecret-1-dev libgtk-3-dev tesseract-ocr tesseract-ocr-chi-sim gnome-keyring python3 python3-gi python3-pypinyin gir1.2-ibus-1.0 ibus dbus-x11 iso-codes
+      - name: Build dictionary
+        run: python3 scripts/fetch_dictionary.py
+      - name: Configure instrumented debug build
+        run: >-
+          cmake -S . -B build-sanitizers -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+          -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+          -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
+          -DCMAKE_SHARED_LINKER_FLAGS="-fsanitize=address,undefined"
+      - name: Build
+        run: cmake --build build-sanitizers --parallel
+      # ibus_smoke and the *Smoke.sh suites launch the engine under ibus-daemon and other processes
+      # that are not themselves instrumented, so ASan's interceptors report on code this job is not
+      # testing. The in-process unit tests are what the sanitizers are here for.
+      - name: Test memory safety and undefined behavior
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: ctest --no-tests=error --test-dir build-sanitizers --output-on-failure --timeout 120 -E '^ibus_smoke$'

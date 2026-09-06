@@ -228,6 +228,16 @@ jobs:
           release_json=$(gh release view "$TAG_NAME" --repo "$GH_REPO" --json isDraft,targetCommitish)
           test "$(jq -er .isDraft <<< "$release_json")" = true
           test "$(jq -er .targetCommitish <<< "$release_json")" = "$TARGET_SHA"
+      # Per-architecture rather than one SHA256SUMS for the whole release: the two architecture jobs
+      # upload concurrently, so a single shared file would be a race. MSIME-Apple ships a .sha256 next
+      # to each asset for the same reason and this matches it.
+      - name: Record checksums
+        working-directory: build/packages
+        run: |
+          for artifact in *.tar.gz *.deb *.rpm; do
+            test -e "$artifact" || continue
+            sha256sum "$artifact" > "$artifact.sha256"
+          done
       - name: Upload architecture assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -235,7 +245,8 @@ jobs:
           TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
         run: |
           gh release upload "$TAG_NAME" --repo "$GH_REPO" --clobber \
-            build/packages/*.tar.gz build/packages/*.deb build/packages/*.rpm
+            build/packages/*.tar.gz build/packages/*.deb build/packages/*.rpm \
+            build/packages/*.sha256
       # The manifest describes the source and data both architectures were built from, so it is
       # attached once rather than raced for by two jobs writing the same bytes.
       - name: Attach the product manifest

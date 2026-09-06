@@ -1,5 +1,14 @@
 # 水杉输入法 Linux 版
 
+<!-- badges:start -->
+[![CI](https://img.shields.io/github/actions/workflow/status/metasequoiaime/MSIME-Linux/ci.yml?branch=main&label=CI)](https://github.com/metasequoiaime/MSIME-Linux/actions/workflows/ci.yml)
+[![CodeQL](https://img.shields.io/github/actions/workflow/status/metasequoiaime/MSIME-Linux/codeql.yml?branch=main&label=CodeQL)](https://github.com/metasequoiaime/MSIME-Linux/actions/workflows/codeql.yml)
+[![Release](https://img.shields.io/github/v/release/metasequoiaime/MSIME-Linux?include_prereleases&label=release)](https://github.com/metasequoiaime/MSIME-Linux/releases)
+[![Downloads](https://img.shields.io/github/downloads/metasequoiaime/MSIME-Linux/total?label=downloads)](https://github.com/metasequoiaime/MSIME-Linux/releases)
+[![License](https://img.shields.io/github/license/metasequoiaime/MSIME-Linux)](LICENSE)
+[![Stars](https://img.shields.io/github/stars/metasequoiaime/MSIME-Linux?style=flat)](https://github.com/metasequoiaime/MSIME-Linux/stargazers)
+<!-- badges:end -->
+
 水杉输入法（Metasequoia IME）的 Linux 前端。首个前端面向 IBus，复用 [`MSIME-Engine`](https://github.com/metasequoiaime/MSIME-Engine) 提供的共享 C++ 组词引擎。
 
 引擎子模块固定在提供原生桌面前端 API 的上游修订版本，同时提供 `helpcode/helpcodes` 辅助码。公共词库源数据和构建器已合入 MSIME-Engine；发布词库按 `product-lock.json` 从 MSIME-Engine 下载，并核对来源提交、格式清单和摘要。历史 MSIME-Dict release 保留原版本和摘要。
@@ -17,6 +26,20 @@ sudo apt install build-essential cmake pkg-config libibus-1.0-dev libboost-dev l
 ```
 
 若需要本地中文手写识别，还需安装 `tesseract-ocr` 与 `tesseract-ocr-chi-sim`。缺少它们时桌面工具仍可使用，并会在状态栏说明缺失的后端。
+
+## 安装
+
+发行版包在 [Releases](https://github.com/metasequoiaime/MSIME-Linux/releases)，每个版本提供 x86_64 与 aarch64 的 `.deb`、`.rpm` 和 `.tar.gz`，每个包附一个 `.sha256`：
+
+```sh
+sha256sum -c metasequoia-ime-*.deb.sha256
+sudo apt install ./metasequoia-ime-*.deb        # Debian / Ubuntu
+sudo dnf install ./metasequoia-ime-*.rpm        # Fedora / RHEL
+```
+
+包未经签名，请核对上面的校验值。安装后重启 IBus，在桌面环境的输入源设置中添加「Metasequoia IME」。
+
+要从源码构建（开发，或发行版包不适用时）看下面两节。
 
 ## 构建与测试
 
@@ -158,3 +181,11 @@ DEB 生成需要 `dpkg-dev` 和 `file`（CPack 用它解析二进制以生成 sh
 ### 词库产品格式
 
 Engine 词库发布除摘要外必须提供 `dictionary-manifest.json`，下载阶段使用与固定 Engine 一致的公共校验器检查格式版本、桌面 profile 和实际消费的数据库。`dict-2026.09.05` 是唯一保留的无清单兼容版本。清单随安装数据一起打包。
+
+<!-- star-history:start -->
+## Star History
+
+<a href="https://star-history.com/#metasequoiaime/MSIME-Linux&Date">
+  <img src="https://api.star-history.com/svg?repos=metasequoiaime/MSIME-Linux&type=Date" alt="Star History Chart" width="600">
+</a>
+<!-- star-history:end -->
