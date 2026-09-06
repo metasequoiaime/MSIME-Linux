@@ -27,6 +27,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  quality:
+    uses: ./.github/workflows/quality.yml
+
   # The inputs the packages are built from are checked once, independently of the build matrix.
   product:
     uses: ./.github/workflows/product-ci.yml
