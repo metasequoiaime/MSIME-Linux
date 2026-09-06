@@ -1,16 +1,20 @@
 #pragma once
 
+#include "HttpTimeouts.h"
 #include "HttpTransport.h"
 
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <thread>
 #include <utility>
 #include <vector>
+
+class EnglishDictionary;
 
 namespace metasequoia::linux_ime::online
 {
@@ -39,7 +43,12 @@ struct TranslationRequest
 class TranslationProvider
 {
   public:
-    explicit TranslationProvider(std::string dictionary_path, std::shared_ptr<HttpTransport> transport);
+    explicit TranslationProvider(std::string dictionary_path, std::shared_ptr<HttpTransport> transport,
+                                 HttpTimeouts timeouts = {});
+    ~TranslationProvider();
+
+    TranslationProvider(const TranslationProvider &) = delete;
+    TranslationProvider &operator=(const TranslationProvider &) = delete;
 
     std::optional<std::string> lookup(std::string_view candidate, std::string_view target_language,
                                       std::string_view endpoint, std::string_view token,
@@ -51,6 +60,11 @@ class TranslationProvider
   private:
     std::string dictionary_path_;
     std::shared_ptr<HttpTransport> transport_;
+    HttpTimeouts timeouts_;
+    // Opening the dictionary re-reads the custom translation sidecar and re-opens SQLite, which is far too expensive to
+    // repeat for every candidate of every composition, so one handle is kept alive and serialised here.
+    mutable std::mutex dictionary_mutex_;
+    mutable std::unique_ptr<EnglishDictionary> dictionary_;
 };
 
 class TranslationService
