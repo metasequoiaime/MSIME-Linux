@@ -664,6 +664,22 @@ int main()
         require(shuangpin_pinyin_controller.preedit() == "ni'hao'c" && shuangpin_pinyin_controller.has_composition(),
                 "Shuangpin pinyin preedit did not expose normalized segmentation.");
 
+        InputOptions separate_helpcode_flags;
+        separate_helpcode_flags.quanpin_helpcode_enabled = false;
+        separate_helpcode_flags.shuangpin_helpcode_enabled = true;
+        InputController separate_helpcode_controller(SchemeType::Quanpin, separate_helpcode_flags);
+        type(separate_helpcode_controller, "ni");
+        require(!separate_helpcode_controller.handle_key({FrontendKey::Character, 'C'}).handled,
+                "Disabled Quanpin helpcode consumed uppercase input.");
+        separate_helpcode_controller.switch_scheme(SchemeType::Shuangpin);
+        type(separate_helpcode_controller, "nihc");
+        require(separate_helpcode_controller.handle_key({FrontendKey::Character, 'C'}).handled,
+                "Switching schemes lost Shuangpin's independent helpcode enable flag.");
+        separate_helpcode_controller.switch_scheme(SchemeType::Quanpin);
+        type(separate_helpcode_controller, "ni");
+        require(!separate_helpcode_controller.handle_key({FrontendKey::Character, 'C'}).handled,
+                "Returning to Quanpin retained Shuangpin's helpcode enable flag.");
+
         InputOptions hidden_options;
         hidden_options.preedit_style = PreeditStyle::Hidden;
         InputController hidden_controller(SchemeType::Quanpin, hidden_options);

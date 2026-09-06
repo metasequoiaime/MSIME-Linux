@@ -293,8 +293,8 @@ bool valid_input_settings(const InputSettings &settings)
            frequency_adjustment_name(settings.frequency_adjustment_mode) != nullptr &&
            valid_character_width(settings.character_width) && settings.page_size >= kMinimumPageSize &&
            settings.page_size <= kMaximumPageSize &&
-           InputSession::is_supported_helpcode_schema(settings.quanpin_helpcode_schema) &&
-           InputSession::is_supported_helpcode_schema(settings.shuangpin_helpcode_schema) &&
+           Session::is_supported_helpcode_schema(settings.quanpin_helpcode_schema) &&
+           Session::is_supported_helpcode_schema(settings.shuangpin_helpcode_schema) &&
            settings.frequency_trigger_count >= kMinimumFrequencyValue &&
            settings.frequency_trigger_count <= kMaximumFrequencyValue &&
            settings.frequency_linear_step >= kMinimumFrequencyValue &&
@@ -614,7 +614,7 @@ InputSettings SettingsStore::load(std::string *warning) const
     if (g_key_file_has_key(key_file, kGroup, "quanpin-helpcode-schema", nullptr))
     {
         gchar *value = g_key_file_get_string(key_file, kGroup, "quanpin-helpcode-schema", nullptr);
-        if (value != nullptr && InputSession::is_supported_helpcode_schema(value))
+        if (value != nullptr && Session::is_supported_helpcode_schema(value))
         {
             settings.quanpin_helpcode_schema = value;
         }
@@ -643,7 +643,7 @@ InputSettings SettingsStore::load(std::string *warning) const
     if (g_key_file_has_key(key_file, kGroup, "shuangpin-helpcode-schema", nullptr))
     {
         gchar *value = g_key_file_get_string(key_file, kGroup, "shuangpin-helpcode-schema", nullptr);
-        if (value != nullptr && InputSession::is_supported_helpcode_schema(value))
+        if (value != nullptr && Session::is_supported_helpcode_schema(value))
         {
             settings.shuangpin_helpcode_schema = value;
         }
