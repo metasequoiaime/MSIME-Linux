@@ -96,9 +96,10 @@ std::string resolved_prompt(const AiSuggestionConfig &config)
 } // namespace
 
 AiSuggestionProvider::AiSuggestionProvider(std::shared_ptr<HttpTransport> transport,
-                                           bool allow_insecure_loopback_for_tests, HttpTimeouts timeouts)
+                                           bool allow_insecure_loopback_for_tests,
+                                           std::shared_ptr<const HttpTimeoutsHandle> timeouts)
     : transport_(std::move(transport)), allow_insecure_loopback_for_tests_(allow_insecure_loopback_for_tests),
-      timeouts_(timeouts)
+      timeouts_(timeouts ? std::move(timeouts) : default_http_timeouts())
 {
     if (!transport_)
     {
@@ -186,8 +187,9 @@ std::optional<std::string> AiSuggestionProvider::fetch(const OnlineQuery &query,
     request.url = endpoint;
     request.headers = {"Content-Type: application/json", "Authorization: Bearer " + config.token};
     request.body = boost::json::serialize(body);
-    request.connect_timeout = timeouts_.connect;
-    request.total_timeout = timeouts_.total;
+    const HttpTimeouts timeouts = timeouts_->get();
+    request.connect_timeout = timeouts.connect;
+    request.total_timeout = timeouts.total;
     const HttpResponse response = transport_->perform(request, cancelled);
     if (response.status_code < 200 || response.status_code >= 300 || response.body.empty() ||
         (cancelled && cancelled()))

@@ -45,6 +45,9 @@ struct AppState
     GtkWidget *sidebar = nullptr;
     Page page = Page::Appearance;
     std::unordered_map<std::string, GtkWidget *> editors;
+    // A pending rebuild of the current page, queued when a control that decides another row's visibility changes. Held
+    // so a burst of changes collapses into one rebuild instead of queueing an idle callback per toggle.
+    guint rebuild_source = 0;
 };
 
 struct PageInfo
@@ -216,6 +219,7 @@ const char *row_label(const SettingsUiRow &row)
         {"voice-enabled", "启用语音输入"},
         {"voice-provider", "语音服务商"},
         {"voice-credential", "语音 API 令牌"},
+        {"voice-credential-clear", "清除已保存的语音令牌"},
         {"voice-endpoint", "语音服务地址"},
         {"voice-model", "语音模型"},
         {"voice-language", "语音语言"},
@@ -229,6 +233,7 @@ const char *row_label(const SettingsUiRow &row)
         {"ai-enabled", "AI 联想"},
         {"ai-provider", "AI 服务商"},
         {"ai-credential", "AI API 令牌"},
+        {"ai-credential-clear", "清除已保存的 AI 令牌"},
         {"ai-endpoint", "AI 服务地址"},
         {"ai-model", "AI 模型"},
         {"ai-prompt", "AI 提示词"},
@@ -236,6 +241,7 @@ const char *row_label(const SettingsUiRow &row)
         {"translation-enabled", "候选翻译"},
         {"translation-provider", "翻译服务商"},
         {"translation-credential", "翻译 API 令牌"},
+        {"translation-credential-clear", "清除已保存的翻译令牌"},
         {"translation-target-language", "翻译目标语言"},
         {"translation-endpoint", "翻译服务地址"},
     };
@@ -421,6 +427,34 @@ void launch_toolbar_clicked(GtkButton *, gpointer data)
     launch_program(*static_cast<AppState *>(data), "metasequoia-ime-toolbar");
 }
 
+void show_page(AppState &state, Page page);
+
+// The controls that decide whether another row on the same page is shown. Changing one has to rebuild the page, or the
+// credential row it gates stays on screen until the user navigates away and back.
+bool row_gates_visibility(const std::string &id)
+{
+    return id == "ai-enabled" || id == "voice-enabled" || id == "translation-enabled" || id == "translation-provider";
+}
+
+gboolean rebuild_page(gpointer data)
+{
+    auto &state = *static_cast<AppState *>(data);
+    state.rebuild_source = 0;
+    show_page(state, state.page);
+    return G_SOURCE_REMOVE;
+}
+
+// Queued rather than rebuilt here: show_page destroys every editor on the page, including the widget whose signal is
+// still being emitted.
+void gating_editor_changed(GtkWidget *, gpointer data)
+{
+    auto &state = *static_cast<AppState *>(data);
+    if (state.rebuild_source == 0)
+    {
+        state.rebuild_source = g_idle_add(rebuild_page, &state);
+    }
+}
+
 void build_model_page(AppState &state, GtkWidget *container)
 {
     const SettingsUiSection section = model_section_for_page(state.page);
@@ -447,7 +481,7 @@ void build_model_page(AppState &state, GtkWidget *container)
     gint row_index = 0;
     for (const auto &row : state.model.rows())
     {
-        if (settings_section_for_id(row.id) != section)
+        if (settings_section_for_id(row.id) != section || !row.visible)
             continue;
         GtkWidget *label = gtk_label_new(row_label(row));
         gtk_label_set_xalign(GTK_LABEL(label), 0.0F);
@@ -463,6 +497,11 @@ void build_model_page(AppState &state, GtkWidget *container)
             // this is the point where it has to stop. The row carries a presence marker, make_editor turned it into a
             // placeholder, and the entry stays empty until the user types a replacement.
             gtk_widget_set_hexpand(editor, TRUE);
+        }
+        if (row_gates_visibility(row.id))
+        {
+            g_signal_connect(editor, row.control == SettingsControl::Boolean ? "toggled" : "changed",
+                             G_CALLBACK(gating_editor_changed), &state);
         }
         gtk_grid_attach(GTK_GRID(grid), label, 0, row_index, 1, 1);
         gtk_grid_attach(GTK_GRID(grid), editor, 1, row_index, 1, 1);
@@ -582,21 +621,21 @@ bool credential_missing(const AppState &state, SecretKind kind, const std::strin
     return token.empty() && !provider.empty() && state.secrets.lookup(kind, provider).status == SecretStatus::NotFound;
 }
 
-// A credential that has reached Secret Service has no reason to stay in a widget for the rest of the session, and
-// leaving it there would also re-store it on every later save. Clearing the entry returns it to the state the rest of
-// this window is built on: empty means keep what is stored.
-void forget_credential_editors(AppState &state)
+// Rebuilds the window from what is on disk and in Secret Service, discarding whatever the editors hold. Both the reload
+// button and a completed save go through here. After a save it is the only honest state to show: a credential that has
+// reached Secret Service has no reason to stay in a widget for the rest of the session and would be re-stored on every
+// later save, the clear rows are one-shot requests that have now been carried out, and load() is the authority on
+// whether a credential row may still claim that one exists.
+void reload_from_store(AppState &state, std::string *warning)
 {
-    for (const auto &row : state.model.rows())
-    {
-        if (row.control != SettingsControl::Secret)
-            continue;
-        const auto editor = state.editors.find(row.id);
-        if (editor == state.editors.end())
-            continue;
-        gtk_entry_set_text(GTK_ENTRY(editor->second), "");
-        gtk_entry_set_placeholder_text(GTK_ENTRY(editor->second), credential_placeholder(row));
-    }
+    state.model = SettingsUiModel(state.store.load(state.secrets, warning));
+    state.editors.clear();
+    clear_container(state.content);
+    if (page_is_model_section(state.page))
+        build_model_page(state, state.content);
+    else
+        build_static_page(state, state.content);
+    gtk_widget_show_all(state.content);
 }
 
 void save_clicked(GtkButton *, gpointer data)
@@ -605,7 +644,10 @@ void save_clicked(GtkButton *, gpointer data)
     if (!flush_editors(state))
         return;
     const InputSettings &settings = state.model.settings();
-    if (settings.online.ai.enabled &&
+    // A pending clear request is not an unfilled field. The user has asked for exactly the state this check exists to
+    // prevent being reached by accident, and SettingsStore::save accepts it for the same reason, so refusing here would
+    // leave the request with no way through.
+    if (settings.online.ai.enabled && !settings.online.ai_credential_cleared &&
         credential_missing(state, SecretKind::AiApiToken, model_row_value(state, "ai-provider"),
                            settings.online.ai.token))
     {
@@ -613,7 +655,7 @@ void save_clicked(GtkButton *, gpointer data)
                      "尚未提供 AI API 令牌：请在「AI 辅助」页填写该服务商的令牌，或取消勾选 AI 联想。");
         return;
     }
-    if (settings.voice.enabled &&
+    if (settings.voice.enabled && !settings.voice_credential_cleared &&
         credential_missing(state, SecretKind::VoiceApiToken, settings.voice.provider, settings.voice.token))
     {
         show_message(GTK_WINDOW(state.window), GTK_MESSAGE_ERROR,
@@ -626,8 +668,15 @@ void save_clicked(GtkButton *, gpointer data)
         show_message(GTK_WINDOW(state.window), GTK_MESSAGE_ERROR, error);
         return;
     }
-    forget_credential_editors(state);
-    show_message(GTK_WINDOW(state.window), GTK_MESSAGE_INFO, "设置已保存；如运行中的 IBus 未更新，请重启引擎。");
+    std::string warning;
+    reload_from_store(state, &warning);
+    show_message(GTK_WINDOW(state.window), GTK_MESSAGE_INFO,
+                 "设置已保存；运行中的引擎会自动重新加载，未生效时请重启 IBus。");
+    // Reported after the confirmation rather than instead of it: the save did happen, and this says what the saved
+    // configuration cannot do yet -- a credential that was just forgotten leaves its feature enabled and inactive,
+    // which is the state a clear request asks for and the only place the user is told about it.
+    if (!warning.empty())
+        show_message(GTK_WINDOW(state.window), GTK_MESSAGE_WARNING, warning);
 }
 
 void reset_clicked(GtkButton *, gpointer data)
@@ -637,14 +686,7 @@ void reset_clicked(GtkButton *, gpointer data)
     // flushing first let a single rejected editor abort the reload, which is the user's only way back to the settings
     // on disk.
     std::string warning;
-    state.model = SettingsUiModel(state.store.load(state.secrets, &warning));
-    state.editors.clear();
-    clear_container(state.content);
-    if (page_is_model_section(state.page))
-        build_model_page(state, state.content);
-    else
-        build_static_page(state, state.content);
-    gtk_widget_show_all(state.content);
+    reload_from_store(state, &warning);
     if (!warning.empty())
         show_message(GTK_WINDOW(state.window), GTK_MESSAGE_WARNING, warning);
 }

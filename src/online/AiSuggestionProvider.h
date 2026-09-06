@@ -40,7 +40,8 @@ class AiSuggestionProvider
 {
   public:
     explicit AiSuggestionProvider(std::shared_ptr<HttpTransport> transport,
-                                  bool allow_insecure_loopback_for_tests = false, HttpTimeouts timeouts = {});
+                                  bool allow_insecure_loopback_for_tests = false,
+                                  std::shared_ptr<const HttpTimeoutsHandle> timeouts = {});
 
     std::optional<std::string> fetch(const OnlineQuery &query, std::string_view context,
                                      const AiSuggestionConfig &config, const CancellationCheck &cancelled) const;
@@ -54,7 +55,8 @@ class AiSuggestionProvider
   private:
     std::shared_ptr<HttpTransport> transport_;
     bool allow_insecure_loopback_for_tests_ = false;
-    HttpTimeouts timeouts_;
+    // Read on every request rather than copied here; see HttpTimeoutsHandle.
+    std::shared_ptr<const HttpTimeoutsHandle> timeouts_;
     mutable std::mutex cache_mutex_;
     mutable std::string cache_credential_;
     mutable std::uint64_t cache_credential_generation_ = 0;

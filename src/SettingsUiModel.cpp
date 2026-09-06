@@ -76,9 +76,9 @@ bool valid_text(std::string_view value, std::size_t maximum, bool allow_newlines
 }
 
 void add(std::vector<SettingsUiRow> &rows, const char *id, const char *label, std::string value,
-         SettingsControl control, std::vector<std::string> choices = {})
+         SettingsControl control, std::vector<std::string> choices = {}, bool visible = true)
 {
-    rows.push_back({id, label, std::move(value), control, std::move(choices)});
+    rows.push_back({id, label, std::move(value), control, std::move(choices), visible});
 }
 
 std::string mode_value(InputMode value)
@@ -188,6 +188,19 @@ std::string credential_value(const std::string &token)
     return token.empty() ? std::string{} : std::string(kSettingsCredentialStored);
 }
 
+// A credential row and its clear companion are always shown or hidden together: a request to forget a credential that
+// the configuration has no use for would name a provider the user is not looking at.
+void add_credential(std::vector<SettingsUiRow> &rows, const char *id, const char *label, const char *clear_label,
+                    const std::string &token, bool cleared, bool visible)
+{
+    // The clear row comes first so that a credential entered in the same flush is applied after it and unticks it. The
+    // reverse order would let a tick discard a credential the user typed on the same visit with nothing said about it.
+    add(rows, settings_credential_clear_id(id).c_str(), clear_label, bool_value(cleared), SettingsControl::Boolean, {},
+        visible);
+    // A ticked clear row already dropped the in-memory token, so the presence marker follows from the token alone.
+    add(rows, id, label, credential_value(token), SettingsControl::Secret, {}, visible);
+}
+
 bool set_choice(std::string_view value, std::initializer_list<std::string_view> choices, std::size_t &index)
 {
     std::size_t current = 0;
@@ -203,6 +216,11 @@ bool set_choice(std::string_view value, std::initializer_list<std::string_view> 
     return false;
 }
 } // namespace
+
+std::string settings_credential_clear_id(const std::string &credential_id)
+{
+    return credential_id + "-clear";
+}
 
 SettingsUiSection settings_section_for_id(const std::string &id)
 {
@@ -368,8 +386,8 @@ void SettingsUiModel::rebuild_rows()
     // Each credential row follows the provider row it belongs to, and the order matters: set() clears the in-memory
     // credential when the provider changes, so a credential typed in the same session as a provider switch has to be
     // applied after that switch rather than before it.
-    add(rows_, "voice-credential", "Voice credential", credential_value(settings_.voice.token),
-        SettingsControl::Secret);
+    add_credential(rows_, "voice-credential", "Voice credential", "Forget the stored voice credential",
+                   settings_.voice.token, settings_.voice_credential_cleared, settings_.voice.enabled);
     add(rows_, "voice-endpoint", "Voice endpoint", settings_.voice.endpoint, SettingsControl::Text);
     add(rows_, "voice-model", "Voice model", settings_.voice.model, SettingsControl::Text);
     add(rows_, "voice-language", "Voice language", settings_.voice.language, SettingsControl::Text);
@@ -388,7 +406,8 @@ void SettingsUiModel::rebuild_rows()
     add(rows_, "ai-enabled", "AI suggestions", bool_value(settings_.online.ai.enabled), SettingsControl::Boolean);
     add(rows_, "ai-provider", "AI provider", ai_provider_value(settings_.online.ai.provider), SettingsControl::Choice,
         {"deepseek", "openai", "siliconflow", "groq", "custom"});
-    add(rows_, "ai-credential", "AI credential", credential_value(settings_.online.ai.token), SettingsControl::Secret);
+    add_credential(rows_, "ai-credential", "AI credential", "Forget the stored AI credential",
+                   settings_.online.ai.token, settings_.online.ai_credential_cleared, settings_.online.ai.enabled);
     add(rows_, "ai-endpoint", "AI endpoint", settings_.online.ai.endpoint, SettingsControl::Text);
     add(rows_, "ai-model", "AI model", settings_.online.ai.model, SettingsControl::Text);
     add(rows_, "ai-prompt", "AI prompt", settings_.online.ai.prompt, SettingsControl::Text);
@@ -399,8 +418,12 @@ void SettingsUiModel::rebuild_rows()
     add(rows_, "translation-provider", "Translation provider",
         translation_provider_value(settings_.online.translation_provider), SettingsControl::Choice,
         {"local", "deeplx"});
-    add(rows_, "translation-credential", "Translation credential", credential_value(settings_.online.translation_token),
-        SettingsControl::Secret);
+    // Only DeepLX authenticates: the local backend never reads this token, and the store never files one under it.
+    add_credential(rows_, "translation-credential", "Translation credential",
+                   "Forget the stored translation credential", settings_.online.translation_token,
+                   settings_.online.translation_credential_cleared,
+                   settings_.online.candidate_translations_enabled &&
+                       settings_.online.translation_provider == TranslationProvider::DeepLX);
     add(rows_, "translation-target-language", "Translation target language",
         settings_.online.translation_target_language, SettingsControl::Choice,
         {"en", "fr", "ja", "es", "ru", "de", "ko"});
@@ -674,6 +697,37 @@ bool SettingsUiModel::set(const std::string &id, const std::string &value, std::
         if (parsed)
             candidate.online.translation_target_language = value;
     }
+    else if (id == settings_credential_clear_id("ai-credential") ||
+             id == settings_credential_clear_id("voice-credential") ||
+             id == settings_credential_clear_id("translation-credential"))
+    {
+        bool value_as_bool = false;
+        parsed = parse_bool(value, value_as_bool);
+        if (parsed)
+        {
+            // The in-memory credential goes with the request. load() hydrates the stored one into this struct, so
+            // leaving it in place would have SettingsStore::save re-file the very credential the user asked it to
+            // forget; the store reads a cleared flag as authoritative for the same reason.
+            if (id == settings_credential_clear_id("ai-credential"))
+            {
+                candidate.online.ai_credential_cleared = value_as_bool;
+                if (value_as_bool)
+                    candidate.online.ai.token.clear();
+            }
+            else if (id == settings_credential_clear_id("voice-credential"))
+            {
+                candidate.voice_credential_cleared = value_as_bool;
+                if (value_as_bool)
+                    candidate.voice.token.clear();
+            }
+            else
+            {
+                candidate.online.translation_credential_cleared = value_as_bool;
+                if (value_as_bool)
+                    candidate.online.translation_token.clear();
+            }
+        }
+    }
     else if (id == "ai-credential" || id == "voice-credential" || id == "translation-credential")
     {
         // An empty entry is the untouched one: the window never renders a stored credential back into the widget, so
@@ -689,12 +743,24 @@ bool SettingsUiModel::set(const std::string &id, const std::string &value, std::
         }
         else if (!value.empty())
         {
+            // A credential entered here unticks the clear row that precedes it. Storing a replacement already forgets
+            // whatever was there, so the removal the flag asks for would only undo the save the user just made, and the
+            // two rows would otherwise disagree with no way for the window to say which one won.
             if (id == "ai-credential")
+            {
                 candidate.online.ai.token = value;
+                candidate.online.ai_credential_cleared = false;
+            }
             else if (id == "voice-credential")
+            {
                 candidate.voice.token = value;
+                candidate.voice_credential_cleared = false;
+            }
             else
+            {
                 candidate.online.translation_token = value;
+                candidate.online.translation_credential_cleared = false;
+            }
         }
     }
     else if (id == "ai-endpoint" || id == "ai-model" || id == "ai-prompt" || id == "translation-endpoint" ||

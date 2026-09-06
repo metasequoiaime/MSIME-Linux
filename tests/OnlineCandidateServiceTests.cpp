@@ -38,7 +38,7 @@ using metasequoia::linux_ime::online::CancellationCheck;
 using metasequoia::linux_ime::online::GoogleCloudProvider;
 using metasequoia::linux_ime::online::HttpRequest;
 using metasequoia::linux_ime::online::HttpResponse;
-using metasequoia::linux_ime::online::HttpTimeouts;
+using metasequoia::linux_ime::online::HttpTimeoutsHandle;
 using metasequoia::linux_ime::online::HttpTransport;
 using metasequoia::linux_ime::online::OnlineCandidateService;
 
@@ -553,7 +553,7 @@ int main()
 
     auto timed_ai_transport = std::make_shared<FakeTransport>();
     timed_ai_transport->queue({{200, ai_response("超时"), {}}});
-    AiSuggestionProvider timed_ai_provider(timed_ai_transport, false, HttpTimeouts{300ms, 1500ms});
+    AiSuggestionProvider timed_ai_provider(timed_ai_transport, false, HttpTimeoutsHandle::fixed({300ms, 1500ms}));
     require(timed_ai_provider.fetch(ai_query("nihao"), "前文", deepseek_config, [] { return false; }) == "超时",
             "The AI provider built with configured timeouts did not complete its request.");
     const auto timed_ai_requests = timed_ai_transport->requests();
@@ -754,7 +754,7 @@ int main()
     context_ai_transport->queue({{200, ai_response("上文候选"), {}}});
     auto context_cloud_provider = std::make_shared<GoogleCloudProvider>(context_cloud_transport);
     auto context_ai_provider =
-        std::make_shared<AiSuggestionProvider>(context_ai_transport, false, HttpTimeouts{300ms, 1500ms});
+        std::make_shared<AiSuggestionProvider>(context_ai_transport, false, HttpTimeoutsHandle::fixed({300ms, 1500ms}));
     auto context_deliveries = std::make_shared<DeliveryLog>();
     {
         OnlineCandidateService service(

@@ -158,6 +158,63 @@ int main()
         require(model.settings().online.translation_token.empty(),
                 "Switching translation provider kept the previous provider's credential.");
 
+        // A credential row is only offered where the configuration reads the value. The model still builds, parses and
+        // reports a hidden row -- only the window skips it -- so this is a property of the row rather than of the
+        // vector, and hiding one cannot silently drop a setting.
+        require(model.settings().online.candidate_translations_enabled &&
+                    model.settings().online.translation_provider == TranslationProvider::DeepLX,
+                "The visibility checks below expect the DeepLX backend selected above.");
+        require(find_row("translation-credential").visible &&
+                    find_row(settings_credential_clear_id("translation-credential")).visible,
+                "The translation token row is hidden for the one backend that authenticates.");
+        require(model.set("translation-provider", "local", &error), "The local translation backend was rejected.");
+        require(!find_row("translation-credential").visible &&
+                    !find_row(settings_credential_clear_id("translation-credential")).visible,
+                "The translation token row is still offered while the provider is 本地, where the value is never read "
+                "and the store never files one under it.");
+        require(find_row("translation-credential").control == SettingsControl::Secret,
+                "A hidden row stopped being a row the model reports.");
+        require(!model.settings().online.ai.enabled && !find_row("ai-credential").visible,
+                "The AI token row is offered while AI suggestions are off.");
+        require(model.set("ai-enabled", "true", &error) && find_row("ai-credential").visible,
+                "The AI token row stayed hidden after AI suggestions were turned on.");
+        require(model.settings().voice.enabled && find_row("voice-credential").visible,
+                "The voice token row is hidden while voice input is on.");
+        require(settings_section_for_id(settings_credential_clear_id("ai-credential")) == SettingsUiSection::Online &&
+                    settings_section_for_id(settings_credential_clear_id("voice-credential")) ==
+                        SettingsUiSection::Voice,
+                "A credential clear row landed on a different page from the credential it belongs to.");
+
+        // The gesture that says "forget this token". An empty entry cannot mean it -- that has to keep whatever Secret
+        // Service holds, or an untouched form would erase a credential on every save -- so it is a row of its own.
+        require(find_row(settings_credential_clear_id("ai-credential")).control == SettingsControl::Boolean &&
+                    find_row(settings_credential_clear_id("ai-credential")).value == "false",
+                "The credential clear row is missing, or starts asking for a removal nobody requested.");
+        require(model.set("ai-credential", "sk-to-be-forgotten", &error) &&
+                    model.settings().online.ai.token == "sk-to-be-forgotten",
+                "A credential could not be entered before the clear checks.");
+        require(model.set(settings_credential_clear_id("ai-credential"), "true", &error),
+                "A request to forget a credential was rejected.");
+        require(model.settings().online.ai_credential_cleared && model.settings().online.ai.token.empty(),
+                "A clear request left the in-memory credential in place, which SettingsStore reads as the credential "
+                "to re-file over the removal.");
+        require(find_row("ai-credential").value.empty(),
+                "A row whose credential has just been forgotten still reports that one is held.");
+        require(model.set("ai-credential", "sk-replacement", &error), "A replacement credential was rejected.");
+        require(!model.settings().online.ai_credential_cleared && model.settings().online.ai.token == "sk-replacement",
+                "Entering a credential did not withdraw the request to forget the one it replaces, so the two rows "
+                "would reach the store disagreeing.");
+        // What makes that resolution work in a page flush, which applies rows in order.
+        const auto &ordered = model.rows();
+        const auto clear_row = std::find_if(ordered.begin(), ordered.end(), [](const SettingsUiRow &row) {
+            return row.id == settings_credential_clear_id("ai-credential");
+        });
+        const auto entry_row = std::find_if(ordered.begin(), ordered.end(),
+                                            [](const SettingsUiRow &row) { return row.id == "ai-credential"; });
+        require(clear_row != ordered.end() && entry_row != ordered.end() && clear_row < entry_row,
+                "The credential entry no longer follows its clear row, so a credential typed on the same visit would "
+                "be discarded by the tick instead of withdrawing it.");
+
         std::cout << "Settings UI model tests passed.\n";
         return 0;
     }

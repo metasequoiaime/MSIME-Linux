@@ -14,14 +14,16 @@
 #include <ibus.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
-#include <filesystem>
 #include <limits>
 #include <map>
 #include <memory>
 #include <optional>
 #include <string>
 #include <system_error>
+#include <thread>
+#include <utility>
 #include <vector>
 
 namespace
@@ -43,6 +45,7 @@ using metasequoia::linux_ime::online::AiSuggestionProvider;
 using metasequoia::linux_ime::online::CurlHttpTransport;
 using metasequoia::linux_ime::online::GoogleCloudProvider;
 using metasequoia::linux_ime::online::HttpTimeouts;
+using metasequoia::linux_ime::online::HttpTimeoutsHandle;
 using metasequoia::linux_ime::online::OnlineCandidateService;
 using metasequoia::linux_ime::online::TranslationBackend;
 using metasequoia::linux_ime::online::TranslationProvider;
@@ -81,11 +84,20 @@ struct _MetasequoiaEngine
     // Watches config.ini so an edit made in the settings window -- a separate process -- reaches the running engine
     // instead of being overwritten by the next save of the copy above.
     GFileMonitor *settings_monitor = nullptr;
-    // What config.ini looked like the last time this engine wrote it or adopted it, so a change event can be told apart
-    // from the echo of the engine's own save. Zero means the file could not be stat'ed.
-    gint64 settings_file_modified = 0;
-    guint64 settings_file_size = 0;
+    // The content of config.ini as this engine last wrote or adopted it, so a change event can be told apart from the
+    // echo of the engine's own save. A digest of the bytes rather than a modification time and a size: those two agree
+    // for an external write that lands in the same filesystem timestamp tick at the same byte count, and both halves of
+    // that are ordinary for this file -- the settings are small, most edits change a value without changing the length,
+    // and the file is replaced by an atomic rename, so two writers can land very close together. Empty means the file
+    // could not be read, which never compares equal to a digest of anything.
+    std::string *settings_digest = nullptr;
     metasequoia::linux_ime::LibsecretSecretStore *secret_store = nullptr;
+    // The deadlines every provider reads per request. Held here so a settings reload can change them in place; see
+    // HttpTimeoutsHandle for why they cannot be re-applied by rebuilding the providers.
+    std::shared_ptr<HttpTimeoutsHandle> *http_timeouts = nullptr;
+    // Bumped by every settings reload. A credential lookup runs on a thread of its own, and this is what tells its
+    // answer apart from one the user has already superseded by changing providers again.
+    std::uint64_t credential_generation = 0;
     OnlineCandidateService *online_service = nullptr;
     TranslationService *translation_service = nullptr;
     std::shared_ptr<DeliveryHandle> *delivery_handle = nullptr;
@@ -389,39 +401,10 @@ void queue_translation_result(std::shared_ptr<DeliveryHandle> handle, std::uint6
 // away.
 constexpr guint kSettingsSaveDelayMs = 500;
 
-struct SettingsFileStamp
-{
-    gint64 modified = 0;
-    guint64 size = 0;
-};
-
-// Identity of the settings file as it is on disk right now. Modification time and size together, because a settings
-// window save and an engine save write the same keys in the same order and can differ only in one value. A file that
-// cannot be stat'ed reports a zero stamp, which never compares equal to a remembered one.
-SettingsFileStamp settings_file_stamp(const std::filesystem::path &path)
-{
-    SettingsFileStamp stamp;
-    std::error_code code;
-    const auto modified = std::filesystem::last_write_time(path, code);
-    if (code)
-    {
-        return stamp;
-    }
-    const auto size = std::filesystem::file_size(path, code);
-    if (code)
-    {
-        return stamp;
-    }
-    stamp.modified = static_cast<gint64>(modified.time_since_epoch().count());
-    stamp.size = static_cast<guint64>(size);
-    return stamp;
-}
-
+// Adopts whatever is on disk right now as the content this engine last saw.
 void remember_settings_file(MetasequoiaEngine *engine)
 {
-    const SettingsFileStamp stamp = settings_file_stamp(engine->settings_store->config_path());
-    engine->settings_file_modified = stamp.modified;
-    engine->settings_file_size = stamp.size;
+    *engine->settings_digest = metasequoia::linux_ime::settings_file_digest(engine->settings_store->config_path());
 }
 
 void write_settings(MetasequoiaEngine *engine)
@@ -429,14 +412,22 @@ void write_settings(MetasequoiaEngine *engine)
     // The plaintext overload on purpose: nothing reachable from the key path or the property menu
     // changes a credential, and SettingsStore documents the credential overload as blocking on
     // Secret Service, which must not happen while the IBus main loop is delivering keys.
-    if (engine->settings_store->save(*engine->settings, engine->settings_warning))
+    std::string digest;
+    if (engine->settings_store->save(*engine->settings, engine->settings_warning, &digest))
     {
         engine->settings_warning->clear();
     }
-    // Unconditionally, and after the failed save as well: the store writes a temporary file and renames it over the
-    // target, so a save that reported an error may still have replaced the file, and the monitor must not read anything
-    // this process produced back as somebody else's edit.
-    remember_settings_file(engine);
+    // Remembered after the failed save as well: the store writes a temporary file and renames it over the target, so a
+    // save that reported an error may still have replaced the file, and the monitor must not read anything this process
+    // produced back as somebody else's edit. save() reports the digest as soon as the bytes exist, which covers every
+    // failure that could have replaced the file; an empty one means it gave up before serializing anything, and what is
+    // on disk is then whatever was there already.
+    if (digest.empty())
+    {
+        remember_settings_file(engine);
+        return;
+    }
+    *engine->settings_digest = std::move(digest);
 }
 
 gboolean flush_settings(gpointer user_data)
@@ -957,6 +948,10 @@ void finalize(GObject *object)
     engine->translation_glosses = nullptr;
     delete engine->secret_store;
     engine->secret_store = nullptr;
+    // Only the engine's own reference. Each provider holds one too, so the handle stays alive for as long as anything
+    // can still read a deadline out of it, whatever order these deletions run in.
+    delete engine->http_timeouts;
+    engine->http_timeouts = nullptr;
     delete engine->controller;
     engine->controller = nullptr;
     delete engine->mode_toggle;
@@ -969,6 +964,8 @@ void finalize(GObject *object)
     engine->paths = nullptr;
     delete engine->settings_warning;
     engine->settings_warning = nullptr;
+    delete engine->settings_digest;
+    engine->settings_digest = nullptr;
     g_clear_object(&engine->properties);
     G_OBJECT_CLASS(metasequoia_engine_parent_class)->finalize(object);
 }
@@ -1056,6 +1053,105 @@ void adopt_engine_settings(MetasequoiaEngine *engine, const InputSettings &setti
         {settings.switch_language_shift, settings.switch_language_ctrl, settings.switch_language_ctrl_alt_space});
 }
 
+// A Secret Service lookup blocks, so it cannot be made from the IBus main loop -- which is why hydration only ever
+// happened at startup, and why turning AI on in the settings window left the engine with no token and AI inactive until
+// the next restart. The lookup runs on a thread of its own instead, and its answer comes back through the same
+// DeliveryHandle the online workers use.
+struct CredentialDelivery
+{
+    std::shared_ptr<DeliveryHandle> handle;
+    // The reload this lookup was started for. An answer that arrives after the user has changed providers again
+    // belongs to a configuration that is no longer running, and filing its token under the current one would send a
+    // credential to somebody else's endpoint.
+    std::uint64_t generation = 0;
+    bool ai_requested = false;
+    metasequoia::linux_ime::online::AiProvider ai_provider = metasequoia::linux_ime::online::AiProvider::DeepSeek;
+    metasequoia::linux_ime::SecretLookupResult ai_result;
+    bool translation_requested = false;
+    metasequoia::linux_ime::SecretLookupResult translation_result;
+};
+
+gboolean deliver_credentials(gpointer user_data)
+{
+    std::unique_ptr<CredentialDelivery> delivery(static_cast<CredentialDelivery *>(user_data));
+    auto *engine = delivery->handle->engine;
+    // Only finalize clears the handle, and it runs on this same main loop, so a non-null engine here stays alive for
+    // the rest of the callback.
+    if (engine == nullptr || delivery->generation != engine->credential_generation)
+    {
+        return G_SOURCE_REMOVE;
+    }
+    metasequoia::linux_ime::OnlineSettings &online = *engine->online_settings;
+    if (delivery->ai_requested && online.ai.enabled && online.ai.provider == delivery->ai_provider)
+    {
+        // Every AI provider authenticates, so both non-Found answers leave nothing to send and the runtime flag has to
+        // come down for either. This is the line SettingsStore::load draws at startup, for the same reason: `enabled`
+        // is the user's persisted intent and only the user changes it, while this flag is this run's answer about
+        // whether that intent can be acted on.
+        const bool found = delivery->ai_result.status == metasequoia::linux_ime::SecretStatus::Found;
+        online.ai.token = found ? delivery->ai_result.value : std::string();
+        online.ai_credential_available = found;
+    }
+    if (delivery->translation_requested && online.candidate_translations_enabled &&
+        online.translation_provider == metasequoia::linux_ime::TranslationProvider::DeepLX)
+    {
+        // Translation is the provider where NotFound is a supported configuration rather than a fault: a self-hosted
+        // DeepLX endpoint may accept unauthenticated requests, and TranslationProvider sends no Authorization header
+        // for an empty token. Only a service that could not answer at all takes the flag down.
+        const bool found = delivery->translation_result.status == metasequoia::linux_ime::SecretStatus::Found;
+        online.translation_token = found ? delivery->translation_result.value : std::string();
+        online.translation_credential_available =
+            delivery->translation_result.status != metasequoia::linux_ime::SecretStatus::Unavailable;
+    }
+    refresh_online(engine);
+    refresh_translation(engine);
+    return G_SOURCE_REMOVE;
+}
+
+void hydrate_credentials(MetasequoiaEngine *engine, bool ai, bool translation)
+{
+    auto delivery = std::make_unique<CredentialDelivery>();
+    delivery->handle = *engine->delivery_handle;
+    delivery->generation = engine->credential_generation;
+    delivery->ai_requested = ai;
+    delivery->ai_provider = engine->online_settings->ai.provider;
+    delivery->translation_requested = translation;
+    // Detached, and it touches nothing the engine owns: it builds its own credential store and fills in a struct it was
+    // handed ownership of, so an engine finalized while the lookup is still in flight leaves this thread with nothing
+    // to dereference. The DeliveryHandle is what keeps the answer from reaching a dead engine.
+    try
+    {
+        std::thread([delivery = std::move(delivery)]() mutable {
+            metasequoia::linux_ime::LibsecretSecretStore secrets;
+            if (delivery->ai_requested)
+            {
+                const char *provider = metasequoia::linux_ime::ai_provider_name(delivery->ai_provider);
+                delivery->ai_result =
+                    provider == nullptr
+                        ? metasequoia::linux_ime::SecretLookupResult{metasequoia::linux_ime::SecretStatus::Unavailable,
+                                                                     {},
+                                                                     {}}
+                        : secrets.lookup(metasequoia::linux_ime::SecretKind::AiApiToken, provider);
+            }
+            if (delivery->translation_requested)
+            {
+                delivery->translation_result = secrets.lookup(metasequoia::linux_ime::SecretKind::TranslationApiToken,
+                                                              metasequoia::linux_ime::translation_provider_name(
+                                                                  metasequoia::linux_ime::TranslationProvider::DeepLX));
+            }
+            g_main_context_invoke_full(nullptr, G_PRIORITY_DEFAULT, deliver_credentials, delivery.release(), nullptr);
+        }).detach();
+    }
+    catch (const std::system_error &)
+    {
+        // The caller is a GLib signal handler, so an exception escaping here would take the process down rather than
+        // the reload. A credential that could not be fetched leaves its provider inactive, which is what the runtime
+        // flags already say: sending the request without the credential is the failure this lookup exists to prevent.
+        g_warning("Unable to start the credential lookup for the reloaded settings; providers that need a credential "
+                  "stay inactive until the settings are saved again.");
+    }
+}
+
 // Takes the settings file as the newer truth after somebody else has written it. Two things depend on this: the
 // retained copy the engine saves from the key path is no longer stale, so a save stops reverting what the settings
 // window just stored, and everything the reloaded file changes takes effect now rather than at the next login.
@@ -1093,12 +1189,36 @@ void reload_settings(MetasequoiaEngine *engine)
     online.translation_credential_available =
         translation_credential_still_applies ? live.translation_credential_available : true;
 
+    // What this reload needs and this process does not have. An empty token is the proof: hydration files one only when
+    // Secret Service hands it over, so the field is empty exactly when the feature was off at startup, or the provider
+    // has just changed, or the credential really is absent.
+    const bool needs_ai_credential = online.ai.enabled && online.ai.token.empty();
+    const bool needs_translation_credential =
+        online.candidate_translations_enabled &&
+        online.translation_provider == metasequoia::linux_ime::TranslationProvider::DeepLX &&
+        online.translation_token.empty();
+    // Held down until the lookup answers, for the same reason the flag exists: a request sent in that window would go
+    // out with no Authorization header, which an authenticating DeepLX endpoint answers 401. AI needs no equivalent --
+    // an empty token already leaves ai_credential_available false above.
+    if (needs_translation_credential)
+    {
+        online.translation_credential_available = false;
+    }
+
     // The retained copy stays what is on disk, credentials excluded, exactly as it is at startup.
     *engine->settings = settings;
     *engine->online_settings = online;
-    // connect_timeout and total_timeout are deliberately not re-applied: the providers capture them when they are
-    // constructed, and replacing the services would mean joining workers that may be inside a request, which the main
-    // loop cannot wait for. They take effect at the next start.
+    // Applied to the providers that are already running rather than by replacing them, which would mean joining a
+    // worker that may be inside a request of up to the total timeout -- a wait the main loop cannot take. This is what
+    // makes connect-timeout-ms and total-timeout-ms take effect now instead of at the next start.
+    (*engine->http_timeouts)->set({online.connect_timeout, online.total_timeout});
+    // Bumped whether or not a lookup follows, so an answer still in flight for the configuration this reload replaced
+    // is dropped rather than applied to the new one.
+    ++engine->credential_generation;
+    if (needs_ai_credential || needs_translation_credential)
+    {
+        hydrate_credentials(engine, needs_ai_credential, needs_translation_credential);
+    }
 
     // Nothing the controller reads can be changed after it exists, so a new page size, scheme or helpcode schema means
     // a new controller. The composition in progress belongs to the old one and is committed first, the way focus_out
@@ -1118,7 +1238,7 @@ void reload_settings(MetasequoiaEngine *engine)
 }
 
 // The engine writes this file itself, and every one of those writes comes back as an event; adopting them would rebuild
-// the controller after every mode toggle. Which write it was is decided by the remembered stamp rather than by the
+// the controller after every mode toggle. Which write it was is decided by the remembered content rather than by the
 // event type, because a save arrives as a temporary file renamed over the target and surfaces as anything from CREATED
 // to CHANGES_DONE_HINT depending on the monitor backend.
 void settings_file_changed(GFileMonitor *monitor, GFile *file, GFile *other_file, GFileMonitorEvent event_type,
@@ -1129,19 +1249,18 @@ void settings_file_changed(GFileMonitor *monitor, GFile *file, GFile *other_file
     (void)other_file;
     (void)event_type;
     auto *engine = static_cast<MetasequoiaEngine *>(user_data);
-    const SettingsFileStamp stamp = settings_file_stamp(engine->settings_store->config_path());
-    if (stamp.modified == 0)
+    std::string digest = metasequoia::linux_ime::settings_file_digest(engine->settings_store->config_path());
+    if (digest.empty())
     {
         // No readable file at this instant: it was deleted, or this is the moment between a writer's temporary file and
         // its rename. There is nothing to adopt, and the rename raises another event with the file back in place.
         return;
     }
-    if (stamp.modified == engine->settings_file_modified && stamp.size == engine->settings_file_size)
+    if (digest == *engine->settings_digest)
     {
         return;
     }
-    engine->settings_file_modified = stamp.modified;
-    engine->settings_file_size = stamp.size;
+    *engine->settings_digest = std::move(digest);
     reload_settings(engine);
 }
 
@@ -1150,6 +1269,7 @@ void metasequoia_engine_init(MetasequoiaEngine *engine)
     engine->paths = new metasequoia::RuntimePaths(metasequoia::RuntimePaths::legacy());
     engine->settings_store = new SettingsStore();
     engine->settings_warning = new std::string();
+    engine->settings_digest = new std::string();
     engine->secret_store = new metasequoia::linux_ime::LibsecretSecretStore();
     InputSettings settings = engine->settings_store->load(engine->settings_warning);
     // Reuse the settings warning channel: without this a missing or empty
@@ -1179,17 +1299,20 @@ void metasequoia_engine_init(MetasequoiaEngine *engine)
     initialize_properties(engine);
     update_property_values(engine);
 
-    // The configured deadlines reach curl only through the providers, each of which takes a copy when it is
-    // constructed. A provider built without them falls back to the built-in defaults without saying so, which is what
-    // left connect-timeout-ms and total-timeout-ms as settings that changed nothing.
-    const HttpTimeouts timeouts{engine->online_settings->connect_timeout, engine->online_settings->total_timeout};
+    // The configured deadlines reach curl only through the providers. A provider built without them falls back to the
+    // built-in defaults without saying so, which is what left connect-timeout-ms and total-timeout-ms as settings that
+    // changed nothing. Shared rather than copied into each, so a settings reload can change them for providers that are
+    // already serving requests.
+    engine->http_timeouts = new std::shared_ptr<HttpTimeoutsHandle>(std::make_shared<HttpTimeoutsHandle>(
+        HttpTimeouts{engine->online_settings->connect_timeout, engine->online_settings->total_timeout}));
+    const auto timeouts = *engine->http_timeouts;
     const auto transport = std::make_shared<CurlHttpTransport>();
     const auto cloud_provider = std::make_shared<GoogleCloudProvider>(transport, timeouts);
-    std::shared_ptr<AiSuggestionProvider> ai_provider;
-    if (engine->online_settings->ai.enabled && engine->online_settings->ai_credential_available)
-    {
-        ai_provider = std::make_shared<AiSuggestionProvider>(transport, false, timeouts);
-    }
+    // Built whether or not AI is on right now, because this is what decides whether the service starts an AI worker at
+    // all, and that thread cannot be added later: a user who enables AI in the settings window would otherwise have no
+    // worker to run the request, which is the other half of why enabling AI needed a restart. The worker stays idle
+    // until a request arrives with an enabled AI configuration, which is the same gate that kept it quiet before.
+    const auto ai_provider = std::make_shared<AiSuggestionProvider>(transport, false, timeouts);
     const auto handle = std::make_shared<DeliveryHandle>();
     handle->engine = engine;
     engine->delivery_handle = new std::shared_ptr<DeliveryHandle>(handle);

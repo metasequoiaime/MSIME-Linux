@@ -65,24 +65,6 @@ void append_message(std::string *destination, const char *message)
     destination->append(message);
 }
 
-const char *ai_provider_name(online::AiProvider provider)
-{
-    switch (provider)
-    {
-    case online::AiProvider::DeepSeek:
-        return "deepseek";
-    case online::AiProvider::OpenAI:
-        return "openai";
-    case online::AiProvider::SiliconFlow:
-        return "siliconflow";
-    case online::AiProvider::Groq:
-        return "groq";
-    case online::AiProvider::Custom:
-        return "custom";
-    }
-    return nullptr;
-}
-
 std::optional<online::AiProvider> parse_ai_provider(std::string_view provider)
 {
     if (provider == "deepseek")
@@ -106,18 +88,6 @@ std::optional<online::AiProvider> parse_ai_provider(std::string_view provider)
         return online::AiProvider::Custom;
     }
     return std::nullopt;
-}
-
-const char *translation_provider_name(TranslationProvider provider)
-{
-    switch (provider)
-    {
-    case TranslationProvider::Local:
-        return "local";
-    case TranslationProvider::DeepLX:
-        return "deeplx";
-    }
-    return nullptr;
 }
 
 std::optional<TranslationProvider> parse_translation_provider(std::string_view provider)
@@ -326,7 +296,62 @@ bool write_all(int descriptor, const char *data, std::size_t size)
     }
     return true;
 }
+
+std::string digest_of(const char *data, std::size_t size)
+{
+    gchar *checksum = g_compute_checksum_for_data(G_CHECKSUM_SHA256, reinterpret_cast<const guchar *>(data), size);
+    if (checksum == nullptr)
+    {
+        return {};
+    }
+    std::string digest(checksum);
+    g_free(checksum);
+    return digest;
+}
 } // namespace
+
+const char *ai_provider_name(online::AiProvider provider)
+{
+    switch (provider)
+    {
+    case online::AiProvider::DeepSeek:
+        return "deepseek";
+    case online::AiProvider::OpenAI:
+        return "openai";
+    case online::AiProvider::SiliconFlow:
+        return "siliconflow";
+    case online::AiProvider::Groq:
+        return "groq";
+    case online::AiProvider::Custom:
+        return "custom";
+    }
+    return nullptr;
+}
+
+const char *translation_provider_name(TranslationProvider provider)
+{
+    switch (provider)
+    {
+    case TranslationProvider::Local:
+        return "local";
+    case TranslationProvider::DeepLX:
+        return "deeplx";
+    }
+    return nullptr;
+}
+
+std::string settings_file_digest(const std::filesystem::path &path)
+{
+    gchar *contents = nullptr;
+    gsize size = 0;
+    if (!g_file_get_contents(metasequoia::path_to_utf8(path).c_str(), &contents, &size, nullptr))
+    {
+        return {};
+    }
+    std::string digest = digest_of(contents, size);
+    g_free(contents);
+    return digest;
+}
 
 SettingsStore::SettingsStore() : SettingsStore(metasequoia::path_from_utf8(g_get_user_config_dir()))
 {
@@ -1059,7 +1084,7 @@ InputSettings SettingsStore::load(const SecretStore &secret_store, std::string *
     return settings;
 }
 
-bool SettingsStore::save(const InputSettings &settings, std::string *error) const
+bool SettingsStore::save(const InputSettings &settings, std::string *error, std::string *digest) const
 {
     set_message(error, "");
     const char *mode = mode_name(settings.mode);
@@ -1213,6 +1238,13 @@ bool SettingsStore::save(const InputSettings &settings, std::string *error) cons
         set_message(error, "Unable to serialize input settings.");
         return false;
     }
+    // Reported before the write rather than after it. Every failure from here on may still have replaced the file --
+    // the rename is the last step and close() can fail after it has already succeeded -- so a caller that watches
+    // config.ini has to be told what this call put there whether or not it goes on to report an error.
+    if (digest != nullptr)
+    {
+        *digest = digest_of(data, data_size);
+    }
 
     std::string temporary_template = metasequoia::path_to_utf8(config_path_) + ".tmp.XXXXXX";
     std::vector<char> temporary_path(temporary_template.begin(), temporary_template.end());
@@ -1238,7 +1270,8 @@ bool SettingsStore::save(const InputSettings &settings, std::string *error) cons
     return true;
 }
 
-bool SettingsStore::save(const InputSettings &settings, SecretStore &secret_store, std::string *error) const
+bool SettingsStore::save(const InputSettings &settings, SecretStore &secret_store, std::string *error,
+                         std::string *digest) const
 {
     set_message(error, "");
     if (!valid_input_settings(settings))
@@ -1278,7 +1311,8 @@ bool SettingsStore::save(const InputSettings &settings, SecretStore &secret_stor
     // fields in the first place. A token that still equals the one filed under the provider the user just switched away
     // from is that same hydration rather than something meant for the new provider, and storing it would copy one
     // provider's key under another provider's name. `missing_message` is null for a provider that may legitimately run
-    // unauthenticated.
+    // unauthenticated, and for one whose credential the user has just asked to forget -- refusing that save would be
+    // this store overruling the request that produced the missing credential it is complaining about.
     const auto plan_credential = [&](SecretKind kind, const std::string &provider, const std::string &token,
                                      const std::string &previous_provider, const char *missing_message) -> bool {
         std::string value = token;
@@ -1313,28 +1347,44 @@ bool SettingsStore::save(const InputSettings &settings, SecretStore &secret_stor
         }
         return true;
     };
-    // Turning a provider off is the only way a user can drop its credential, so a save that stops using one removes it.
-    // A provider switch deliberately keeps the old entry: nothing in the app can enter a credential again if the user
-    // switches back.
-    const auto plan_removal = [&pending](SecretKind kind, const std::string &previous_provider, bool still_used) {
-        if (still_used || previous_provider.empty())
+    // Files a removal once per provider. The two reasons to remove overlap -- a save can both stop using a provider and
+    // carry a request to forget its credential -- and the same entry queued twice would have the second erase roll back
+    // to the state the first one already left behind.
+    const auto plan_removal = [&pending](SecretKind kind, const std::string &provider) {
+        if (provider.empty() || std::any_of(pending.begin(), pending.end(), [&](const PendingSecret &secret) {
+                return secret.remove && secret.kind == kind && secret.provider == provider;
+            }))
         {
             return;
         }
-        pending.push_back({kind, previous_provider, {}, true, {}, false});
+        pending.push_back({kind, provider, {}, true, {}, false});
     };
+    // A clear request outranks whatever is in the token field. load() hydrates the stored credential into that field
+    // whenever it can read one, so after a clear the two disagree by construction; the settings window resolves it the
+    // same way by dropping the token when the box is ticked, and a caller that does not is still asking this store to
+    // forget the credential rather than to re-file the copy it was handed.
+    const std::string ai_token = settings.online.ai_credential_cleared ? std::string() : settings.online.ai.token;
+    const std::string translation_token =
+        settings.online.translation_credential_cleared ? std::string() : settings.online.translation_token;
+    const std::string voice_token = settings.voice_credential_cleared ? std::string() : settings.voice.token;
 
+    // The provider a clear request names is the one the user is looking at, which is the one being saved rather than
+    // the one on disk: the row sits under the provider selector and reports that selector's credential. Resolved
+    // whether or not the feature is enabled, because forgetting a credential is not conditional on still using it.
+    const char *selected_ai_name = ai_provider_name(settings.online.ai.provider);
+    const std::string selected_ai_provider = selected_ai_name == nullptr ? std::string() : selected_ai_name;
     if (settings.online.ai.enabled)
     {
-        const char *provider = ai_provider_name(settings.online.ai.provider);
-        if (provider == nullptr)
+        if (selected_ai_name == nullptr)
         {
             set_message(error, "Unable to store the AI credential; the provider configuration was not saved.");
             return false;
         }
-        if (!plan_credential(SecretKind::AiApiToken, provider, settings.online.ai.token, persisted_ai_provider,
-                             "No AI credential is stored for the selected provider; the provider configuration was "
-                             "not saved."))
+        if (!plan_credential(SecretKind::AiApiToken, selected_ai_provider, ai_token, persisted_ai_provider,
+                             settings.online.ai_credential_cleared
+                                 ? nullptr
+                                 : "No AI credential is stored for the selected provider; the provider configuration "
+                                   "was not saved."))
         {
             return false;
         }
@@ -1343,17 +1393,20 @@ bool SettingsStore::save(const InputSettings &settings, SecretStore &secret_stor
     // provider=local as soon as the user switched backends, where nothing ever reads it again.
     const bool translation_uses_credential = settings.online.candidate_translations_enabled &&
                                              settings.online.translation_provider == TranslationProvider::DeepLX;
+    // Only the DeepLX name is ever a credential's owner, so that is the one a clear request names whichever backend is
+    // selected: switching to the local backend does not make the stored DeepLX credential somebody else's.
+    const char *deeplx_name = translation_provider_name(TranslationProvider::DeepLX);
+    const std::string deeplx_provider = deeplx_name == nullptr ? std::string() : deeplx_name;
     if (translation_uses_credential)
     {
-        const char *provider = translation_provider_name(settings.online.translation_provider);
-        if (provider == nullptr)
+        if (deeplx_name == nullptr)
         {
             set_message(error, "Unable to store the translation credential; the provider configuration was not saved.");
             return false;
         }
         // A self-hosted DeepLX endpoint may accept unauthenticated requests, so a missing credential is a valid
         // configuration here rather than a reason to refuse the save.
-        if (!plan_credential(SecretKind::TranslationApiToken, provider, settings.online.translation_token, {}, nullptr))
+        if (!plan_credential(SecretKind::TranslationApiToken, deeplx_provider, translation_token, {}, nullptr))
         {
             return false;
         }
@@ -1365,18 +1418,45 @@ bool SettingsStore::save(const InputSettings &settings, SecretStore &secret_stor
             set_message(error, "Unable to store the voice credential; the provider configuration was not saved.");
             return false;
         }
-        if (!plan_credential(SecretKind::VoiceApiToken, settings.voice.provider, settings.voice.token,
-                             persisted_voice_provider,
-                             "No voice credential is stored for the selected provider; the provider configuration was "
-                             "not saved."))
+        if (!plan_credential(SecretKind::VoiceApiToken, settings.voice.provider, voice_token, persisted_voice_provider,
+                             settings.voice_credential_cleared
+                                 ? nullptr
+                                 : "No voice credential is stored for the selected provider; the provider "
+                                   "configuration was not saved."))
         {
             return false;
         }
     }
 
-    plan_removal(SecretKind::AiApiToken, persisted_ai_provider, settings.online.ai.enabled);
-    plan_removal(SecretKind::TranslationApiToken, persisted_translation_provider, translation_uses_credential);
-    plan_removal(SecretKind::VoiceApiToken, persisted_voice_provider, settings.voice.enabled);
+    // Turning a provider off is one way a user drops its credential: a save that stops using one removes it. A provider
+    // switch deliberately keeps the old entry, because nothing in the app can enter a credential again if the user
+    // switches back.
+    if (!settings.online.ai.enabled)
+    {
+        plan_removal(SecretKind::AiApiToken, persisted_ai_provider);
+    }
+    if (!translation_uses_credential)
+    {
+        plan_removal(SecretKind::TranslationApiToken, persisted_translation_provider);
+    }
+    if (!settings.voice.enabled)
+    {
+        plan_removal(SecretKind::VoiceApiToken, persisted_voice_provider);
+    }
+    // The other way, and the one that leaves the feature configured: an explicit request to forget the credential the
+    // selected provider uses, whether or not the feature stays on.
+    if (settings.online.ai_credential_cleared)
+    {
+        plan_removal(SecretKind::AiApiToken, selected_ai_provider);
+    }
+    if (settings.online.translation_credential_cleared)
+    {
+        plan_removal(SecretKind::TranslationApiToken, deeplx_provider);
+    }
+    if (settings.voice_credential_cleared)
+    {
+        plan_removal(SecretKind::VoiceApiToken, settings.voice.provider);
+    }
 
     for (PendingSecret &secret : pending)
     {
@@ -1443,7 +1523,7 @@ bool SettingsStore::save(const InputSettings &settings, SecretStore &secret_stor
         }
     }
 
-    if (!save(settings, error))
+    if (!save(settings, error, digest))
     {
         if (!rollback())
         {

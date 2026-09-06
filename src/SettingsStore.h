@@ -39,6 +39,15 @@ struct OnlineSettings
     // Unavailable, because a self-hosted DeepLX endpoint may legitimately accept unauthenticated requests.
     bool ai_credential_available = true;
     bool translation_credential_available = true;
+    // A request to forget the stored credential rather than a fact about it, and the one thing an empty token cannot
+    // say: the token fields are write-only, so "nothing typed" has to mean "keep whatever Secret Service already
+    // holds" or an untouched form would erase a credential on every save. Runtime only, like the flags above -- save()
+    // acts on it and never writes it to config.ini, and load() never sets it. Acting on one removes the credential and
+    // leaves `enabled` alone, which is the whole point: turning the feature off also removes the credential, but it
+    // discards a configuration the user may still want. What is left is the state load() already reports when the
+    // keyring answers NotFound -- enabled, configured, and inactive until a credential is added.
+    bool ai_credential_cleared = false;
+    bool translation_credential_cleared = false;
 };
 
 struct InputSettings
@@ -97,8 +106,21 @@ struct InputSettings
     // The voice twin of the online credential flags above: runtime only, never persisted, and cleared by either
     // non-Found answer because the voice provider authenticates.
     bool voice_credential_available = true;
+    // The voice twin of OnlineSettings::ai_credential_cleared.
+    bool voice_credential_cleared = false;
     OnlineSettings online;
 };
+
+// The name a provider is known by: the value written to config.ini, and the name its credential is filed under in
+// Secret Service. Null for a value outside the enum. Shared rather than mapped again by each caller, because a
+// credential stored under one spelling and looked up under another simply is not found, which reads to the user as a
+// provider they never configured. Returns a string literal, so the result outlives any caller.
+const char *ai_provider_name(online::AiProvider provider);
+const char *translation_provider_name(TranslationProvider provider);
+
+// Content identity of config.ini as it is on disk right now, in the same form save() reports through its `digest`
+// parameter. Empty when the file cannot be read, which never compares equal to a digest save() produced.
+std::string settings_file_digest(const std::filesystem::path &path);
 
 class SettingsStore
 {
@@ -109,8 +131,15 @@ class SettingsStore
     InputSettings load(std::string *warning = nullptr) const;
     // Credential overloads may block on Secret Service and are not main-loop APIs.
     InputSettings load(const SecretStore &secret_store, std::string *warning = nullptr) const;
-    bool save(const InputSettings &settings, std::string *error = nullptr) const;
-    bool save(const InputSettings &settings, SecretStore &secret_store, std::string *error = nullptr) const;
+    // `digest` receives the identity of the exact bytes this call serialized, so a caller watching config.ini can tell
+    // its own write apart from somebody else's by content. Timestamp and size cannot: these settings are small, most
+    // edits do not change the byte count, and the file is replaced by an atomic rename, so an external write can land
+    // in the same filesystem timestamp tick at the same size. It is filled in as soon as the bytes exist, including on
+    // the failure paths after that point -- the rename may already have replaced the file when one of them reports an
+    // error -- and left untouched when the call gives up before serializing anything.
+    bool save(const InputSettings &settings, std::string *error = nullptr, std::string *digest = nullptr) const;
+    bool save(const InputSettings &settings, SecretStore &secret_store, std::string *error = nullptr,
+              std::string *digest = nullptr) const;
     const std::filesystem::path &config_path() const;
 
   private:
