@@ -1,20 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# The engine is the authority on where its data lives, and metasequoia::data_directory() (vendor/MetasequoiaImeEngine/core/data_path.h) answers with METASEQUOIA_IME_DATA_DIR when that is absolute, then XDG_DATA_HOME/metasequoiaime when that is, and only then $HOME/.local/share/metasequoiaime. This mirrors that order instead of deriving a second answer: a user with the override set otherwise installs the dictionaries into one directory while the engine opens another, and sees an install that succeeded and an input method with no candidates. Relative values are ignored exactly as the engine ignores them, rather than being resolved against whatever directory the script was run from.
-resolve_data_dir() {
-    if [[ ${METASEQUOIA_IME_DATA_DIR:-} == /* ]]; then
-        printf '%s\n' "$METASEQUOIA_IME_DATA_DIR"
-    elif [[ ${XDG_DATA_HOME:-} == /* ]]; then
-        printf '%s\n' "$XDG_DATA_HOME/metasequoiaime"
-    elif [[ ${HOME:-} == /* ]]; then
-        printf '%s\n' "$HOME/.local/share/metasequoiaime"
-    else
-        return 1
-    fi
-}
-
 project_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+# shellcheck source=scripts/lib/data_dir.sh
+source "$project_root/scripts/lib/data_dir.sh"
 build_root=${METASEQUOIA_IME_BUILD_DIR:-"$project_root/build"}
 user_prefix="$HOME/.local"
 libexec_dir="$user_prefix/libexec"
