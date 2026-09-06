@@ -8,6 +8,7 @@
 #include <condition_variable>
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
 #include <memory>
 #include <mutex>
 #include <stdexcept>
@@ -165,6 +166,26 @@ int main()
     TranslationProvider provider(metasequoia::path_to_utf8(dictionary), transport);
     const auto local = provider.lookup("hello", "en", "", "", {});
     require(local.has_value() && *local == "你好", "Local English gloss was not preferred.");
+
+    {
+        namespace fs = std::filesystem;
+        const auto root =
+            fs::temp_directory_path() /
+            ("msime-translation-paths-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+        const auto resources = root / "resources";
+        const auto working = root / "user/dictionaries/initial";
+        fs::create_directories(resources);
+        fs::create_directories(working);
+        fs::copy_file(dictionary, working / "english.db");
+        std::ofstream(resources / "custom_translations.txt") << "hello\t资源译文\n";
+        std::ofstream(working / "custom_translations.txt") << "hello\t错误目录\n";
+        const metasequoia::RuntimePaths paths{resources, root / "user", root / "cache", working};
+        TranslationProvider separated(paths, transport);
+        require(separated.lookup("hello", "en", "", "", {}, TranslationBackend::Local) == "资源译文",
+                "Translation overrides were read beside the working database instead of from resources.");
+        require(transport->calls == 0, "A resource translation unexpectedly used the network.");
+        fs::remove_all(root);
+    }
 
     const auto remote = provider.lookup("世界", "fr", "https://translation.example.test/translate", "secret", {});
     require(remote.has_value() && *remote == "bonjour", "DeepLX fallback was not parsed.");

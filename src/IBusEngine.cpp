@@ -73,6 +73,10 @@ struct _MetasequoiaEngine
     // engine does not own -- the utility toggles, the keybindings, the voice provider, everything
     // else the settings window writes -- survive a save triggered from the key path.
     InputSettings *settings = nullptr;
+    // Captured once for this input context and never re-resolved: RuntimePaths documents that a
+    // later environment change must not redirect a live session, and the reload path below reads it
+    // too, so it cannot be a local in init.
+    metasequoia::RuntimePaths *paths = nullptr;
     guint settings_save_source = 0;
     // Watches config.ini so an edit made in the settings window -- a separate process -- reaches the running engine
     // instead of being overwritten by the next save of the copy above.
@@ -961,6 +965,8 @@ void finalize(GObject *object)
     engine->settings_store = nullptr;
     delete engine->settings;
     engine->settings = nullptr;
+    delete engine->paths;
+    engine->paths = nullptr;
     delete engine->settings_warning;
     engine->settings_warning = nullptr;
     g_clear_object(&engine->properties);
@@ -1023,9 +1029,9 @@ InputOptions build_input_options(const InputSettings &settings)
 
 // A controller that reflects `settings` exactly. InputController takes its options once, at construction, and exposes
 // no way to hand it new ones, so this is what a settings reload has to go through as well.
-InputController *create_controller(const InputSettings &settings)
+InputController *create_controller(const InputSettings &settings, const metasequoia::RuntimePaths &paths)
 {
-    auto *controller = new InputController(settings.scheme, build_input_options(settings));
+    auto *controller = new InputController(settings.scheme, build_input_options(settings), paths);
     (void)controller->set_mode(settings.mode);
     // After set_mode, which early-returns when the mode is already the default and so would not
     // apply the lock itself.
@@ -1061,7 +1067,7 @@ void reload_settings(MetasequoiaEngine *engine)
     InputSettings settings = engine->settings_store->load(&warning);
     if (warning.empty())
     {
-        warning = metasequoia::linux_ime::describe_unusable_dictionary();
+        warning = metasequoia::linux_ime::describe_unusable_dictionary(engine->paths->dictionaries);
     }
     *engine->settings_warning = warning;
 
@@ -1099,7 +1105,7 @@ void reload_settings(MetasequoiaEngine *engine)
     // ends one.
     commit_for_passthrough(engine);
     delete engine->controller;
-    engine->controller = create_controller(settings);
+    engine->controller = create_controller(settings, *engine->paths);
     adopt_engine_settings(engine, settings);
     engine->translation_glosses->clear();
 
@@ -1141,6 +1147,7 @@ void settings_file_changed(GFileMonitor *monitor, GFile *file, GFile *other_file
 
 void metasequoia_engine_init(MetasequoiaEngine *engine)
 {
+    engine->paths = new metasequoia::RuntimePaths(metasequoia::RuntimePaths::legacy());
     engine->settings_store = new SettingsStore();
     engine->settings_warning = new std::string();
     engine->secret_store = new metasequoia::linux_ime::LibsecretSecretStore();
@@ -1150,7 +1157,7 @@ void metasequoia_engine_init(MetasequoiaEngine *engine)
     // being broken rather than its data being absent.
     if (engine->settings_warning->empty())
     {
-        *engine->settings_warning = metasequoia::linux_ime::describe_unusable_dictionary();
+        *engine->settings_warning = metasequoia::linux_ime::describe_unusable_dictionary(engine->paths->dictionaries);
     }
     // Retained before the credential hydration below, so that what the engine writes back is what
     // was on disk. The hydrated copy additionally carries the live tokens and the runtime flags that
@@ -1166,7 +1173,7 @@ void metasequoia_engine_init(MetasequoiaEngine *engine)
     }
     engine->online_settings = new metasequoia::linux_ime::OnlineSettings(settings.online);
     engine->translation_glosses = new std::map<std::string, std::string>();
-    engine->controller = create_controller(settings);
+    engine->controller = create_controller(settings, *engine->paths);
     engine->mode_toggle = new IBusModeToggleTracker();
     adopt_engine_settings(engine, settings);
     initialize_properties(engine);
@@ -1193,8 +1200,7 @@ void metasequoia_engine_init(MetasequoiaEngine *engine)
         },
         std::chrono::milliseconds(500), ai_provider);
 
-    const auto translation_provider = std::make_shared<TranslationProvider>(
-        metasequoia::path_to_utf8(metasequoia::data_file_path("english.db")), transport, timeouts);
+    const auto translation_provider = std::make_shared<TranslationProvider>(*engine->paths, transport, timeouts);
     engine->translation_service = new TranslationService(
         translation_provider,
         [handle](std::uint64_t generation, std::vector<std::pair<std::string, std::string>> results) {

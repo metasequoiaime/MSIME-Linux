@@ -1,6 +1,7 @@
 #include "../src/InputController.h"
 #include "../vendor/MetasequoiaImeEngine/core/data_path.h"
 
+#include "../vendor/MetasequoiaImeEngine/english/english_dictionary.h"
 #include <sqlite3.h>
 
 #include <algorithm>
@@ -1295,6 +1296,43 @@ int main()
                     full_width_composition_controller.preedit() == "ni" &&
                     full_width_composition_controller.has_composition(),
                 "Full-width conversion consumed an uppercase letter that belonged to the active composition.");
+
+        // Prepared paths must flow through the controller unchanged, even when the process
+        // default points somewhere else. Both working DBs and resource helpcodes are independent.
+        {
+            const auto prepare = [&](const std::string &name, const std::string &word) {
+                const auto root = data_directory / name;
+                const auto resources = root / "resources";
+                std::filesystem::create_directories(resources);
+                {
+                    Database fixture(resources / "msime.db");
+                    fixture.execute("CREATE TABLE tbl_1_n(key TEXT,jp TEXT,value TEXT,weight INTEGER)");
+                    fixture.execute("INSERT INTO tbl_1_n VALUES('ni','n','" + word + "',100),('ni','n','拟',90)");
+                }
+                require(EnglishDictionary::ensure_schema(metasequoia::path_to_utf8(resources / "english.db")),
+                        "Cannot prepare explicit-path English schema.");
+                write_file(resources / "helpcodes/helpcode.txt", word + "=ab\n拟=cc\n");
+                return metasequoia::prepare_runtime_paths(resources, root / "user", root / "cache", "initial");
+            };
+            const auto paths_a = prepare("explicit-a", "你");
+            const auto paths_b = prepare("explicit-b", "妮");
+            InputController first(SchemeType::Quanpin, InputOptions{}, paths_a);
+            const auto unrelated = data_directory / "unrelated-default";
+            require(setenv("METASEQUOIA_IME_DATA_DIR", metasequoia::path_to_utf8(unrelated).c_str(), 1) == 0,
+                    "Cannot change the process default for the isolation test.");
+            InputController second(SchemeType::Quanpin, InputOptions{}, paths_b);
+            type(first, "niA");
+            type(second, "niA");
+            require(!first.candidates().empty() && first.candidates().front().word == "你" &&
+                        !second.candidates().empty() && second.candidates().front().word == "妮",
+                    "Explicit controller paths were replaced by another context or process defaults.");
+            first.handle_key(key(FrontendKey::Backspace));
+            type(first, "A");
+            require(first.candidates().front().word == "你", "Refreshing one context reused another resource map.");
+            require(!std::filesystem::exists(unrelated), "Explicit path setup touched the process-default directory.");
+            require(setenv("METASEQUOIA_IME_DATA_DIR", metasequoia::path_to_utf8(data_directory).c_str(), 1) == 0,
+                    "Cannot restore the test data directory.");
+        }
 
         InputController toggle_controller(SchemeType::Quanpin, 3);
         type(toggle_controller, "nihao");

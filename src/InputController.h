@@ -116,6 +116,7 @@ class InputController
   public:
     explicit InputController(SchemeType scheme_type, InputOptions options = {});
     InputController(SchemeType scheme_type, std::size_t page_size);
+    InputController(SchemeType scheme_type, InputOptions options, RuntimePaths paths);
 
     ControllerResult handle_key(const FrontendKeyEvent &event);
     ControllerResult select_candidate(std::size_t absolute_index);

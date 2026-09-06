@@ -347,6 +347,9 @@ include(CPack)
 if(BUILD_TESTING)
     add_test(NAME packaging_tgz
              COMMAND ${CMAKE_CPACK_COMMAND} --config ${CMAKE_CURRENT_BINARY_DIR}/CPackConfig.cmake -G TGZ)
+    # Compressing the installed resources can exceed the unit-test timeout on
+    # shared runners; give archive creation the same budget as DEB packaging.
+    set_tests_properties(packaging_tgz PROPERTIES TIMEOUT 300)
 
     # The DEB generator is the one downstreams actually consume, so gate it too
     # wherever dpkg is present. Hosts without dpkg keep the TGZ-only coverage.

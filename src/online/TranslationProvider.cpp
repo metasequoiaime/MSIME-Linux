@@ -1,4 +1,6 @@
 #include "TranslationProvider.h"
+#include "contracts/assets/assets.h"
+#include "core/data_path.h"
 
 #include "EndpointPolicy.h"
 
@@ -93,6 +95,17 @@ TranslationProvider::TranslationProvider(std::string dictionary_path, std::share
 // Defined here because the cached dictionary is only a forward declaration in the header.
 TranslationProvider::~TranslationProvider() = default;
 
+// The overrides are assigned in the body rather than the initialiser list because the delegated constructor owns the
+// members. That is still before any lookup can run, which is what matters now that the dictionary is opened once and
+// cached: it reads translations_path_ when it is first built, not on every call.
+TranslationProvider::TranslationProvider(const RuntimePaths &paths, std::shared_ptr<HttpTransport> transport,
+                                         HttpTimeouts timeouts)
+    : TranslationProvider(path_to_utf8(paths.dictionary(assets::english_dictionary)), std::move(transport), timeouts)
+{
+    paths.validate();
+    translations_path_ = path_to_utf8(paths.resource(assets::translations));
+}
+
 std::optional<std::string> TranslationProvider::lookup(std::string_view candidate, std::string_view target_language,
                                                        std::string_view endpoint, std::string_view token,
                                                        const CancellationCheck &cancelled,
@@ -108,7 +121,7 @@ std::optional<std::string> TranslationProvider::lookup(std::string_view candidat
         std::lock_guard dictionary_lock(dictionary_mutex_);
         if (!dictionary_)
         {
-            dictionary_ = std::make_unique<EnglishDictionary>(dictionary_path_, false);
+            dictionary_ = std::make_unique<EnglishDictionary>(dictionary_path_, false, translations_path_);
         }
         std::string local = dictionary_->query_chinese_gloss(std::string(candidate));
         if (local.empty())
