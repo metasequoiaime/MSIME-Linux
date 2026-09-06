@@ -49,7 +49,7 @@ tests/InstallSmoke.sh build
 ## 提交与合并
 
 - 使用 conventional commits，带模块 scope，例如 `feat(ibus): ...`、`fix(settings): ...`、`test(voice): ...`、`chore(ci): ...`。
-- 在特性分支上开发，通过 Pull Request 合入 `main`。
+- 在特性分支上开发，通过 Pull Request 合入 `develop`。`develop` 是本仓默认分支，开 PR 时不用改 base；`main` 是发布分支，只在发版时由维护者从 `develop` 合入，特性分支直接提到 `main` 会被 `Branch guard` 检查拦下。
 - PR 需要说明改了什么、为什么改，以及验证方式。CI（Ubuntu IBus）必须通过。
 - 改动如果涉及联网行为、凭据存储或本地数据落盘，请同步更新 [PRIVACY.md](PRIVACY.md)。
 
@@ -57,9 +57,11 @@ tests/InstallSmoke.sh build
 
 发布由 release-please 驱动，与 [`MSIME-Apple`](https://github.com/metasequoiaime/MSIME-Apple) 保持一致，流程如下：
 
-1. conventional commits 合入 `main` 后，`Release` 流水线自动开出一个版本 PR，其中包含 `version.txt`、`CMakeLists.txt` 中的版本号与 `CHANGELOG.md` 的更新。
+1. 维护者把 `develop` 合进 `main` 之后，`Release` 流水线读取这批 conventional commits，自动开出一个版本 PR，其中包含 `version.txt`、`CMakeLists.txt` 中的版本号与 `CHANGELOG.md` 的更新。日常合进 `develop` 不触发发布。
 2. 合并该 PR 即打出 `vMAJOR.MINOR.PATCH` 标签并创建草稿 Release。
 3. 发布流水线随后校验该提交确实在 `main` 历史中、`version.txt` 与标签一致，然后以 Release 模式构建、跑完整测试与安装冒烟、用 CPack 生成 TGZ／DEB／RPM，附加到 Release 并将其转正。
+
+发布完成后 `main` 会比 `develop` 多出版本号与 `CHANGELOG.md` 提交，要把 `main` 回合进 `develop`；漏掉这一步，下一轮 release-please 会在看不到这些提交的历史上重新推导版本。
 
 不要手动修改 `version.txt`、`.release-please-manifest.json` 或 `CMakeLists.txt` 里的 `project(... VERSION ...)`，这三处由 release-please 统一维护。需要重新发布某个已存在的草稿时，用 `Release` 工作流的手动触发并传入标签名。
 

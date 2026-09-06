@@ -11,6 +11,7 @@
 
 ## 检查项
 
+- [ ] base 是 `develop`（只有发版提升和 release-please 的版本分支才以 `main` 为 base）
 - [ ] 新增行为带有测试，并已在 `CMakeLists.txt` 中通过 `add_test` 注册
 - [ ] 没有引入新的编译警告（所有目标使用 `-Werror`）
 - [ ] 涉及联网行为、凭据存储或本地数据落盘时，已同步更新 `PRIVACY.md`

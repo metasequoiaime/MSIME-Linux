@@ -3,8 +3,8 @@
 [官网](https://msime.app) · [用户文档](https://msime.app/docs/) · [隐私说明](PRIVACY.md) · [打包指南](docs/packaging.md) · [English README](README.en.md)
 
 <!-- badges:start -->
-[![CI](https://img.shields.io/github/actions/workflow/status/metasequoiaime/MSIME-Linux/ci.yml?branch=main&label=CI)](https://github.com/metasequoiaime/MSIME-Linux/actions/workflows/ci.yml)
-[![CodeQL](https://img.shields.io/github/actions/workflow/status/metasequoiaime/MSIME-Linux/codeql.yml?branch=main&label=CodeQL)](https://github.com/metasequoiaime/MSIME-Linux/actions/workflows/codeql.yml)
+[![CI](https://img.shields.io/github/actions/workflow/status/metasequoiaime/MSIME-Linux/ci.yml?branch=develop&label=CI)](https://github.com/metasequoiaime/MSIME-Linux/actions/workflows/ci.yml)
+[![CodeQL](https://img.shields.io/github/actions/workflow/status/metasequoiaime/MSIME-Linux/codeql.yml?branch=develop&label=CodeQL)](https://github.com/metasequoiaime/MSIME-Linux/actions/workflows/codeql.yml)
 [![Release](https://img.shields.io/github/v/release/metasequoiaime/MSIME-Linux?include_prereleases&label=release)](https://github.com/metasequoiaime/MSIME-Linux/releases)
 [![Downloads](https://img.shields.io/github/downloads/metasequoiaime/MSIME-Linux/total?label=downloads)](https://github.com/metasequoiaime/MSIME-Linux/releases)
 [![License](https://img.shields.io/github/license/metasequoiaime/MSIME-Linux)](LICENSE)
@@ -100,7 +100,7 @@ cd build && cpack -G "TGZ;DEB"
 
 DEB 生成需要 `dpkg-dev` 和 `file`（CPack 用它解析二进制以生成 shlibs 依赖），RPM 生成需要 `rpm`（Debian／Ubuntu 上是 `rpm` 包）。CI 在每次构建中验证 TGZ 与 DEB 生成。
 
-发布由 release-please 驱动，与 Apple 前端保持一致：合入 `main` 的 conventional commits 会自动生成版本 PR，合并该 PR 即打标签并创建草稿 Release，随后发布流水线从被打标签的提交构建 TGZ／DEB／RPM，附加到 Release 并将其转正。版本号记录在 `version.txt` 与 `CMakeLists.txt` 中，由 release-please 统一维护，不要手改。
+发布由 release-please 驱动，与 Apple 前端保持一致：日常改动合进默认分支 `develop`，维护者把 `develop` 合进 `main` 时，其中的 conventional commits 会自动生成版本 PR，合并该 PR 即打标签并创建草稿 Release，随后发布流水线从被打标签的提交构建 TGZ／DEB／RPM，附加到 Release 并将其转正。版本号记录在 `version.txt` 与 `CMakeLists.txt` 中，由 release-please 统一维护，不要手改。
 
 ## 操作与设置
 
