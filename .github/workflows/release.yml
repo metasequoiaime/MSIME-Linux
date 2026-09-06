@@ -22,6 +22,7 @@ jobs:
   prepare:
     name: Prepare release metadata
     runs-on: ubuntu-24.04
+    timeout-minutes: 60
     permissions:
       # actions: write lets the dispatch step below start ci.yml on the release branch, which is
       # the only trigger GITHUB_TOKEN is allowed to fire.
@@ -251,6 +252,7 @@ jobs:
     name: Publish release
     needs: [prepare, package]
     runs-on: ubuntu-24.04
+    timeout-minutes: 60
     permissions:
       contents: write
     steps:
