@@ -1,5 +1,7 @@
 #include "SettingsUiModel.h"
 
+#include "online/EndpointPolicy.h"
+
 #include <glib.h>
 
 #include <charconv>
@@ -179,6 +181,13 @@ std::string translation_provider_value(TranslationProvider value)
     return value == TranslationProvider::DeepLX ? "deeplx" : "local";
 }
 
+// What a credential row is allowed to say about a credential: that this run has one, never which one. load() hydrates
+// the token into the struct, so the row has to reduce it to a flag here rather than pass the string on to a widget.
+std::string credential_value(const std::string &token)
+{
+    return token.empty() ? std::string{} : std::string(kSettingsCredentialStored);
+}
+
 bool set_choice(std::string_view value, std::initializer_list<std::string_view> choices, std::size_t &index)
 {
     std::size_t current = 0;
@@ -356,6 +365,11 @@ void SettingsUiModel::rebuild_rows()
     add(rows_, "voice-enabled", "Voice input", bool_value(settings_.voice.enabled), SettingsControl::Boolean);
     add(rows_, "voice-provider", "Voice provider", settings_.voice.provider, SettingsControl::Choice,
         {"openai", "siliconflow", "groq", "custom"});
+    // Each credential row follows the provider row it belongs to, and the order matters: set() clears the in-memory
+    // credential when the provider changes, so a credential typed in the same session as a provider switch has to be
+    // applied after that switch rather than before it.
+    add(rows_, "voice-credential", "Voice credential", credential_value(settings_.voice.token),
+        SettingsControl::Secret);
     add(rows_, "voice-endpoint", "Voice endpoint", settings_.voice.endpoint, SettingsControl::Text);
     add(rows_, "voice-model", "Voice model", settings_.voice.model, SettingsControl::Text);
     add(rows_, "voice-language", "Voice language", settings_.voice.language, SettingsControl::Text);
@@ -374,6 +388,7 @@ void SettingsUiModel::rebuild_rows()
     add(rows_, "ai-enabled", "AI suggestions", bool_value(settings_.online.ai.enabled), SettingsControl::Boolean);
     add(rows_, "ai-provider", "AI provider", ai_provider_value(settings_.online.ai.provider), SettingsControl::Choice,
         {"deepseek", "openai", "siliconflow", "groq", "custom"});
+    add(rows_, "ai-credential", "AI credential", credential_value(settings_.online.ai.token), SettingsControl::Secret);
     add(rows_, "ai-endpoint", "AI endpoint", settings_.online.ai.endpoint, SettingsControl::Text);
     add(rows_, "ai-model", "AI model", settings_.online.ai.model, SettingsControl::Text);
     add(rows_, "ai-prompt", "AI prompt", settings_.online.ai.prompt, SettingsControl::Text);
@@ -384,6 +399,8 @@ void SettingsUiModel::rebuild_rows()
     add(rows_, "translation-provider", "Translation provider",
         translation_provider_value(settings_.online.translation_provider), SettingsControl::Choice,
         {"local", "deeplx"});
+    add(rows_, "translation-credential", "Translation credential", credential_value(settings_.online.translation_token),
+        SettingsControl::Secret);
     add(rows_, "translation-target-language", "Translation target language",
         settings_.online.translation_target_language, SettingsControl::Choice,
         {"en", "fr", "ja", "es", "ru", "de", "ko"});
@@ -395,6 +412,7 @@ bool SettingsUiModel::set(const std::string &id, const std::string &value, std::
 {
     InputSettings candidate = settings_;
     bool parsed = true;
+    const char *message = "Invalid value for setting.";
     if (id == "mode")
     {
         if (value == "ime")
@@ -605,14 +623,30 @@ bool SettingsUiModel::set(const std::string &id, const std::string &value, std::
         std::size_t index = 0;
         parsed = set_choice(value, {"deepseek", "openai", "siliconflow", "groq", "custom"}, index);
         if (parsed)
+        {
             candidate.online.ai.provider = static_cast<online::AiProvider>(index);
+            // A credential belongs to the provider it was filed under. The token in memory was hydrated for the
+            // provider that was selected until now, and SettingsStore::save refuses to re-file it under a different
+            // provider's name, so carrying it across a switch can only turn into a save failure. Dropping it leaves an
+            // empty token, which the store reads as "keep whatever is stored for the newly selected provider" -- and if
+            // the user types one in the same session it is applied after this row, because the credential row follows
+            // the provider row.
+            if (candidate.online.ai.provider != settings_.online.ai.provider)
+                candidate.online.ai.token.clear();
+        }
     }
     else if (id == "voice-provider")
     {
         std::size_t index = 0;
         parsed = set_choice(value, {"openai", "siliconflow", "groq", "custom"}, index);
         if (parsed)
+        {
             candidate.voice.provider = value;
+            // The voice twin of the AI switch above: the store files a voice credential under the provider name too,
+            // and refuses to move one.
+            if (candidate.voice.provider != settings_.voice.provider)
+                candidate.voice.token.clear();
+        }
     }
     else if (id == "ai-candidate-limit")
     {
@@ -628,6 +662,10 @@ bool SettingsUiModel::set(const std::string &id, const std::string &value, std::
             candidate.online.translation_provider = TranslationProvider::DeepLX;
         else
             parsed = false;
+        // Only DeepLX authenticates, so this drops a hydrated DeepLX token when the user goes back to the local backend
+        // rather than letting it be filed under a provider that never reads it.
+        if (parsed && candidate.online.translation_provider != settings_.online.translation_provider)
+            candidate.online.translation_token.clear();
     }
     else if (id == "translation-target-language")
     {
@@ -635,6 +673,29 @@ bool SettingsUiModel::set(const std::string &id, const std::string &value, std::
         parsed = set_choice(value, {"en", "fr", "ja", "es", "ru", "de", "ko"}, index);
         if (parsed)
             candidate.online.translation_target_language = value;
+    }
+    else if (id == "ai-credential" || id == "voice-credential" || id == "translation-credential")
+    {
+        // An empty entry is the untouched one: the window never renders a stored credential back into the widget, so
+        // "nothing typed" has to mean "keep whatever Secret Service already holds" rather than "this provider has no
+        // credential". SettingsStore::save reads an empty token the same way, which is what makes leaving the field
+        // alone a safe way to edit anything else on the page.
+        parsed = online::token_allowed(value);
+        if (!parsed)
+        {
+            // Deliberately says nothing about the value it rejected: this message is interpolated into a dialog by the
+            // caller, and a credential must not reach a diagnostic.
+            message = "This credential contains characters that cannot be sent in a request header.";
+        }
+        else if (!value.empty())
+        {
+            if (id == "ai-credential")
+                candidate.online.ai.token = value;
+            else if (id == "voice-credential")
+                candidate.voice.token = value;
+            else
+                candidate.online.translation_token = value;
+        }
     }
     else if (id == "ai-endpoint" || id == "ai-model" || id == "ai-prompt" || id == "translation-endpoint" ||
              id == "voice-endpoint" || id == "voice-model" || id == "voice-language" || id == "voice-polish-endpoint" ||
@@ -644,8 +705,24 @@ bool SettingsUiModel::set(const std::string &id, const std::string &value, std::
                                  id == "voice-polish-endpoint";
         const bool is_model = id == "ai-model" || id == "voice-model" || id == "voice-polish-model";
         const std::size_t maximum = is_endpoint ? 2048 : (is_model ? 256 : (id == "voice-language" ? 32 : 8192));
+        // SettingsStore::valid_voice_settings refuses to persist an empty voice model, language, polish model or polish
+        // prompt, and refuses an empty endpoint while the matching feature is enabled. Accepting those values here
+        // would move the failure to save time, where the store can only report an unattributable "Input settings were
+        // outside the supported range." and drops every other pending edit with it.
+        const bool required =
+            id == "voice-model" || id == "voice-language" || id == "voice-polish-model" || id == "voice-polish-prompt";
+        // The enable toggles are flushed before their endpoints, so checking the already applied toggle attributes the
+        // failure to whichever of the two rows the user actually left inconsistent.
+        const bool required_while_enabled = (id == "voice-endpoint" && candidate.voice.enabled) ||
+                                            (id == "voice-polish-endpoint" && candidate.voice.polish_enabled);
         parsed = valid_text(value, maximum, id == "ai-prompt" || id == "voice-polish-prompt") &&
                  (!is_endpoint || value.empty() || value.rfind("https://", 0) == 0);
+        if (parsed && value.empty() && (required || required_while_enabled))
+        {
+            parsed = false;
+            message = required_while_enabled ? "This setting cannot be empty while the feature is enabled."
+                                             : "This setting cannot be empty.";
+        }
         if (parsed)
         {
             if (id == "ai-endpoint")
@@ -677,7 +754,7 @@ bool SettingsUiModel::set(const std::string &id, const std::string &value, std::
 
     if (!parsed)
     {
-        set_error(error, "Invalid value for setting.");
+        set_error(error, message);
         return false;
     }
     settings_ = std::move(candidate);

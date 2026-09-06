@@ -215,6 +215,7 @@ const char *row_label(const SettingsUiRow &row)
         {"floating-toolbar", "悬浮工具栏"},
         {"voice-enabled", "启用语音输入"},
         {"voice-provider", "语音服务商"},
+        {"voice-credential", "语音 API 令牌"},
         {"voice-endpoint", "语音服务地址"},
         {"voice-model", "语音模型"},
         {"voice-language", "语音语言"},
@@ -227,17 +228,29 @@ const char *row_label(const SettingsUiRow &row)
         {"total-timeout-ms", "总超时（毫秒）"},
         {"ai-enabled", "AI 联想"},
         {"ai-provider", "AI 服务商"},
+        {"ai-credential", "AI API 令牌"},
         {"ai-endpoint", "AI 服务地址"},
         {"ai-model", "AI 模型"},
         {"ai-prompt", "AI 提示词"},
         {"ai-candidate-limit", "AI 候选数"},
         {"translation-enabled", "候选翻译"},
         {"translation-provider", "翻译服务商"},
+        {"translation-credential", "翻译 API 令牌"},
         {"translation-target-language", "翻译目标语言"},
         {"translation-endpoint", "翻译服务地址"},
     };
     const auto found = labels.find(row.id);
     return found == labels.end() ? row.label.c_str() : found->second;
+}
+
+// What the window is allowed to say about a credential. The row carries a presence marker rather than the credential,
+// so the placeholder is the only feedback there is, and both texts have to say that an empty field changes nothing:
+// leaving it alone is how the user edits anything else on the page without touching the stored credential. The second
+// text does not claim that no credential exists -- a credential belonging to a disabled feature is never loaded, so
+// this window cannot know.
+const char *credential_placeholder(const SettingsUiRow &row)
+{
+    return row.value == kSettingsCredentialStored ? "已保存凭据，留空则不修改" : "留空则不修改已保存的凭据";
 }
 
 GtkWidget *make_editor(const SettingsUiRow &row)
@@ -254,6 +267,12 @@ GtkWidget *make_editor(const SettingsUiRow &row)
         for (const auto &choice : row.choices)
         {
             gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(combo), choice.c_str(), choice_label(choice));
+        }
+        // A value hand-written into config.ini can sit outside the offered choices; without an entry for it the combo
+        // renders blank and reports an empty value, hiding from the user which setting has to be corrected.
+        if (!row.value.empty() && std::find(row.choices.begin(), row.choices.end(), row.value) == row.choices.end())
+        {
+            gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(combo), row.value.c_str(), choice_label(row.value));
         }
         gtk_combo_box_set_active_id(GTK_COMBO_BOX(combo), row.value.c_str());
         return combo;
@@ -290,6 +309,17 @@ GtkWidget *make_editor(const SettingsUiRow &row)
         gtk_spin_button_set_value(GTK_SPIN_BUTTON(spin), std::strtod(row.value.c_str(), nullptr));
         return spin;
     }
+    case SettingsControl::Secret: {
+        // A credential in a visible entry is a credential X11 and every accessibility bus message can read. Turning
+        // visibility off puts the entry in GTK's password mode, where the accessible object reports the invisible
+        // character instead of the text, and the password purpose keeps input methods and completion from keeping a
+        // copy.
+        GtkWidget *entry = gtk_entry_new();
+        gtk_entry_set_visibility(GTK_ENTRY(entry), FALSE);
+        gtk_entry_set_input_purpose(GTK_ENTRY(entry), GTK_INPUT_PURPOSE_PASSWORD);
+        gtk_entry_set_placeholder_text(GTK_ENTRY(entry), credential_placeholder(row));
+        return entry;
+    }
     case SettingsControl::Text:
         return gtk_entry_new();
     }
@@ -308,6 +338,9 @@ std::string editor_value(const SettingsUiRow &row, GtkWidget *editor)
     }
     case SettingsControl::Integer:
         return std::to_string(gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(editor)));
+    // An untouched credential entry is empty, and the model reads that as "keep the stored credential", so a page flush
+    // costs a credential nothing.
+    case SettingsControl::Secret:
     case SettingsControl::Text:
         return gtk_entry_get_text(GTK_ENTRY(editor));
     }
@@ -340,7 +373,9 @@ bool flush_editors(AppState &state)
         const auto editor = state.editors.find(row.id);
         if (editor != state.editors.end() && !state.model.set(row.id, editor_value(row, editor->second), &error))
         {
-            show_message(GTK_WINDOW(state.window), GTK_MESSAGE_ERROR, error);
+            // The model reports why a value was refused but not which row produced it, and a page can hold dozens of
+            // editors, so name the offending row in the dialog.
+            show_message(GTK_WINDOW(state.window), GTK_MESSAGE_ERROR, std::string(row_label(row)) + "：" + error);
             return false;
         }
     }
@@ -400,6 +435,11 @@ void build_model_page(AppState &state, GtkWidget *container)
         gtk_box_pack_start(GTK_BOX(box), make_card("候选窗口预览", "ni'mf\n▌1 你们   2 你   3 泥   4 呢   5 拟"), FALSE,
                            FALSE, 0);
     }
+    else if (state.page == Page::Utility)
+    {
+        gtk_box_pack_start(GTK_BOX(box), make_card("实用功能", "剪贴板历史等桌面工具可在独立窗口中使用。"), FALSE,
+                           FALSE, 0);
+    }
 
     GtkWidget *grid = gtk_grid_new();
     gtk_grid_set_row_spacing(GTK_GRID(grid), 10);
@@ -417,6 +457,13 @@ void build_model_page(AppState &state, GtkWidget *container)
             gtk_entry_set_text(GTK_ENTRY(editor), row.value.c_str());
             gtk_widget_set_hexpand(editor, TRUE);
         }
+        else if (row.control == SettingsControl::Secret)
+        {
+            // Deliberately no gtk_entry_set_text: load() hydrates the stored credential into the settings struct, and
+            // this is the point where it has to stop. The row carries a presence marker, make_editor turned it into a
+            // placeholder, and the entry stays empty until the user types a replacement.
+            gtk_widget_set_hexpand(editor, TRUE);
+        }
         gtk_grid_attach(GTK_GRID(grid), label, 0, row_index, 1, 1);
         gtk_grid_attach(GTK_GRID(grid), editor, 1, row_index, 1, 1);
         state.editors.emplace(row.id, editor);
@@ -429,6 +476,14 @@ void build_model_page(AppState &state, GtkWidget *container)
     else
     {
         gtk_box_pack_start(GTK_BOX(box), grid, FALSE, FALSE, 0);
+    }
+    if (state.page == Page::Utility)
+    {
+        // 实用功能 is a model page because it owns the desktop-tool toggles, so the launcher has to be emitted here;
+        // build_static_page never sees this page.
+        GtkWidget *button = gtk_button_new_with_label("打开桌面工具");
+        g_signal_connect(button, "clicked", G_CALLBACK(launch_tools_clicked), &state);
+        gtk_box_pack_start(GTK_BOX(box), button, FALSE, FALSE, 0);
     }
     gtk_container_add(GTK_CONTAINER(container), box);
 }
@@ -451,10 +506,6 @@ void build_static_page(AppState &state, GtkWidget *container)
     case Page::Handwriting:
         gtk_box_pack_start(GTK_BOX(box), make_card("手写识别板", "使用桌面工具打开手写识别板。"), FALSE, FALSE, 0);
         break;
-    case Page::Utility:
-        gtk_box_pack_start(GTK_BOX(box), make_card("实用功能", "剪贴板历史等桌面工具可在独立窗口中使用。"), FALSE,
-                           FALSE, 0);
-        break;
     case Page::FloatingToolbar:
         gtk_box_pack_start(GTK_BOX(box), make_card("悬浮工具栏", "打开置顶悬浮工具栏，快速切换输入状态。"), FALSE,
                            FALSE, 0);
@@ -474,7 +525,7 @@ void build_static_page(AppState &state, GtkWidget *container)
     default:
         break;
     }
-    if (state.page == Page::ScreenKeyboard || state.page == Page::Handwriting || state.page == Page::Utility)
+    if (state.page == Page::ScreenKeyboard || state.page == Page::Handwriting)
     {
         GtkWidget *button = gtk_button_new_with_label("打开桌面工具");
         g_signal_connect(button, "clicked", G_CALLBACK(launch_tools_clicked), &state);
@@ -509,25 +560,82 @@ void sidebar_clicked(GtkButton *button, gpointer data)
     show_page(*static_cast<AppState *>(data), page);
 }
 
+// The provider a credential is filed under, taken from the row the model already builds for it rather than from a
+// second copy of the enum-to-name mapping that could drift from the store's.
+std::string model_row_value(const AppState &state, const std::string &id)
+{
+    for (const auto &row : state.model.rows())
+    {
+        if (row.id == id)
+            return row.value;
+    }
+    return {};
+}
+
+// SettingsStore::save is the authority on whether an enabled provider has a credential and refuses the save without
+// one, but its answer arrives in English and only after the whole form has been rejected, so ask the same question
+// first and name the field the user has to fill in. Only "the service answered and holds nothing" counts as missing,
+// which is the line save() draws too: an unreachable keyring is not proof that a credential is absent, and refusing the
+// save there would be this window inventing a failure the store does not have.
+bool credential_missing(const AppState &state, SecretKind kind, const std::string &provider, const std::string &token)
+{
+    return token.empty() && !provider.empty() && state.secrets.lookup(kind, provider).status == SecretStatus::NotFound;
+}
+
+// A credential that has reached Secret Service has no reason to stay in a widget for the rest of the session, and
+// leaving it there would also re-store it on every later save. Clearing the entry returns it to the state the rest of
+// this window is built on: empty means keep what is stored.
+void forget_credential_editors(AppState &state)
+{
+    for (const auto &row : state.model.rows())
+    {
+        if (row.control != SettingsControl::Secret)
+            continue;
+        const auto editor = state.editors.find(row.id);
+        if (editor == state.editors.end())
+            continue;
+        gtk_entry_set_text(GTK_ENTRY(editor->second), "");
+        gtk_entry_set_placeholder_text(GTK_ENTRY(editor->second), credential_placeholder(row));
+    }
+}
+
 void save_clicked(GtkButton *, gpointer data)
 {
     auto &state = *static_cast<AppState *>(data);
     if (!flush_editors(state))
         return;
+    const InputSettings &settings = state.model.settings();
+    if (settings.online.ai.enabled &&
+        credential_missing(state, SecretKind::AiApiToken, model_row_value(state, "ai-provider"),
+                           settings.online.ai.token))
+    {
+        show_message(GTK_WINDOW(state.window), GTK_MESSAGE_ERROR,
+                     "尚未提供 AI API 令牌：请在「AI 辅助」页填写该服务商的令牌，或取消勾选 AI 联想。");
+        return;
+    }
+    if (settings.voice.enabled &&
+        credential_missing(state, SecretKind::VoiceApiToken, settings.voice.provider, settings.voice.token))
+    {
+        show_message(GTK_WINDOW(state.window), GTK_MESSAGE_ERROR,
+                     "尚未提供语音 API 令牌：请在「语音输入」页填写该服务商的令牌，或取消勾选启用语音输入。");
+        return;
+    }
     std::string error;
-    if (!state.store.save(state.model.settings(), state.secrets, &error))
+    if (!state.store.save(settings, state.secrets, &error))
     {
         show_message(GTK_WINDOW(state.window), GTK_MESSAGE_ERROR, error);
         return;
     }
+    forget_credential_editors(state);
     show_message(GTK_WINDOW(state.window), GTK_MESSAGE_INFO, "设置已保存；如运行中的 IBus 未更新，请重启引擎。");
 }
 
 void reset_clicked(GtkButton *, gpointer data)
 {
     auto &state = *static_cast<AppState *>(data);
-    if (!flush_editors(state))
-        return;
+    // Reloading deliberately skips flush_editors: the flushed values would be thrown away by the load below anyway, and
+    // flushing first let a single rejected editor abort the reload, which is the user's only way back to the settings
+    // on disk.
     std::string warning;
     state.model = SettingsUiModel(state.store.load(state.secrets, &warning));
     state.editors.clear();
