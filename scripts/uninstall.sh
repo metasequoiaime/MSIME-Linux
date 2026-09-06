@@ -5,18 +5,10 @@ set -euo pipefail
 # data is kept unless --purge is given, because msime_user.db is the one thing
 # here that cannot be recreated from the repository.
 
-# Kept identical to scripts/install.sh, which mirrors metasequoia::data_directory() (vendor/MetasequoiaImeEngine/core/data_path.h): METASEQUOIA_IME_DATA_DIR when it is absolute, then XDG_DATA_HOME/metasequoiaime, then $HOME/.local/share/metasequoiaime. An uninstall that resolved this differently would sweep a directory the install never wrote and leave the real one, including the 67 MB Japanese model, in place.
-resolve_data_dir() {
-    if [[ ${METASEQUOIA_IME_DATA_DIR:-} == /* ]]; then
-        printf '%s\n' "$METASEQUOIA_IME_DATA_DIR"
-    elif [[ ${XDG_DATA_HOME:-} == /* ]]; then
-        printf '%s\n' "$XDG_DATA_HOME/metasequoiaime"
-    elif [[ ${HOME:-} == /* ]]; then
-        printf '%s\n' "$HOME/.local/share/metasequoiaime"
-    else
-        return 1
-    fi
-}
+project_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+# The same resolver scripts/install.sh uses, sourced rather than copied: an uninstall that answered differently would sweep a directory the install never wrote and leave the real one, including the 67 MB Japanese model, in place.
+# shellcheck source=scripts/lib/data_dir.sh
+source "$project_root/scripts/lib/data_dir.sh"
 
 user_prefix="$HOME/.local"
 libexec_dir="$user_prefix/libexec"

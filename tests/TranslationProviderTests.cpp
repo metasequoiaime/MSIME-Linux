@@ -25,6 +25,7 @@ using metasequoia::linux_ime::online::HttpMethod;
 using metasequoia::linux_ime::online::HttpRequest;
 using metasequoia::linux_ime::online::HttpResponse;
 using metasequoia::linux_ime::online::HttpTimeouts;
+using metasequoia::linux_ime::online::HttpTimeoutsHandle;
 using metasequoia::linux_ime::online::HttpTransport;
 using metasequoia::linux_ime::online::TranslationBackend;
 using metasequoia::linux_ime::online::TranslationProvider;
@@ -203,13 +204,32 @@ int main()
             "Gloss formatting did not retain at most two short meanings.");
 
     auto timeout_transport = std::make_shared<FakeTransport>();
-    TranslationProvider timed_provider(metasequoia::path_to_utf8(dictionary), timeout_transport,
-                                       HttpTimeouts{std::chrono::milliseconds(300), std::chrono::milliseconds(1500)});
+    TranslationProvider timed_provider(
+        metasequoia::path_to_utf8(dictionary), timeout_transport,
+        HttpTimeoutsHandle::fixed({std::chrono::milliseconds(300), std::chrono::milliseconds(1500)}));
     const auto timed = timed_provider.lookup("世界", "fr", "https://translation.example.test/translate", "secret", {});
     require(timed.has_value() && *timed == "bonjour", "The configured translation provider stopped parsing replies.");
     require(timeout_transport->last_request.connect_timeout == std::chrono::milliseconds(300) &&
                 timeout_transport->last_request.total_timeout == std::chrono::milliseconds(1500),
             "The configured translation timeouts never reached the request, which kept the 2500/8000 ms defaults.");
+
+    // What the shared handle exists for. A provider that captured its deadlines at construction could only pick up an
+    // edited connect-timeout-ms or total-timeout-ms by being replaced, and replacing one means joining a worker that
+    // may be inside a request of up to the total timeout -- a wait the IBus main loop cannot take, which is why those
+    // two settings used to apply only at the next engine start.
+    const auto live_timeouts = std::make_shared<HttpTimeoutsHandle>(
+        HttpTimeouts{std::chrono::milliseconds(300), std::chrono::milliseconds(1500)});
+    auto live_transport = std::make_shared<FakeTransport>();
+    TranslationProvider live_provider(metasequoia::path_to_utf8(dictionary), live_transport, live_timeouts);
+    (void)live_provider.lookup("世界", "fr", "https://translation.example.test/translate", "secret", {});
+    require(live_transport->last_request.connect_timeout == std::chrono::milliseconds(300) &&
+                live_transport->last_request.total_timeout == std::chrono::milliseconds(1500),
+            "The provider did not read its initial deadlines out of the shared handle.");
+    live_timeouts->set({std::chrono::milliseconds(700), std::chrono::milliseconds(2200)});
+    (void)live_provider.lookup("世界", "fr", "https://translation.example.test/translate", "secret", {});
+    require(live_transport->last_request.connect_timeout == std::chrono::milliseconds(700) &&
+                live_transport->last_request.total_timeout == std::chrono::milliseconds(2200),
+            "A deadline changed after the provider was built never reached the next request.");
 
     // Deleting the database between two lookups is the only externally visible difference between a cached handle and
     // one rebuilt per candidate: the open SQLite connection keeps answering, a fresh one cannot open the missing file.
@@ -228,8 +248,8 @@ int main()
     require(cache_transport->calls == 0, "A local gloss reached the network.");
 
     auto cloud_transport = std::make_shared<CloudTransport>();
-    GoogleCloudProvider cloud_provider(cloud_transport,
-                                       HttpTimeouts{std::chrono::milliseconds(400), std::chrono::milliseconds(1200)});
+    GoogleCloudProvider cloud_provider(
+        cloud_transport, HttpTimeoutsHandle::fixed({std::chrono::milliseconds(400), std::chrono::milliseconds(1200)}));
     OnlineQuery cloud_query;
     cloud_query.query_text = "ni";
     cloud_query.cloud_eligible = true;

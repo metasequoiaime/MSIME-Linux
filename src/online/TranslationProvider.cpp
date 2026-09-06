@@ -83,8 +83,9 @@ std::size_t utf8_prefix(std::string_view value, std::size_t maximum)
 } // namespace
 
 TranslationProvider::TranslationProvider(std::string dictionary_path, std::shared_ptr<HttpTransport> transport,
-                                         HttpTimeouts timeouts)
-    : dictionary_path_(std::move(dictionary_path)), transport_(std::move(transport)), timeouts_(timeouts)
+                                         std::shared_ptr<const HttpTimeoutsHandle> timeouts)
+    : dictionary_path_(std::move(dictionary_path)), transport_(std::move(transport)),
+      timeouts_(timeouts ? std::move(timeouts) : default_http_timeouts())
 {
     if (!transport_)
     {
@@ -99,8 +100,9 @@ TranslationProvider::~TranslationProvider() = default;
 // members. That is still before any lookup can run, which is what matters now that the dictionary is opened once and
 // cached: it reads translations_path_ when it is first built, not on every call.
 TranslationProvider::TranslationProvider(const RuntimePaths &paths, std::shared_ptr<HttpTransport> transport,
-                                         HttpTimeouts timeouts)
-    : TranslationProvider(path_to_utf8(paths.dictionary(assets::english_dictionary)), std::move(transport), timeouts)
+                                         std::shared_ptr<const HttpTimeoutsHandle> timeouts)
+    : TranslationProvider(path_to_utf8(paths.dictionary(assets::english_dictionary)), std::move(transport),
+                          std::move(timeouts))
 {
     paths.validate();
     translations_path_ = path_to_utf8(paths.resource(assets::translations));
@@ -155,8 +157,9 @@ std::optional<std::string> TranslationProvider::lookup(std::string_view candidat
         request.headers.push_back("Authorization: Bearer " + std::string(token));
     }
     request.body = boost::json::serialize(body);
-    request.connect_timeout = timeouts_.connect;
-    request.total_timeout = timeouts_.total;
+    const HttpTimeouts timeouts = timeouts_->get();
+    request.connect_timeout = timeouts.connect;
+    request.total_timeout = timeouts.total;
     const HttpResponse response = transport_->perform(request, cancelled);
     if (response.status_code < 200 || response.status_code >= 300 || response.body.empty() ||
         (cancelled && cancelled()))

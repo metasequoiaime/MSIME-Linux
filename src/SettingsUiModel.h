@@ -24,6 +24,14 @@ enum class SettingsControl
 // The only value a Secret row ever carries; see SettingsControl::Secret.
 inline constexpr const char *kSettingsCredentialStored = "stored";
 
+// The id of the Boolean row that asks for the credential of `credential_id` to be forgotten. A Secret row cannot
+// express that on its own: an empty entry has to mean "keep what is stored", or an untouched form would erase a
+// credential on every save, which leaves the window with no way to say "forget this token" at all. The gesture is a
+// row of its own rather than a sentinel typed into the entry, so it is labelled, reversible before saving, and cannot
+// be arrived at by accident. Ticking it drops the credential this run holds in memory, and entering a new credential
+// unticks it, so the two rows never contradict each other whichever order the user touches them in.
+std::string settings_credential_clear_id(const std::string &credential_id);
+
 enum class SettingsUiSection
 {
     Appearance,
@@ -46,6 +54,12 @@ struct SettingsUiRow
     std::string value;
     SettingsControl control = SettingsControl::Text;
     std::vector<std::string> choices;
+    // Whether the configuration being edited has any use for this value. A credential row is the case this exists for:
+    // the translation token is never read while the provider is 本地, and the AI and voice tokens are never read while
+    // their features are off, so showing those rows invites a user to type a credential that will be filed under a
+    // provider with no use for it. The model still builds, parses and reports a hidden row -- only the window skips it
+    // -- so hiding one cannot silently drop a setting, and a value already stored keeps whatever it had.
+    bool visible = true;
 };
 
 // Platform-neutral model used by the GTK settings application and tests. Credentials are write-only here: a Secret row

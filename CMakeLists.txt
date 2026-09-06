@@ -107,6 +107,11 @@ if(BUILD_TESTING)
     target_compile_options(MetasequoiaImeLinuxVoiceInputTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
     add_test(NAME voice_input COMMAND MetasequoiaImeLinuxVoiceInputTests)
 
+    # Asserts the resolved path only. The install and uninstall smoke tests are the only other harnesses that drive
+    # those scripts, and they copy roughly 185 MB of dictionaries per run, so pinning the METASEQUOIA_IME_DATA_DIR
+    # branches by running a second install under the override would about double that for one assertion.
+    add_test(NAME data_dir_resolution COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/DataDirResolution.sh)
+
     # The product lock is data rather than code, but what it rejects is what keeps a release
     # reproducible, so it belongs in the same gate as everything else. Hosts without python3 keep
     # the rest of the suite; the workflow installs it explicitly.

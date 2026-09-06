@@ -62,8 +62,9 @@ std::string url_encode(const std::string &input)
 }
 } // namespace
 
-GoogleCloudProvider::GoogleCloudProvider(std::shared_ptr<HttpTransport> transport, HttpTimeouts timeouts)
-    : transport_(std::move(transport)), timeouts_(timeouts)
+GoogleCloudProvider::GoogleCloudProvider(std::shared_ptr<HttpTransport> transport,
+                                         std::shared_ptr<const HttpTimeoutsHandle> timeouts)
+    : transport_(std::move(transport)), timeouts_(timeouts ? std::move(timeouts) : default_http_timeouts())
 {
     if (!transport_)
     {
@@ -81,8 +82,9 @@ std::optional<std::string> GoogleCloudProvider::fetch(const OnlineQuery &query,
 
     HttpRequest request;
     request.url = build_url(query);
-    request.connect_timeout = timeouts_.connect;
-    request.total_timeout = timeouts_.total;
+    const HttpTimeouts timeouts = timeouts_->get();
+    request.connect_timeout = timeouts.connect;
+    request.total_timeout = timeouts.total;
     const HttpResponse response = transport_->perform(request, cancelled);
     if (response.status_code != 200 || response.body.empty() || (cancelled && cancelled()))
     {

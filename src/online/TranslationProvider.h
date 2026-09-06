@@ -45,9 +45,9 @@ class TranslationProvider
 {
   public:
     explicit TranslationProvider(std::string dictionary_path, std::shared_ptr<HttpTransport> transport,
-                                 HttpTimeouts timeouts = {});
+                                 std::shared_ptr<const HttpTimeoutsHandle> timeouts = {});
     TranslationProvider(const RuntimePaths &paths, std::shared_ptr<HttpTransport> transport,
-                        HttpTimeouts timeouts = {});
+                        std::shared_ptr<const HttpTimeoutsHandle> timeouts = {});
     ~TranslationProvider();
 
     TranslationProvider(const TranslationProvider &) = delete;
@@ -64,7 +64,8 @@ class TranslationProvider
     std::string dictionary_path_;
     std::string translations_path_;
     std::shared_ptr<HttpTransport> transport_;
-    HttpTimeouts timeouts_;
+    // Read on every request rather than copied here; see HttpTimeoutsHandle.
+    std::shared_ptr<const HttpTimeoutsHandle> timeouts_;
     // Opening the dictionary re-reads the custom translation sidecar and re-opens SQLite, which is far too expensive to
     // repeat for every candidate of every composition, so one handle is kept alive and serialised here.
     mutable std::mutex dictionary_mutex_;

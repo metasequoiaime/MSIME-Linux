@@ -14,7 +14,8 @@ namespace metasequoia::linux_ime::online
 class GoogleCloudProvider
 {
   public:
-    explicit GoogleCloudProvider(std::shared_ptr<HttpTransport> transport, HttpTimeouts timeouts = {});
+    explicit GoogleCloudProvider(std::shared_ptr<HttpTransport> transport,
+                                 std::shared_ptr<const HttpTimeoutsHandle> timeouts = {});
 
     std::optional<std::string> fetch(const OnlineQuery &query, const CancellationCheck &cancelled) const;
     static std::string build_url(const OnlineQuery &query);
@@ -22,6 +23,8 @@ class GoogleCloudProvider
 
   private:
     std::shared_ptr<HttpTransport> transport_;
-    HttpTimeouts timeouts_;
+    // Read on every request rather than copied here, so a settings reload can change the deadlines without
+    // replacing this provider. See HttpTimeoutsHandle.
+    std::shared_ptr<const HttpTimeoutsHandle> timeouts_;
 };
 } // namespace metasequoia::linux_ime::online

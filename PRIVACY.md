@@ -22,6 +22,8 @@ All of these files live in the current user's home directory and are protected o
 
 API tokens for the AI, translation and voice providers are stored in the desktop Secret Service (GNOME Keyring or a compatible implementation) under provider-isolated attributes. They are never written to `config.ini`, log output or diagnostics.
 
+A stored token can be removed from the settings window at any time: each token row has a "清除已保存的…令牌" checkbox beside it, and saving with it ticked deletes the credential from the Secret Service while leaving the rest of that provider's configuration in place. The feature then stays configured but inactive until a new token is entered. Turning the feature off also deletes its stored token.
+
 ## General
 
 Metasequoia IME does not sell or share personal data, and installing or using it does not create an account. If a future release adds another network-backed feature, this notice must be updated before that feature ships.

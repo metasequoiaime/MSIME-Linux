@@ -4,6 +4,7 @@
 
 #include <sys/stat.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
@@ -14,6 +15,8 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 namespace
 {
@@ -69,6 +72,7 @@ class MemorySecretStore final : public SecretStore
             return false;
         }
         values[{kind, std::string(provider)}] = std::string(secret);
+        stored.push_back({kind, std::string(provider)});
         return true;
     }
 
@@ -88,6 +92,9 @@ class MemorySecretStore final : public SecretStore
 
     bool available = true;
     bool become_unavailable_on_store_failure = false;
+    // Every store() this run accepted, in order. What reached the keyring matters as well as what is left in it: a
+    // credential written and then removed again was still handed to the credential service.
+    std::vector<std::pair<SecretKind, std::string>> stored;
     std::optional<SecretKind> fail_store_kind;
     std::map<std::pair<SecretKind, std::string>, std::string> values;
 };
@@ -685,6 +692,107 @@ int main()
             "A config-file failure did not roll back credential updates.");
     require(!store.save(saved, &error) && !error.empty(), "A settings replacement failure was not reported.");
 
+    // The two blocks below run against their own configuration directories so that neither disturbs the file the
+    // assertions above left behind.
+
+    // What a caller watching config.ini needs in order to recognise its own write. A modification time and a size
+    // cannot do it for this file: the settings are small, most edits change a value without changing the byte count,
+    // and the file is replaced by an atomic rename, so an external write can land in the same filesystem tick at the
+    // same size and be skipped.
+    const auto digest_home = std::filesystem::temp_directory_path() / ("metasequoia-settings-digest-" + suffix);
+    const SettingsStore digest_store(digest_home);
+    InputSettings digest_settings = saved;
+    std::string digest_error;
+    std::string first_digest;
+    require(digest_store.save(digest_settings, &digest_error, &first_digest) && digest_error.empty() &&
+                !first_digest.empty(),
+            "A save reported no digest of the bytes it wrote.");
+    require(first_digest == metasequoia::linux_ime::settings_file_digest(digest_store.config_path()),
+            "The digest a save reported is not the digest of the file that save produced.");
+    std::string repeat_digest;
+    require(digest_store.save(digest_settings, &digest_error, &repeat_digest) && repeat_digest == first_digest,
+            "Writing the same settings twice produced two different digests, which would have a watcher reload its own "
+            "write.");
+    const std::string before_edit = read_file(digest_store.config_path());
+    InputSettings same_size = digest_settings;
+    same_size.page_size = 4;
+    std::string same_size_digest;
+    require(digest_store.save(same_size, &digest_error, &same_size_digest) && digest_error.empty(),
+            "A one-digit page-size edit could not be saved.");
+    const std::string after_edit = read_file(digest_store.config_path());
+    require(after_edit.size() == before_edit.size() && after_edit != before_edit,
+            "This fixture no longer produces an edit that leaves the file the same size, so the assertion below would "
+            "prove nothing.");
+    require(same_size_digest != first_digest,
+            "An edit that left the file the same size produced the same identity, which is exactly the external write "
+            "a modification time and size pair skips.");
+    InputSettings never_serialized = digest_settings;
+    never_serialized.page_size = 99;
+    std::string untouched_digest = "untouched";
+    require(!digest_store.save(never_serialized, &digest_error, &untouched_digest) && untouched_digest == "untouched",
+            "A save that gave up before serializing anything still reported a digest, which would have a watcher "
+            "remember bytes that were never written.");
+    require(metasequoia::linux_ime::settings_file_digest(digest_home / "absent.ini").empty(),
+            "A file that cannot be read reported an identity, which would compare equal to another unreadable file.");
+
+    // Forgetting a credential without giving up the configuration it belongs to. Turning the feature off removes the
+    // credential too, but it discards a provider setup the user may still want; an empty token field cannot say it
+    // either, because that has to mean "keep what is stored" or an untouched form would erase a credential on every
+    // save.
+    const auto clear_home = std::filesystem::temp_directory_path() / ("metasequoia-settings-clear-" + suffix);
+    const SettingsStore clear_store(clear_home);
+    MemorySecretStore clear_secrets;
+    std::string clear_diagnostic;
+    require(clear_store.save(saved, clear_secrets, &clear_diagnostic) && clear_diagnostic.empty(),
+            "The credentials this clear test starts from could not be stored.");
+    InputSettings forget = clear_store.load(clear_secrets, &clear_diagnostic);
+    require(forget.online.ai.token == saved.online.ai.token,
+            "The clear test needs a hydrated token to prove the request outranks it.");
+    forget.online.ai_credential_cleared = true;
+    clear_secrets.stored.clear();
+    require(clear_store.save(forget, clear_secrets, &clear_diagnostic) && clear_diagnostic.empty(),
+            "A request to forget a credential was refused because the feature it belongs to is still enabled, which is "
+            "the state the request exists to reach.");
+    require(clear_secrets.values.count({SecretKind::AiApiToken, "openai"}) == 0,
+            "The forgotten AI credential is still in the keyring.");
+    require(std::none_of(
+                clear_secrets.stored.begin(), clear_secrets.stored.end(),
+                [](const std::pair<SecretKind, std::string> &entry) { return entry.first == SecretKind::AiApiToken; }),
+            "The hydrated copy of a credential the user asked to forget was handed to the credential service anyway, "
+            "and only removed again afterwards.");
+    require(clear_secrets.values.count({SecretKind::TranslationApiToken, "deeplx"}) == 1 &&
+                clear_secrets.values.count({SecretKind::VoiceApiToken, "openai"}) == 1,
+            "Forgetting one credential removed another.");
+    const InputSettings after_clear = clear_store.load(clear_secrets, &clear_diagnostic);
+    require(after_clear.online.ai.enabled && after_clear.online.ai.provider == saved.online.ai.provider &&
+                after_clear.online.ai.endpoint == saved.online.ai.endpoint &&
+                !after_clear.online.ai_credential_available && after_clear.online.ai.token.empty(),
+            "Forgetting the AI credential also discarded the AI configuration, instead of leaving it enabled and "
+            "inactive until a credential is added.");
+    require(!after_clear.online.ai_credential_cleared && !after_clear.online.translation_credential_cleared &&
+                !after_clear.voice_credential_cleared,
+            "A one-shot clear request survived into the next load, which would forget the next credential too.");
+    require(read_file(clear_store.config_path()).find("cleared") == std::string::npos,
+            "A clear request was written to config.ini.");
+    // The other direction: a credential entered in the same save replaces the stored one, and the store must not then
+    // remove what it has just filed.
+    InputSettings replaced = clear_store.load(clear_secrets, &clear_diagnostic);
+    replaced.online.ai.token = "sk-replacement-secret";
+    require(clear_store.save(replaced, clear_secrets, &clear_diagnostic) && clear_diagnostic.empty() &&
+                clear_secrets.values.at({SecretKind::AiApiToken, "openai"}) == "sk-replacement-secret",
+            "A credential entered after a clear did not reach the keyring.");
+    // Clearing a credential whose feature is being turned off in the same save must not queue the removal twice, or the
+    // second erase would undo a rollback the first one already completed.
+    InputSettings clear_and_disable = clear_store.load(clear_secrets, &clear_diagnostic);
+    clear_and_disable.voice_credential_cleared = true;
+    clear_and_disable.voice.enabled = false;
+    require(clear_store.save(clear_and_disable, clear_secrets, &clear_diagnostic) && clear_diagnostic.empty() &&
+                clear_secrets.values.count({SecretKind::VoiceApiToken, "openai"}) == 0,
+            "Forgetting a credential while turning its feature off in the same save was rejected or left the "
+            "credential behind.");
+
+    std::filesystem::remove_all(clear_home);
+    std::filesystem::remove_all(digest_home);
     std::filesystem::remove_all(config_home);
     return 0;
 }
