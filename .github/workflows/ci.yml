@@ -7,6 +7,8 @@ on:
   pull_request:
   workflow_dispatch:
 
+  merge_group:
+
 permissions:
   contents: read
 
@@ -40,6 +42,7 @@ jobs:
     # mounting inside XDG_RUNTIME_DIR. A runner image alone cannot see any of it.
     name: Ubuntu ${{ matrix.release }} (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
     container: ${{ matrix.image }}
     strategy:
       fail-fast: false
@@ -81,7 +84,7 @@ jobs:
           # container, and git refuses to read a repository it considers foreign.
           git config --global --add safe.directory '*'
       - name: Check out source
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           # The runner jobs exercise the archive bootstrap below, which is what
           # that script is for. Repeating it in every job multiplied the
@@ -109,9 +112,9 @@ jobs:
       - name: Build
         run: cmake --build build --parallel
       - name: Test
-        run: ctest --test-dir build --output-on-failure --timeout 20 -E '^ibus_smoke$'
+        run: ctest --no-tests=error --test-dir build --output-on-failure --timeout 20 -E '^ibus_smoke$'
       - name: IBus D-Bus smoke
-        run: ctest --test-dir build --output-on-failure --timeout 20 -R '^ibus_smoke$'
+        run: ctest --no-tests=error --test-dir build --output-on-failure --timeout 20 -R '^ibus_smoke$'
       - name: Current-user install smoke
         shell: bash
         run: tests/InstallSmoke.sh build
