@@ -18,6 +18,8 @@ The release tag no longer lives here and cannot be overridden from the command l
 
 from __future__ import annotations
 
+import argparse
+import os
 import shutil
 import sqlite3
 import sys
@@ -89,16 +91,51 @@ def verify_contents(destination: Path) -> None:
     print(f"{english_db.name} ({english_db.stat().st_size} bytes), hello -> {english[0]}")
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument(
+        "--from-directory",
+        type=Path,
+        default=os.environ.get("MSIME_DICT_DIR") or None,
+        metavar="DIR",
+        help=(
+            "take the assets from DIR instead of downloading them, and verify them against "
+            "product-lock.json exactly as a download would be. Also read from MSIME_DICT_DIR. "
+            "Distribution build environments are offline sandboxes; this is how they supply the "
+            "same reviewed data without a network request."
+        ),
+    )
+    return parser.parse_args()
+
+
+def stage_from_directory(source: Path, destination: Path, names: list[str]) -> None:
+    missing = [name for name in names if not (source / name).is_file()]
+    if missing:
+        raise SystemExit(f"{source} is missing: {', '.join(missing)}")
+    for name in names:
+        shutil.copyfile(source / name, destination / name)
+        print(f"copied {name} ({(destination / name).stat().st_size} bytes) from {source}")
+
+
 def main() -> None:
+    args = parse_args()
     data = product_lock.load()
     tag = data["dictionary"]["tag"]
-    print(f"Fetching {tag} from {data['dictionary']['repository']}")
+    if args.from_directory:
+        print(f"Taking {tag} from {args.from_directory} (no network)")
+    else:
+        print(f"Fetching {tag} from {data['dictionary']['repository']}")
 
     # Everything is verified in a staging directory first. A failed or tampered download then leaves a previous usable checkout untouched instead of half replacing it. The staging directory sits inside the output directory because that path is gitignored and on the same filesystem, so it neither dirties the submodule checkout around it nor copies across devices.
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=OUTPUT_DIR) as temporary:
         incoming = Path(temporary)
-        product_lock.download_assets(tag, incoming, data["dictionary"]["repository"])
+        if args.from_directory:
+            # Verification below is the same either way. A supplied directory is not trusted more
+            # than a download: it is checked against the committed digests before anything is used.
+            stage_from_directory(args.from_directory, incoming, list(data["dictionary"]["assets"]))
+        else:
+            product_lock.download_assets(tag, incoming, data["dictionary"]["repository"])
         product_lock.verify_assets(incoming, data)
         locked = data["dictionary"]["assets"]
         print(f"verified {len(locked)} assets against product-lock.json")

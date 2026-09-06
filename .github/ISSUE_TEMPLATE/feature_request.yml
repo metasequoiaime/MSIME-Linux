@@ -1,5 +1,5 @@
-name: 功能建议
-description: 建议为 Linux 前端增加或调整某项能力
+name: 功能建议 / Feature request
+description: 建议为 Linux 前端增加或调整某项能力。Propose a capability for the Linux frontend.
 labels: ["enhancement"]
 body:
   - type: markdown
@@ -9,25 +9,25 @@ body:
   - type: textarea
     id: problem
     attributes:
-      label: 要解决的问题
+      label: 要解决的问题 / Problem
       description: 当前在什么场景下不好用，你实际想完成什么。
     validations:
       required: true
   - type: textarea
     id: proposal
     attributes:
-      label: 期望的行为
+      label: 期望的行为 / Desired behaviour
       description: 希望它怎么工作。如果涉及新的按键、设置项或桌面工具，请写清楚。
     validations:
       required: true
   - type: input
     id: parity
     attributes:
-      label: 其他平台的对应实现
+      label: 其他平台的对应实现 / Behaviour on other platforms
       description: 如果 Windows 或 macOS 版已有这项能力，请说明它在那边的行为，便于保持一致。
   - type: checkboxes
     id: network
     attributes:
-      label: 联网
+      label: 联网 / Network access
       options:
         - label: 这项能力需要访问网络（会涉及隐私说明与默认开关）
