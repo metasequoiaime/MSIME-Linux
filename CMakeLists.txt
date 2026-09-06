@@ -327,8 +327,16 @@ set(CPACK_RESOURCE_FILE_LICENSE ${CMAKE_CURRENT_SOURCE_DIR}/LICENSE)
 set(CPACK_GENERATOR "TGZ;DEB;RPM")
 set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
 set(CPACK_DEBIAN_PACKAGE_SECTION "utils")
-set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "ibus")
+# ibus is a hard requirement, not a suggestion: the package installs
+# ${CMAKE_INSTALL_DATADIR}/ibus/component/metasequoiaime.xml and metasequoia-ime-ibus is started by
+# ibus-daemon. As a Recommends it was skipped by --no-install-recommends and by any tool configured
+# that way, and the RPM had no ibus requirement at all -- shlibdeps only produced libibus-1.0.so.5,
+# which on Fedora is satisfied by ibus-libs without the daemon. Either path installs cleanly and
+# then never appears in the desktop's input source list.
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "ibus")
+set(CPACK_RPM_PACKAGE_REQUIRES "ibus")
 set(CPACK_DEBIAN_PACKAGE_SUGGESTS "tesseract-ocr, tesseract-ocr-chi-sim")
+set(CPACK_RPM_PACKAGE_SUGGESTS "tesseract, tesseract-langpack-chi_sim")
 set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
 set(CPACK_RPM_PACKAGE_LICENSE "GPL-3.0-only")
 # Only the DEB name carried the architecture by default; the archive and the RPM
