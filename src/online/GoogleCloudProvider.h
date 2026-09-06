@@ -1,7 +1,7 @@
 #pragma once
 
 #include "HttpTransport.h"
-#include "core/input_session.h"
+#include <metasequoia/session.h>
 
 #include <memory>
 #include <optional>
