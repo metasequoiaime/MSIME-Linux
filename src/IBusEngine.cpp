@@ -704,6 +704,23 @@ void property_activate(IBusEngine *ibus_engine, const gchar *property_name, guin
     sync_properties(engine);
 }
 
+// The online workers take a reference on the engine before handing a result to the main loop, so they must be
+// joined while that reference can still be taken. GLib runs dispose with the count still held; by finalize it has
+// already reached zero, g_object_ref returns NULL there, and the delivery would dereference a null engine.
+void dispose(GObject *object)
+{
+    auto *engine = METASEQUOIA_ENGINE(object);
+    if (engine->online_service != nullptr)
+    {
+        engine->online_service->stop();
+    }
+    if (engine->translation_service != nullptr)
+    {
+        engine->translation_service->stop();
+    }
+    G_OBJECT_CLASS(metasequoia_engine_parent_class)->dispose(object);
+}
+
 void finalize(GObject *object)
 {
     auto *engine = METASEQUOIA_ENGINE(object);
@@ -743,6 +760,7 @@ void metasequoia_engine_class_init(MetasequoiaEngineClass *klass)
     engine_class->cursor_down = cursor_down;
     engine_class->property_activate = property_activate;
     engine_class->candidate_clicked = candidate_clicked;
+    G_OBJECT_CLASS(klass)->dispose = dispose;
     G_OBJECT_CLASS(klass)->finalize = finalize;
 }
 
@@ -851,8 +869,11 @@ int main(int argc, char **argv)
     // A packaged install leaves the dictionaries in a system directory that the
     // engine never reads. Seed the per-user directory before anything opens a
     // database, or the engine creates an empty one and produces no candidates.
+    // Seeding stops at the first failure, so a non-zero count says nothing about whether the rest arrived. Report
+    // whatever the error channel holds, or a partial seed leaves the emoji, kaomoji and English data missing silently.
     std::string seed_error;
-    if (metasequoia::linux_ime::seed_user_data(&seed_error) == 0 && !seed_error.empty())
+    metasequoia::linux_ime::seed_user_data(&seed_error);
+    if (!seed_error.empty())
     {
         g_warning("Unable to seed the user data directory: %s", seed_error.c_str());
     }
