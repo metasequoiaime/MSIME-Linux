@@ -57,9 +57,30 @@ int main()
     // Ctrl+Alt+Space is on by default and is an ordinary chord, so it toggles on press.
     require(toggle_tracker.observe(IBUS_space, IBUS_CONTROL_MASK | IBUS_MOD1_MASK),
             "Ctrl+Alt+Space did not toggle mode.");
+    // Keyboard auto-repeat re-delivers the chord press dozens of times a second while it is held. Only the press that
+    // latches it may toggle, but every repeat still belongs to the IME and has to be reported as consumed.
+    require(!toggle_tracker.observe(IBUS_space, IBUS_CONTROL_MASK | IBUS_MOD1_MASK),
+            "Ctrl+Alt+Space auto-repeat toggled mode again.");
+    require(toggle_tracker.chord_held(), "A swallowed chord repeat was not marked for consumption.");
+    require(!toggle_tracker.observe(IBUS_space, IBUS_RELEASE_MASK | IBUS_CONTROL_MASK | IBUS_MOD1_MASK),
+            "The chord release toggled mode.");
+    require(!toggle_tracker.chord_held(), "The chord latch survived its release.");
+    require(toggle_tracker.observe(IBUS_space, IBUS_CONTROL_MASK | IBUS_MOD1_MASK),
+            "A re-pressed chord did not toggle mode.");
     require(!toggle_tracker.observe(IBUS_space, IBUS_CONTROL_MASK),
             "Ctrl+Space toggled mode; the desktop owns that chord.");
     require(!toggle_tracker.observe(IBUS_space, IBUS_MOD1_MASK | IBUS_SHIFT_MASK), "Alt+Shift+Space toggled mode.");
+
+    // The latch is the discriminator the frontend uses to decide whether to consume the event, so a toggle that came
+    // from a different binding must never claim it.
+    require(toggle_tracker.observe(IBUS_space, IBUS_CONTROL_MASK | IBUS_MOD1_MASK),
+            "Ctrl+Alt+Space did not toggle mode after an unrelated chord.");
+    require(toggle_tracker.chord_held(), "The chord latch was not set by the press that toggled mode.");
+    require(!toggle_tracker.observe(IBUS_Shift_L, 0), "Shift toggled mode on key-down.");
+    require(!toggle_tracker.chord_held(), "A non-chord event left the chord latch set.");
+    require(toggle_tracker.observe(IBUS_Shift_L, IBUS_RELEASE_MASK | IBUS_SHIFT_MASK),
+            "A bare Shift tap did not toggle mode after a chord.");
+    require(!toggle_tracker.chord_held(), "A lone-Shift toggle was reported as the chord.");
 
     IBusModeToggleTracker without_shift;
     without_shift.configure({false, false, false});
@@ -90,9 +111,37 @@ int main()
     require(!disarmed.observe(IBUS_Shift_L, IBUS_RELEASE_MASK | IBUS_SHIFT_MASK),
             "A Shift held across a settings change toggled mode after its binding was turned off.");
 
+    // Turning the chord binding off while the chord is held has to release the latch too, or the frontend keeps
+    // swallowing a chord that is no longer the IME's.
+    IBusModeToggleTracker chord_disarmed;
+    require(chord_disarmed.observe(IBUS_space, IBUS_CONTROL_MASK | IBUS_MOD1_MASK),
+            "Ctrl+Alt+Space did not toggle mode.");
+    require(chord_disarmed.chord_held(), "The chord latch was not set by its first press.");
+    chord_disarmed.configure({true, false, false});
+    require(!chord_disarmed.chord_held(), "The chord latch survived its binding being turned off.");
+
     const auto shift_press = translate_ibus_key(IBUS_Shift_L, 0);
     require(shift_press.disposition == IBusKeyDisposition::Ignore,
             "A Shift press was treated as a host shortcut and committed the composition.");
+
+    // X reports the modifier state as it was *before* the event, so a bare modifier key-down arrives with state == 0
+    // and can only be recognised by its keysym; forwarding it would commit the in-progress composition.
+    for (const guint modifier_keyval :
+         {IBUS_Control_L, IBUS_Control_R, IBUS_Alt_L, IBUS_Alt_R, IBUS_Super_L, IBUS_Super_R, IBUS_Meta_L, IBUS_Meta_R,
+          IBUS_Hyper_L, IBUS_Hyper_R, IBUS_Caps_Lock, IBUS_Shift_Lock, IBUS_Num_Lock, IBUS_Scroll_Lock,
+          IBUS_Mode_switch, IBUS_ISO_Level3_Shift, IBUS_ISO_Level3_Latch, IBUS_ISO_Level5_Shift})
+    {
+        require(translate_ibus_key(modifier_keyval, 0).disposition == IBusKeyDisposition::Ignore,
+                "A bare modifier press was treated as a host shortcut and committed the composition.");
+    }
+    // Pressing a second modifier while the first is held does carry the first one in the mask, so the keysym check has
+    // to be answered ahead of the host-shortcut guard rather than inside the switch below it.
+    require(translate_ibus_key(IBUS_Alt_L, IBUS_CONTROL_MASK).disposition == IBusKeyDisposition::Ignore,
+            "A modifier pressed while another was held committed the composition.");
+    require(translate_ibus_key(IBUS_Shift_L, IBUS_CONTROL_MASK).disposition == IBusKeyDisposition::Ignore,
+            "Shift pressed while Control was held committed the composition.");
+    require(translate_ibus_key(IBUS_Control_R, IBUS_SUPER_MASK).disposition == IBusKeyDisposition::Ignore,
+            "Control pressed while Super was held committed the composition.");
 
     const auto release = translate_ibus_key(IBUS_a, IBUS_RELEASE_MASK);
     require(release.disposition == IBusKeyDisposition::Ignore, "A key release was dispatched.");
@@ -132,6 +181,10 @@ int main()
     require_key(IBUS_space, 0, FrontendKey::Space, "Space mapped incorrectly.");
     require_key(IBUS_Up, 0, FrontendKey::Up, "Up mapped incorrectly.");
     require_key(IBUS_Down, 0, FrontendKey::Down, "Down mapped incorrectly.");
+    // The NumLock-off keypad arrows have to reach candidate navigation like their main-block twins; forwarding them
+    // commits the composition.
+    require_key(IBUS_KP_Up, 0, FrontendKey::Up, "Keypad Up mapped incorrectly.");
+    require_key(IBUS_KP_Down, 0, FrontendKey::Down, "Keypad Down mapped incorrectly.");
 
     for (const guint keyval : {IBUS_Page_Up, IBUS_KP_Page_Up, IBUS_ISO_Left_Tab})
     {
@@ -186,6 +239,16 @@ int main()
     require(keypad_digit.disposition == IBusKeyDisposition::Dispatch && keypad_digit.event.key == FrontendKey::Digit &&
                 keypad_digit.event.digit == 1,
             "A keypad digit mapped incorrectly.");
+    const auto keypad_nine = translate_ibus_key(IBUS_KP_9, 0);
+    require(keypad_nine.disposition == IBusKeyDisposition::Dispatch && keypad_nine.event.key == FrontendKey::Digit &&
+                keypad_nine.event.digit == 9,
+            "The top of the keypad digit range mapped incorrectly.");
+    // Keypad zero carries the same meaning as the main-row zero, direct full-width conversion, so it must dispatch
+    // rather than fall through to the host-shortcut tail and commit the composition.
+    const auto keypad_zero = translate_ibus_key(IBUS_KP_0, 0);
+    require(keypad_zero.disposition == IBusKeyDisposition::Dispatch && keypad_zero.event.key == FrontendKey::Digit &&
+                keypad_zero.event.digit == 0,
+            "Keypad zero was not dispatched for direct full-width conversion.");
     const auto zero = translate_ibus_key(IBUS_0, 0);
     require(zero.disposition == IBusKeyDisposition::Dispatch && zero.event.key == FrontendKey::Digit &&
                 zero.event.digit == 0,

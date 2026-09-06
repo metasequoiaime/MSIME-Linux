@@ -628,6 +628,75 @@ int main()
         require(pair_controller.handle_key(punctuation('<')).commit == "《》",
                 "Passthrough document navigation left stale book-title nesting.");
 
+        InputController type_over_controller(SchemeType::Quanpin, pair_options);
+        const auto type_over_parenthesis_pair = type_over_controller.handle_key(punctuation('('));
+        require(type_over_parenthesis_pair.commit == "（）" && type_over_parenthesis_pair.cursor_left == 1 &&
+                    type_over_parenthesis_pair.cursor_right == 0,
+                "The type-over fixture did not insert a closing parenthesis to type over.");
+        const auto typed_over_parenthesis = type_over_controller.handle_key(punctuation(')'));
+        require(typed_over_parenthesis.handled && !typed_over_parenthesis.commit.has_value() &&
+                    typed_over_parenthesis.cursor_right == 1 && typed_over_parenthesis.cursor_left == 0,
+                "Typing the closing parenthesis emitted a second one instead of stepping over the inserted one.");
+        const auto unpaired_parenthesis = type_over_controller.handle_key(punctuation(')'));
+        require(unpaired_parenthesis.handled && unpaired_parenthesis.commit == "）" &&
+                    unpaired_parenthesis.cursor_right == 0,
+                "A closing parenthesis with nothing to type over stopped committing its own mark.");
+
+        const auto type_over_bracket_pair = type_over_controller.handle_key(punctuation('['));
+        require(type_over_bracket_pair.commit == "【】" && type_over_bracket_pair.cursor_left == 1,
+                "The type-over fixture did not insert a closing bracket to type over.");
+        const auto typed_over_bracket = type_over_controller.handle_key(punctuation(']'));
+        require(typed_over_bracket.handled && !typed_over_bracket.commit.has_value() &&
+                    typed_over_bracket.cursor_right == 1,
+                "Typing the closing bracket emitted a second one instead of stepping over the inserted one.");
+
+        const auto type_over_outer_pair = type_over_controller.handle_key(punctuation('<'));
+        const auto type_over_inner_pair = type_over_controller.handle_key(punctuation('<'));
+        require(type_over_outer_pair.commit == "《》" && type_over_inner_pair.commit == "〈〉",
+                "The nested type-over fixture did not insert both book-title pairs.");
+        const auto typed_over_inner = type_over_controller.handle_key(punctuation('>'));
+        const auto typed_over_outer = type_over_controller.handle_key(punctuation('>'));
+        require(typed_over_inner.handled && !typed_over_inner.commit.has_value() &&
+                    typed_over_inner.cursor_right == 1 && typed_over_outer.handled &&
+                    !typed_over_outer.commit.has_value() && typed_over_outer.cursor_right == 1,
+                "Nested book-title marks did not type over the inner closing mark and then the outer one.");
+
+        require(type_over_controller.handle_key(punctuation('(')).commit == "（）",
+                "The mismatched type-over fixture did not insert a closing parenthesis.");
+        const auto mismatched_closing = type_over_controller.handle_key(punctuation('>'));
+        require(mismatched_closing.handled && mismatched_closing.commit == "》" && mismatched_closing.cursor_right == 0,
+                "A different closing mark typed over the pending parenthesis instead of committing itself.");
+        const auto surviving_type_over = type_over_controller.handle_key(punctuation(')'));
+        require(surviving_type_over.handled && !surviving_type_over.commit.has_value() &&
+                    surviving_type_over.cursor_right == 1,
+                "A mismatched closing mark discarded the parenthesis that was still waiting to be typed over.");
+
+        require(type_over_controller.handle_key(punctuation('(')).commit == "（）",
+                "The caret-move type-over fixture did not insert a closing parenthesis.");
+        type_over_controller.invalidate_context();
+        const auto closing_after_caret_move = type_over_controller.handle_key(punctuation(')'));
+        require(closing_after_caret_move.handled && closing_after_caret_move.commit == "）" &&
+                    closing_after_caret_move.cursor_right == 0,
+                "A caret move left a stale type-over that swallowed the closing parenthesis.");
+        require(type_over_controller.handle_key(punctuation('(')).commit == "（）",
+                "The reset type-over fixture did not insert a closing parenthesis.");
+        type_over_controller.reset();
+        const auto closing_after_reset = type_over_controller.handle_key(punctuation(')'));
+        require(closing_after_reset.handled && closing_after_reset.commit == "）" &&
+                    closing_after_reset.cursor_right == 0,
+                "Reset left a stale type-over that swallowed the closing parenthesis.");
+
+        InputController type_over_composition_controller(SchemeType::Quanpin, pair_options);
+        require(type_over_composition_controller.handle_key(punctuation('<')).commit == "《》",
+                "The quoted-text type-over fixture did not insert a closing book-title mark.");
+        type(type_over_composition_controller, "nihao");
+        require(type_over_composition_controller.handle_key(key(FrontendKey::Space)).commit == "candidate-0",
+                "The quoted-text type-over fixture did not commit the text between the marks.");
+        const auto typed_over_after_text = type_over_composition_controller.handle_key(punctuation('>'));
+        require(typed_over_after_text.handled && !typed_over_after_text.commit.has_value() &&
+                    typed_over_after_text.cursor_right == 1,
+                "Typing the closing book-title mark after the quoted text emitted a second one.");
+
         InputOptions quanpin_pinyin_options;
         quanpin_pinyin_options.preedit_style = PreeditStyle::Pinyin;
         InputController quanpin_pinyin_controller(SchemeType::Quanpin, quanpin_pinyin_options);
@@ -1110,6 +1179,53 @@ int main()
                     !dedicated_english_controller.has_composition(),
                 "The controller did not exit dedicated English mode.");
 
+        type(dedicated_english_controller, "nihao");
+        const auto english_toggle_on_commit = dedicated_english_controller.handle_key(key(FrontendKey::ToggleEnglish));
+        require(english_toggle_on_commit.handled && english_toggle_on_commit.commit == "candidate-0" &&
+                    dedicated_english_controller.dedicated_english_mode() &&
+                    !dedicated_english_controller.has_composition(),
+                "Entering dedicated English mode destroyed the active composition instead of committing it.");
+        type(dedicated_english_controller, "he");
+        const auto english_toggle_off_commit = dedicated_english_controller.handle_key(key(FrontendKey::ToggleEnglish));
+        require(english_toggle_off_commit.handled && english_toggle_off_commit.commit.has_value() &&
+                    !english_toggle_off_commit.commit->empty() &&
+                    !dedicated_english_controller.dedicated_english_mode() &&
+                    !dedicated_english_controller.has_composition(),
+                "Leaving dedicated English mode destroyed the active English composition instead of committing it.");
+
+        InputController direct_english_controller(SchemeType::Quanpin, 3);
+        require(direct_english_controller.set_mode(InputMode::Direct).handled,
+                "The direct-mode dedicated English fixture did not reach direct mode.");
+        const auto direct_english_toggle = direct_english_controller.handle_key(key(FrontendKey::ToggleEnglish));
+        require(direct_english_toggle.handled && !direct_english_toggle.commit.has_value() &&
+                    !direct_english_controller.dedicated_english_mode(),
+                "The dedicated English hotkey flipped an invisible flag while direct mode was active.");
+        require(direct_english_controller.set_mode(InputMode::Ime).handled &&
+                    !direct_english_controller.dedicated_english_mode(),
+                "Dedicated English leaked out of a direct-mode round trip.");
+        type(direct_english_controller, "nihao");
+        require(std::any_of(direct_english_controller.candidates().begin(),
+                            direct_english_controller.candidates().end(),
+                            [](const WordItem &candidate) { return candidate.word == "candidate-0"; }),
+                "Leaked dedicated English routed a Chinese composition to the English dictionary.");
+        direct_english_controller.handle_key(key(FrontendKey::Escape));
+
+        InputController scheme_english_controller(SchemeType::Quanpin, 3);
+        require(scheme_english_controller.handle_key(key(FrontendKey::ToggleEnglish)).handled &&
+                    scheme_english_controller.dedicated_english_mode(),
+                "The scheme-switch dedicated English fixture did not reach the mode.");
+        const auto english_scheme_switch = scheme_english_controller.switch_scheme(SchemeType::Wubi);
+        require(english_scheme_switch.handled && !scheme_english_controller.dedicated_english_mode() &&
+                    scheme_english_controller.scheme() == SchemeType::Wubi,
+                "Dedicated English survived a scheme switch while scheme() reported the new scheme.");
+        scheme_english_controller.switch_scheme(SchemeType::Quanpin);
+        type(scheme_english_controller, "nihao");
+        require(std::any_of(scheme_english_controller.candidates().begin(),
+                            scheme_english_controller.candidates().end(),
+                            [](const WordItem &candidate) { return candidate.word == "candidate-0"; }),
+                "A scheme switch left dedicated English routing a Chinese composition to the English dictionary.");
+        scheme_english_controller.handle_key(key(FrontendKey::Escape));
+
         InputOptions full_width_options;
         full_width_options.character_width = CharacterWidth::Full;
         full_width_options.punctuation_mode = PunctuationMode::English;
@@ -1127,6 +1243,42 @@ int main()
         full_width_controller.set_punctuation_mode(PunctuationMode::Chinese);
         require(full_width_controller.handle_key(punctuation('$')).commit == "￥",
                 "Chinese punctuation did not take precedence over full-width conversion.");
+
+        require(full_width_controller.handle_key(punctuation('@')).commit == "＠" &&
+                    full_width_controller.handle_key(punctuation('#')).commit == "＃" &&
+                    full_width_controller.handle_key(punctuation('%')).commit == "％" &&
+                    full_width_controller.handle_key(punctuation('&')).commit == "＆" &&
+                    full_width_controller.handle_key(punctuation('*')).commit == "＊" &&
+                    full_width_controller.handle_key(punctuation('~')).commit == "～",
+                "The punctuation characters the Chinese formatter passes through ignored the full-width setting.");
+        full_width_controller.set_character_width(CharacterWidth::Half);
+        require(full_width_controller.handle_key(punctuation('@')).commit == "@",
+                "Half width stopped passing an ASCII-only Chinese punctuation character straight through.");
+        require(full_width_controller.handle_key(punctuation('$')).commit == "￥",
+                "Half width changed the Chinese mapping of a punctuation character that has one.");
+
+        InputOptions full_width_ime_options;
+        full_width_ime_options.character_width = CharacterWidth::Full;
+        InputController full_width_ime_controller(SchemeType::Quanpin, full_width_ime_options);
+        const auto ime_uppercase = full_width_ime_controller.handle_key({FrontendKey::Character, 'A'});
+        require(ime_uppercase.handled && ime_uppercase.commit == "Ａ" && !full_width_ime_controller.has_composition(),
+                "An uppercase letter the engine rejects in IME mode never reached the full-width conversion.");
+
+        InputController half_width_ime_controller(SchemeType::Quanpin, 3);
+        const auto half_width_uppercase = half_width_ime_controller.handle_key({FrontendKey::Character, 'A'});
+        require(!half_width_uppercase.handled && !half_width_uppercase.commit.has_value(),
+                "A rejected uppercase letter was swallowed instead of reaching the client at half width.");
+
+        InputOptions full_width_composition_options;
+        full_width_composition_options.character_width = CharacterWidth::Full;
+        full_width_composition_options.quanpin_helpcode_enabled = false;
+        InputController full_width_composition_controller(SchemeType::Quanpin, full_width_composition_options);
+        type(full_width_composition_controller, "ni");
+        const auto composition_uppercase = full_width_composition_controller.handle_key({FrontendKey::Character, 'A'});
+        require(!composition_uppercase.handled && !composition_uppercase.commit.has_value() &&
+                    full_width_composition_controller.preedit() == "ni" &&
+                    full_width_composition_controller.has_composition(),
+                "Full-width conversion consumed an uppercase letter that belonged to the active composition.");
 
         InputController toggle_controller(SchemeType::Quanpin, 3);
         type(toggle_controller, "nihao");

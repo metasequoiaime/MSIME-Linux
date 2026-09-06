@@ -36,6 +36,39 @@ bool is_ascii_punctuation(guint keyval)
     return (keyval >= '!' && keyval <= '/') || (keyval >= ':' && keyval <= '@') || (keyval >= '[' && keyval <= '`') ||
            (keyval >= '{' && keyval <= '~');
 }
+
+// The modifier mask cannot be used to recognise a modifier being pressed: X reports the state as it was *before* the
+// event, so a Control_L key-down arrives with state == 0 and would otherwise be mistaken for an unknown key and
+// forwarded as a host shortcut, which commits the composition. The keysym is the only reliable signal.
+bool is_modifier_keysym(guint keyval)
+{
+    switch (keyval)
+    {
+    case IBUS_Shift_L:
+    case IBUS_Shift_R:
+    case IBUS_Control_L:
+    case IBUS_Control_R:
+    case IBUS_Caps_Lock:
+    case IBUS_Shift_Lock:
+    case IBUS_Meta_L:
+    case IBUS_Meta_R:
+    case IBUS_Alt_L:
+    case IBUS_Alt_R:
+    case IBUS_Super_L:
+    case IBUS_Super_R:
+    case IBUS_Hyper_L:
+    case IBUS_Hyper_R:
+    case IBUS_Num_Lock:
+    case IBUS_Scroll_Lock:
+    case IBUS_Mode_switch:
+    case IBUS_ISO_Level3_Shift:
+    case IBUS_ISO_Level3_Latch:
+    case IBUS_ISO_Level5_Shift:
+        return true;
+    default:
+        return false;
+    }
+}
 } // namespace
 
 void IBusModeToggleTracker::configure(const ModeToggleBindings &bindings)
@@ -50,6 +83,12 @@ void IBusModeToggleTracker::configure(const ModeToggleBindings &bindings)
     {
         ctrl_armed_ = false;
     }
+    // With the chord binding off the frontend must stop swallowing its auto-repeats, so a chord held across the
+    // settings change is no longer ours.
+    if (!bindings_.ctrl_alt_space)
+    {
+        chord_held_ = false;
+    }
 }
 
 bool IBusModeToggleTracker::observe(guint keyval, guint state)
@@ -59,10 +98,15 @@ bool IBusModeToggleTracker::observe(guint keyval, guint state)
     if (bindings_.ctrl_alt_space && !is_release && keyval == IBUS_space &&
         (state & kHotkeyModifierMask) == (IBUS_CONTROL_MASK | IBUS_MOD1_MASK))
     {
-        // A chord this explicit is never an accidental tap, so it does not disturb the arming of
-        // the lone-modifier bindings below.
-        return true;
+        // A chord this explicit is never an accidental tap, so it does not disturb the arming of the lone-modifier
+        // bindings below. Keyboard auto-repeat re-delivers the press about thirty times a second while the chord is
+        // held, and every accepted press flips the language and rewrites the settings file, so only the press that
+        // latches the chord toggles.
+        const bool first_press = !chord_held_;
+        chord_held_ = true;
+        return first_press;
     }
+    chord_held_ = false;
 
     const bool is_shift = keyval == IBUS_Shift_L || keyval == IBUS_Shift_R;
     const bool is_ctrl = keyval == IBUS_Control_L || keyval == IBUS_Control_R;
@@ -93,9 +137,21 @@ bool IBusModeToggleTracker::observe(guint keyval, guint state)
     return should_toggle;
 }
 
+bool IBusModeToggleTracker::chord_held() const
+{
+    return chord_held_;
+}
+
 IBusKeyTranslation translate_ibus_key(guint keyval, guint state)
 {
     if ((state & IBUS_RELEASE_MASK) != 0)
+    {
+        return {};
+    }
+    // Answered before the host-shortcut mask below so that pressing a second modifier while the first is held stays
+    // inert as well: no bare modifier press should tear down the composition, and Ignore still lets the key reach the
+    // application.
+    if (is_modifier_keysym(keyval))
     {
         return {};
     }
@@ -121,9 +177,6 @@ IBusKeyTranslation translate_ibus_key(guint keyval, guint state)
 
     switch (keyval)
     {
-    case IBUS_Shift_L:
-    case IBUS_Shift_R:
-        return {};
     case IBUS_BackSpace:
         return dispatch(FrontendKey::Backspace, shift_only);
     case IBUS_Return:
@@ -134,8 +187,10 @@ IBusKeyTranslation translate_ibus_key(guint keyval, guint state)
     case IBUS_space:
         return dispatch(FrontendKey::Space, shift_only);
     case IBUS_Up:
+    case IBUS_KP_Up:
         return dispatch(FrontendKey::Up, shift_only);
     case IBUS_Down:
+    case IBUS_KP_Down:
         return dispatch(FrontendKey::Down, shift_only);
     case IBUS_Page_Up:
     case IBUS_KP_Page_Up:
@@ -158,10 +213,12 @@ IBusKeyTranslation translate_ibus_key(guint keyval, guint state)
         translation.event.digit = keyval - '0';
         return translation;
     }
-    if (keyval >= IBUS_KP_1 && keyval <= IBUS_KP_9)
+    // Keypad zero has to be in the range for the same reason the main-row zero is dispatched: it is the direct
+    // full-width conversion, and forwarding it instead would commit the composition.
+    if (keyval >= IBUS_KP_0 && keyval <= IBUS_KP_9)
     {
         translation.event.key = FrontendKey::Digit;
-        translation.event.digit = keyval - IBUS_KP_1 + 1;
+        translation.event.digit = keyval - IBUS_KP_0;
         return translation;
     }
     if ((keyval >= 'a' && keyval <= 'z') || (keyval >= 'A' && keyval <= 'Z'))

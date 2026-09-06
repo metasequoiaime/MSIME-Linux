@@ -122,7 +122,13 @@ ControllerResult InputController::handle_key(const FrontendKeyEvent &event)
         {
         case FrontendKey::Character:
             result = session_.handle_character(event.character, event.shift_only);
-            return finish_composition_mutation(std::move(result));
+            if (result.handled || has_composition())
+            {
+                return finish_composition_mutation(std::move(result));
+            }
+            // A character the engine refuses outside a composition (an uppercase letter, say) is still ours to widen,
+            // so it falls through to the shared tail the way Space and Digit do.
+            break;
         case FrontendKey::Punctuation:
             if (local_input_mode() != LocalInputMode::None)
             {
@@ -301,8 +307,10 @@ ControllerResult InputController::set_mode(InputMode mode)
     if (mode == InputMode::Direct)
     {
         result = finish_composition();
-        session_.set_dedicated_english_mode(false);
     }
+    // Dedicated English is a sub-state of the IME mode, so it has to be dropped in both directions; clearing it only on
+    // the way out let it survive a Direct round trip and hijack Chinese input with no on-screen indication.
+    session_.set_dedicated_english_mode(false);
     mode_ = mode;
     apply_punctuation_lock();
     result.handled = true;
@@ -379,10 +387,21 @@ ControllerResult InputController::toggle_character_width()
 ControllerResult InputController::toggle_dedicated_english_mode()
 {
     clear_smart_punctuation_history();
+    if (mode_ != InputMode::Ime)
+    {
+        // The hotkey reaches the controller in Direct mode too. Swallowing it there keeps the flag from being flipped
+        // behind the user's back and then surfacing the next time they return to the IME mode.
+        return {true, std::nullopt};
+    }
+
+    // InputSession::set_dedicated_english_mode drops the composition, so the typed text has to be committed first,
+    // exactly like switch_scheme below.
+    ControllerResult result = finish_composition();
     session_.set_dedicated_english_mode(!session_.dedicated_english_mode());
+    result.handled = true;
     reset_highlight();
     ++online_generation_;
-    return {true, std::nullopt};
+    return result;
 }
 
 ControllerResult InputController::switch_scheme(SchemeType scheme_type)
@@ -394,6 +413,9 @@ ControllerResult InputController::switch_scheme(SchemeType scheme_type)
     }
 
     ControllerResult result = finish_composition();
+    // Picking a scheme is a request for Chinese input through that scheme, so dedicated English must not stay on and
+    // keep routing keystrokes to the English dictionary while scheme() reports the new scheme.
+    session_.set_dedicated_english_mode(false);
     session_.switch_scheme(scheme_type);
     select_active_helpcode_schema();
     result.handled = true;
@@ -411,6 +433,9 @@ void InputController::reset()
 void InputController::invalidate_context()
 {
     clear_smart_punctuation_history();
+    // Once the caret has moved or the client changed, nothing guarantees an automatically inserted closing mark is
+    // still to the right of it.
+    pending_paired_closings_.clear();
     punctuation_formatter_.reset();
     ++online_generation_;
 }
@@ -692,6 +717,13 @@ ControllerResult InputController::commit_punctuation(char ascii, std::optional<c
         else
         {
             punctuation = punctuation_formatter_.chinese(ascii);
+            // The Chinese formatter passes ~ @ # % & * { } through unchanged, and without this the else-if below would
+            // never run for them, making the width toggle a no-op for exactly those keys.
+            if (!had_composition && character_width_ == CharacterWidth::Full && punctuation.size() == 1 &&
+                punctuation.front() == ascii)
+            {
+                punctuation = to_full_width(ascii);
+            }
         }
     }
     else if (!had_composition && character_width_ == CharacterWidth::Full)
@@ -728,6 +760,17 @@ ControllerResult InputController::commit_punctuation(char ascii, std::optional<c
         {
             punctuation += closing;
             result.cursor_left = 1;
+            pending_paired_closings_.push_back(std::move(closing));
+        }
+        else if (!pending_paired_closings_.empty() && pending_paired_closings_.back() == punctuation)
+        {
+            // This exact mark was already inserted for the user and still sits to the right of the caret, so the
+            // natural reflex of typing it must step over it rather than produce a second one.
+            pending_paired_closings_.pop_back();
+            clear_smart_punctuation_history();
+            result.handled = true;
+            result.cursor_right = 1;
+            return result;
         }
     }
     if (result.commit.has_value())
