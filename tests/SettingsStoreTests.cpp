@@ -574,28 +574,80 @@ int main()
                 secret_diagnostic.find(saved.online.translation_token) == std::string::npos,
             "A credential appeared in config.ini or a diagnostic.");
 
+    // `enabled` is the user's persisted intent and only the user changes it; whether this run can act on that intent is
+    // the credential flag, and the request path gates on both. The credential-aware load() used to clear `enabled`
+    // instead, and the settings window hands the struct it loaded straight back to save(), so a keyring that happened
+    // to be locked at login was written back to config.ini as the user switching the provider off for good.
     MemorySecretStore missing_secrets;
     missing_secrets.values[{SecretKind::TranslationApiToken, "deeplx"}] = saved.online.translation_token;
     const InputSettings missing_ai = store.load(missing_secrets, &secret_diagnostic);
-    require(!missing_ai.online.ai.enabled && missing_ai.online.translation_token == saved.online.translation_token &&
-                !secret_diagnostic.empty() && secret_diagnostic.find(saved.online.ai.token) == std::string::npos,
-            "A missing AI credential did not disable only AI or leaked secret material.");
+    require(missing_ai.online.ai.enabled && !missing_ai.online.ai_credential_available &&
+                missing_ai.online.ai.token.empty() &&
+                missing_ai.online.translation_token == saved.online.translation_token &&
+                missing_ai.online.translation_credential_available && !secret_diagnostic.empty() &&
+                secret_diagnostic.find(saved.online.ai.token) == std::string::npos &&
+                secret_diagnostic.find(saved.online.translation_token) == std::string::npos,
+            "A missing AI credential did not deactivate only AI, discarded the AI intent, or leaked secret material.");
 
+    // The two non-Found answers are not the same fact. Every AI provider authenticates, so a service that answered
+    // "nothing is stored" deactivates AI exactly like an unreachable one does. DeepLX may be self-hosted without
+    // authentication, so "nothing is stored" is a supported configuration there and only an unreachable service --
+    // which cannot say whether a credential was waiting -- deactivates translation.
     MemorySecretStore missing_translation_secrets;
     missing_translation_secrets.values[{SecretKind::AiApiToken, "openai"}] = saved.online.ai.token;
     const InputSettings missing_translation = store.load(missing_translation_secrets, &secret_diagnostic);
-    require(missing_translation.online.ai.enabled && !missing_translation.online.candidate_translations_enabled &&
-                !secret_diagnostic.empty() && secret_diagnostic.find(saved.online.ai.token) == std::string::npos &&
+    require(missing_translation.online.ai.enabled && missing_translation.online.ai_credential_available &&
+                missing_translation.online.ai.token == saved.online.ai.token &&
+                missing_translation.online.candidate_translations_enabled &&
+                missing_translation.online.translation_credential_available &&
+                missing_translation.online.translation_token.empty() &&
+                secret_diagnostic.find(saved.online.ai.token) == std::string::npos &&
                 secret_diagnostic.find(saved.online.translation_token) == std::string::npos,
-            "A missing translation credential did not disable only translation or leaked secret material.");
+            "An absent DeepLX credential was not treated as an unauthenticated endpoint or leaked secret material.");
 
     MemorySecretStore unavailable_secrets;
     unavailable_secrets.available = false;
     const InputSettings unavailable = store.load(unavailable_secrets, &secret_diagnostic);
-    require(!unavailable.online.ai.enabled && !unavailable.online.candidate_translations_enabled &&
-                !secret_diagnostic.empty() && secret_diagnostic.find(saved.online.ai.token) == std::string::npos &&
-                secret_diagnostic.find(saved.online.translation_token) == std::string::npos,
-            "An unavailable secret service did not isolate online providers or exposed a credential.");
+    require(unavailable.online.ai.enabled && !unavailable.online.ai_credential_available &&
+                unavailable.online.ai.token.empty() && unavailable.online.candidate_translations_enabled &&
+                !unavailable.online.translation_credential_available && unavailable.online.translation_token.empty() &&
+                unavailable.voice.enabled && !unavailable.voice_credential_available &&
+                unavailable.voice.token.empty() && !secret_diagnostic.empty() &&
+                secret_diagnostic.find(saved.online.ai.token) == std::string::npos &&
+                secret_diagnostic.find(saved.online.translation_token) == std::string::npos &&
+                secret_diagnostic.find(saved.voice.token) == std::string::npos,
+            "An unreachable secret service did not deactivate every credentialed provider or exposed a credential.");
+
+    // The data-loss path end to end, through the overload the settings window actually uses: save the struct that was
+    // just loaded from an unreachable keyring and the intent has to still be on disk afterwards, with no credential and
+    // no runtime flag written beside it.
+    require(store.save(unavailable, unavailable_secrets, &secret_diagnostic) && secret_diagnostic.empty(),
+            "A settings save made while the secret service was unreachable was refused.");
+    const InputSettings after_degraded_save = store.load(&warning);
+    require(after_degraded_save.online.ai.enabled && after_degraded_save.online.candidate_translations_enabled &&
+                after_degraded_save.voice.enabled && after_degraded_save.online.ai_credential_available &&
+                after_degraded_save.online.translation_credential_available &&
+                after_degraded_save.voice_credential_available,
+            "Saving a struct loaded from an unreachable keyring persisted the providers as disabled.");
+    const std::string degraded_contents = read_file(config_path);
+    require(degraded_contents.find("credential") == std::string::npos &&
+                degraded_contents.find(saved.online.ai.token) == std::string::npos &&
+                degraded_contents.find(saved.online.translation_token) == std::string::npos &&
+                degraded_contents.find(saved.voice.token) == std::string::npos,
+            "A runtime credential flag or a credential was written to config.ini.");
+
+    // A config.ini whose text no longer parses used to fail every save, so the settings window had no way out until the
+    // file was deleted by hand. The broken text is kept beside the replacement for repair. This recovery is for corrupt
+    // text only: GLib reports a config path that is not a regular file with the same error domain, and the rollback
+    // check below depends on that case still being a save failure.
+    const std::string unparsable_contents = "[input\nmode=ime\n";
+    write_file(config_path, unparsable_contents);
+    require(store.save(saved, &error) && error.empty(), "An unparsable config.ini could not be replaced.");
+    require(read_file(std::filesystem::path(metasequoia::path_to_utf8(config_path) + ".corrupt")) ==
+                unparsable_contents,
+            "An unparsable config.ini was discarded instead of kept beside the replacement for repair.");
+    require(store.load(&warning).online.ai.enabled && warning.empty(),
+            "The config.ini written over an unparsable one did not carry the saved settings.");
 
     MemorySecretStore rollback_secrets;
     rollback_secrets.values[{SecretKind::AiApiToken, "openai"}] = "old-ai-secret";
