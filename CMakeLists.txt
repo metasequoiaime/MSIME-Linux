@@ -211,7 +211,8 @@ if(METASEQUOIA_IME_BUILD_IBUS)
             add_test(NAME account_panel_secret_service COMMAND ${XVFB_RUN_EXECUTABLE} -a
                      bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/SecretStoreIntegration.sh
                      $<TARGET_FILE:MetasequoiaImeLinuxAccountPanelTests>)
-            set_tests_properties(account_panel account_panel_secret_service PROPERTIES TIMEOUT 45)
+            set_tests_properties(account_panel account_panel_secret_service PROPERTIES TIMEOUT 45
+                                 ENVIRONMENT "LSAN_OPTIONS=suppressions=${CMAKE_CURRENT_SOURCE_DIR}/tests/gtk-lsan.supp:print_suppressions=1")
         endif()
 
         add_executable(metasequoia-ime-tools src/DesktopToolsUi.cpp)
