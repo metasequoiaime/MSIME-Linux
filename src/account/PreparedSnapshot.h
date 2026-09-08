@@ -11,6 +11,7 @@ class PreparedSnapshot
     static std::unique_ptr<PreparedSnapshot> open(const std::string &source,
                                                   const online::CancellationCheck &cancelled = {});
     ~PreparedSnapshot();
+    void inspect_records(const SnapshotRecordVisitor &visitor, const online::CancellationCheck &cancelled = {}) const;
     PreparedSnapshot(const PreparedSnapshot &) = delete;
     PreparedSnapshot &operator=(const PreparedSnapshot &) = delete;
     const SnapshotEnvelope &envelope() const

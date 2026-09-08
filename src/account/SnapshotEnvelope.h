@@ -3,6 +3,7 @@
 #include <array>
 #include <cstdint>
 #include <istream>
+#include <functional>
 namespace metasequoia::linux_ime::account
 {
 struct SnapshotEnvelope
@@ -14,5 +15,8 @@ struct SnapshotEnvelope
 };
 // Checks transport framing and checksum, not record semantics or consistency.
 // The caller must freeze the input and validate records before native staging.
-SnapshotEnvelope inspect_snapshot_envelope(std::istream &input, const online::CancellationCheck &cancelled = {});
+// Visitors may stage records only: checksum verification finishes after callbacks.
+using SnapshotRecordVisitor = std::function<void(const std::string &, std::int64_t)>;
+SnapshotEnvelope inspect_snapshot_envelope(std::istream &input, const online::CancellationCheck &cancelled = {},
+                                           const SnapshotRecordVisitor &visitor = {});
 } // namespace metasequoia::linux_ime::account
