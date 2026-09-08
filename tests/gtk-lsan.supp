@@ -1,6 +1,12 @@
 # An entry/window-only GTK baseline reproduces Fontconfig retention on Ubuntu
 # 24.04 arm64. amd64 CI additionally reports 56 bytes from AT-SPI initialization
-# when its accessibility bus is unavailable. Keep these two origins specific;
-# never suppress g_malloc, GTK, or application symbols.
+# when its accessibility bus is unavailable. Keep these origins specific;
+# never suppress g_malloc, all of GTK, or application symbols.
 leak:libfontconfig.so
 leak:atk_bridge_adaptor_init
+
+# GTK 3.24.41 gtkpathbar.c:1888 allocates parent_file, then :1898 overwrites
+# it without releasing it. A standalone file chooser reproduces the leak.
+# Debug symbols are required so this matches only the affected GTK function.
+# https://github.com/GNOME/gtk/blob/3.24.41/gtk/gtkpathbar.c#L1888
+leak:_gtk_path_bar_set_file
