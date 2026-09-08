@@ -137,3 +137,11 @@ GTK 与真实 Secret Service 测试验证三种格式、取消不请求、结果
 Ubuntu 24.04 的 GTK 3.24.41 在 `_gtk_path_bar_set_file` 中重复给 `parent_file` 赋值，丢失第一次分配的引用。独立文件选择器（不链接本项目）能复现；安装 GTK 调试符号后，分配栈定位到 `gtkpathbar.c:1888`，与上游源码一致。该系统库问题并未由本项目修复。
 
 ASan 作业安装匹配的官方 GTK 调试符号，测试只排除上述内部 GTK 函数，继续启用 `detect_leaks=1`，不按 `g_malloc`、整个 GTK 库或应用符号排除。独立复现、窗口交互与真实 Secret Service 的 GTK 代码内存检查通过；故意泄漏 1234 字节的应用测试仍被报告。完整项目的仪器化检查仍由 CI 执行。
+
+## 原生完整词库状态依赖
+
+Linux 的 Engine gitlink 固定为 `5d9a031fa61ccf70b7cc9ee27340bdd039b254b5`，与 Apple 已采用的完整状态接口版本一致。公共 `<metasequoia/dictionary_state.h>` 提供一致性导出 `stream_dictionary_state` 和独占新代际准备 `stage_dictionary_state`，涵盖四类词条、删除/新增标记、固定位置及调频计数。
+
+此升级只提供原生能力：Linux 仍按既有 RuntimePaths 创建会话。后续同步必须校验云快照完整性，在空闲状态复核本机版本并原子切换活动代际，再重建输入会话；不能把准备目录成功当成已启用同步。
+
+验证包括全量原生编译、Engine 完整状态与十万条容量测试、Linux 输入及 GTK 回归、IBus 冒烟、安装卸载、TGZ/DEB 打包。验证容器补齐公开锁定词库及打包/IBus 工具后重跑环境缺失的测试；产品清单的 18 个 Python 测试在有完整 Git 元数据的主机仓库通过。词库产品锁未变，七个公开资产摘要校验通过。
