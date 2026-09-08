@@ -6,6 +6,8 @@
 #include <thread>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <cstring>
+#include <algorithm>
 using namespace metasequoia::linux_ime::account;
 namespace
 {
@@ -58,6 +60,37 @@ int main()
     require(!std::filesystem::exists(root / "cancelled.tsv"), "cancelled export published");
     save_dictionary_export((root / "empty.tsv").string(), "");
     require(std::filesystem::file_size(root / "empty.tsv") == 0, "empty export failed");
+    const std::string streamed(70000, 'x');
+    std::size_t supplied = 0;
+    save_dictionary_export((root / "stream.ndjson").string(), streamed.size(),
+                           [&](std::size_t offset, char *data, std::size_t capacity) {
+                               require(offset == supplied, "stream offset changed");
+                               const auto size = std::min<std::size_t>(capacity, 997);
+                               std::memcpy(data, streamed.data() + offset, size);
+                               supplied += size;
+                               return size;
+                           });
+    require(read(root / "stream.ndjson") == streamed, "streamed export changed");
+    fails(
+        [&] {
+            save_dictionary_export((root / "short.ndjson").string(), 10,
+                                   [](std::size_t, char *, std::size_t) { return std::size_t(0); });
+        },
+        400);
+    fails(
+        [&] {
+            save_dictionary_export((root / "long.ndjson").string(), 10,
+                                   [](std::size_t, char *, std::size_t capacity) { return capacity + 1; });
+        },
+        400);
+    fails(
+        [&] {
+            save_dictionary_export((root / "failed.ndjson").string(), 10,
+                                   [](std::size_t, char *, std::size_t) -> std::size_t { throw Failure(0); });
+        },
+        0);
+    for (const char *name : {"short.ndjson", "long.ndjson", "failed.ndjson"})
+        require(!std::filesystem::exists(root / name), "failed stream published file");
     bool won[2] = {false, false};
     auto writer = [&](int index) {
         try

@@ -1,5 +1,6 @@
 #include "DictionaryWindow.h"
 #include "DictionaryExport.h"
+#include "SnapshotTransfer.h"
 #include <atomic>
 #include <charconv>
 namespace metasequoia::linux_ime::account
@@ -28,7 +29,10 @@ enum class Action
     Update,
     Delete,
     Import,
-    Export
+    Export,
+    SnapshotPrepare,
+    SnapshotRestore,
+    SnapshotExport
 };
 struct Work
 {
@@ -41,7 +45,9 @@ struct Work
     DictionaryEntry replacement;
     DictionaryPage result;
     bool success = false, changed = false;
+    std::unique_ptr<SnapshotRestoreReview> snapshot_review;
 };
+void start_work(Work work);
 void refresh(Window &state)
 {
     gtk_widget_set_sensitive(state.previous, state.loaded && state.page.offset > 0);
@@ -54,6 +60,20 @@ void worker(GTask *task, gpointer, gpointer data, GCancellable *)
     const auto cancelled = [&state] { return state.closed.load(); };
     try
     {
+        if (work.action == Action::SnapshotPrepare)
+        {
+            work.snapshot_review =
+                SnapshotRestoreReview::prepare(state.session, state.generation, work.export_path, cancelled);
+            work.success = true;
+            g_task_return_boolean(task, TRUE);
+            return;
+        }
+        if (work.action == Action::SnapshotRestore)
+        {
+            work.snapshot_review->restore(cancelled);
+            work.changed = true;
+            work.query.clear();
+        }
         if (work.action == Action::Add || work.action == Action::Update || work.action == Action::Delete)
         {
             state.session->edit_dictionary(
@@ -74,6 +94,20 @@ void worker(GTask *task, gpointer, gpointer data, GCancellable *)
             work.changed = true;
             work.query.clear();
         }
+        if (work.action == Action::SnapshotExport)
+        {
+            auto snapshot = download_validated_snapshot(*state.session, state.generation, cancelled);
+            save_dictionary_export(
+                work.export_path, snapshot->size(),
+                [&](std::size_t offset, char *data, std::size_t size) {
+                    return snapshot->read(offset, data, size, cancelled);
+                },
+                cancelled);
+            work.message = "完整云词库快照已导出。";
+            work.success = true;
+            g_task_return_boolean(task, TRUE);
+            return;
+        }
         if (work.action == Action::Export)
         {
             const auto text =
@@ -89,14 +123,25 @@ void worker(GTask *task, gpointer, gpointer data, GCancellable *)
     }
     catch (const Failure &error)
     {
-        work.message = work.action == Action::Export && error.status() != 401
-                           ? (error.status() == 409 ? "目标文件已存在，请选择新的文件名。"
-                                                    : "导出未完成，请检查保存位置或稍后重试。")
-                       : work.changed ? "词条已保存，但列表刷新失败。请重新搜索，勿重复提交。"
-                       : error.status() == 409 ? "词条已变化或与已有词条重复，请刷新后核对。"
-                       : error.status() == 401 ? "登录已失效，请关闭窗口后重新登录。"
-                       : error.status() == 400 ? "词条格式不正确，请检查编码、文字和权重。"
-                                               : "云词库操作未完成，请稍后重试。";
+        if (work.action == Action::SnapshotPrepare || work.action == Action::SnapshotRestore)
+        {
+            work.message = work.changed ? "云词库已恢复，但列表刷新失败。请重新搜索，勿重复提交。"
+                           : error.cancelled()     ? "操作已取消。"
+                           : error.status() == 409 ? "云词库已变化，请重新选择文件并核对预览。"
+                           : error.status() == 401 ? "登录已失效，请关闭窗口后重新登录。"
+                           : error.status() == 400 ? "快照不完整或内容不合法，请重新选择文件。"
+                                                   : "快照操作未完成，请稍后重试；恢复结果不确定时请先重新下载核对。";
+        }
+        else
+            work.message =
+                (work.action == Action::Export || work.action == Action::SnapshotExport) && error.status() != 401
+                    ? (error.status() == 409 ? "目标文件已存在，请选择新的文件名。"
+                                             : "导出未完成，请检查保存位置或稍后重试。")
+                : work.changed ? "词条已保存，但列表刷新失败。请重新搜索，勿重复提交。"
+                : error.status() == 409 ? "词条已变化或与已有词条重复，请刷新后核对。"
+                : error.status() == 401 ? "登录已失效，请关闭窗口后重新登录。"
+                : error.status() == 400 ? "词条格式不正确，请检查编码、文字和权重。"
+                                        : "云词库操作未完成，请稍后重试。";
     }
     catch (const std::exception &)
     {
@@ -111,13 +156,51 @@ void finished(GObject *, GAsyncResult *result, gpointer)
     if (state.closed.load())
         return;
     gtk_widget_set_sensitive(state.body, TRUE);
-    if (work.action == Action::Export)
+    if (work.action == Action::SnapshotPrepare)
+    {
+        if (!work.success)
+        {
+            gtk_label_set_text(GTK_LABEL(state.status), work.message.c_str());
+            return;
+        }
+        const auto describe = [](const SnapshotEnvelope &value) {
+            return "个人词条 " + std::to_string(value.counts[0]) + " 条，词库调整 " + std::to_string(value.counts[1]) +
+                   " 条，固定候选 " + std::to_string(value.counts[2]) + " 条，使用频次记录 " +
+                   std::to_string(value.counts[3]) + " 条";
+        };
+        const auto message = "账号：" + work.snapshot_review->user().display_name + "\n\n当前云端：" +
+                             describe(work.snapshot_review->target()) + "\n快照内容：" +
+                             describe(work.snapshot_review->source()) +
+                             "\n\n确认后将替换该账号的全部云词库、固定候选和使用频次记录。";
+        auto *dialog = gtk_message_dialog_new(GTK_WINDOW(state.window), GTK_DIALOG_DESTROY_WITH_PARENT,
+                                              GTK_MESSAGE_WARNING, GTK_BUTTONS_NONE, "%s", message.c_str());
+        g_object_ref_sink(dialog);
+        gtk_window_set_title(GTK_WINDOW(dialog), "确认恢复完整云词库");
+        gtk_dialog_add_buttons(GTK_DIALOG(dialog), "取消", GTK_RESPONSE_CANCEL, "确认替换云词库", GTK_RESPONSE_ACCEPT,
+                               nullptr);
+        gtk_dialog_set_default_response(GTK_DIALOG(dialog), GTK_RESPONSE_CANCEL);
+        const auto response = gtk_dialog_run(GTK_DIALOG(dialog));
+        gtk_widget_destroy(dialog);
+        g_object_unref(dialog);
+        if (state.closed.load())
+            return;
+        if (response != GTK_RESPONSE_ACCEPT)
+        {
+            gtk_label_set_text(GTK_LABEL(state.status), "已取消，云词库未修改。");
+            return;
+        }
+        work.action = Action::SnapshotRestore;
+        work.success = false;
+        start_work(std::move(work));
+        return;
+    }
+    if (work.action == Action::Export || work.action == Action::SnapshotExport)
     {
         gtk_label_set_text(GTK_LABEL(state.status), work.message.c_str());
         refresh(state);
         return;
     }
-    if (work.changed && work.action == Action::Import)
+    if (work.changed && (work.action == Action::Import || work.action == Action::SnapshotRestore))
     {
         state.import_draft.clear();
         gtk_entry_set_text(GTK_ENTRY(state.query), "");
@@ -137,10 +220,11 @@ void finished(GObject *, GAsyncResult *result, gpointer)
             gtk_list_store_set(state.rows, &row, 0, static_cast<int>(index), 1, entry.code.c_str(), 2,
                                entry.word.c_str(), 3, std::to_string(entry.weight).c_str(), -1);
         }
-        work.message =
-            (work.action == Action::Import ? "已导入 " + std::to_string(work.imported) + " 条。" : std::string{}) +
-            "云端个人词条：第 " + std::to_string(state.page.offset / 50 + 1) + " 页，本页 " +
-            std::to_string(state.page.entries.size()) + " 条。";
+        work.message = (work.action == Action::SnapshotRestore ? "完整云词库已恢复。"
+                        : work.action == Action::Import ? "已导入 " + std::to_string(work.imported) + " 条。"
+                                                        : std::string{}) +
+                       "云端个人词条：第 " + std::to_string(state.page.offset / 50 + 1) + " 页，本页 " +
+                       std::to_string(state.page.entries.size()) + " 条。";
     }
     else
     {
@@ -198,6 +282,53 @@ void clicked(GtkButton *button, gpointer data)
             gtk_label_set_text(GTK_LABEL(state->status), "权重须为非负整数。");
             return;
         }
+    }
+    if (work.action == Action::SnapshotExport)
+    {
+        auto *dialog =
+            gtk_file_chooser_dialog_new("导出完整快照为新文件", GTK_WINDOW(state->window), GTK_FILE_CHOOSER_ACTION_SAVE,
+                                        "取消", GTK_RESPONSE_CANCEL, "导出", GTK_RESPONSE_ACCEPT, nullptr);
+        g_object_ref_sink(dialog);
+        gtk_window_set_destroy_with_parent(GTK_WINDOW(dialog), TRUE);
+        gtk_file_chooser_set_local_only(GTK_FILE_CHOOSER(dialog), TRUE);
+        gtk_file_chooser_set_current_name(GTK_FILE_CHOOSER(dialog), "msime-dictionary-snapshot.ndjson");
+        const auto response = gtk_dialog_run(GTK_DIALOG(dialog));
+        if (!state->closed.load() && response == GTK_RESPONSE_ACCEPT)
+        {
+            gchar *path = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog));
+            if (path)
+            {
+                work.export_path = path;
+                g_free(path);
+            }
+        }
+        gtk_widget_destroy(dialog);
+        g_object_unref(dialog);
+        if (state->closed.load() || response != GTK_RESPONSE_ACCEPT || work.export_path.empty())
+            return;
+    }
+    if (work.action == Action::SnapshotPrepare)
+    {
+        auto *dialog =
+            gtk_file_chooser_dialog_new("选择完整词库快照", GTK_WINDOW(state->window), GTK_FILE_CHOOSER_ACTION_OPEN,
+                                        "取消", GTK_RESPONSE_CANCEL, "校验并预览", GTK_RESPONSE_ACCEPT, nullptr);
+        g_object_ref_sink(dialog);
+        gtk_window_set_destroy_with_parent(GTK_WINDOW(dialog), TRUE);
+        gtk_file_chooser_set_local_only(GTK_FILE_CHOOSER(dialog), TRUE);
+        const auto response = gtk_dialog_run(GTK_DIALOG(dialog));
+        if (!state->closed.load() && response == GTK_RESPONSE_ACCEPT)
+        {
+            gchar *path = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog));
+            if (path)
+            {
+                work.export_path = path;
+                g_free(path);
+            }
+        }
+        gtk_widget_destroy(dialog);
+        g_object_unref(dialog);
+        if (state->closed.load() || response != GTK_RESPONSE_ACCEPT || work.export_path.empty())
+            return;
     }
     if (work.action == Action::Export)
     {
@@ -295,8 +426,17 @@ void clicked(GtkButton *button, gpointer data)
         if (state->closed.load() || response != GTK_RESPONSE_OK)
             return;
     }
+    start_work(std::move(work));
+}
+void start_work(Work work)
+{
+    const auto state = work.state;
+    if (state->closed.load())
+        return;
     gtk_widget_set_sensitive(state->body, FALSE);
-    gtk_label_set_text(GTK_LABEL(state->status), "正在处理云词库…");
+    gtk_label_set_text(GTK_LABEL(state->status), work.action == Action::SnapshotPrepare
+                                                     ? "正在下载并校验快照，准备恢复预览…"
+                                                     : "正在处理云词库…");
     auto *task = g_task_new(nullptr, nullptr, finished, nullptr);
     g_task_set_task_data(task, new Work(std::move(work)), [](gpointer data) { delete static_cast<Work *>(data); });
     g_task_run_in_thread(task, worker);
@@ -393,6 +533,10 @@ GtkWidget *create_dictionary_window(GtkWindow *parent, std::shared_ptr<AccountSe
     add_button(state, actions, "新增云词条", Action::Add);
     add_button(state, actions, "修改选中词条", Action::Update);
     add_button(state, actions, "删除选中词条", Action::Delete);
+    auto *snapshots = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    gtk_box_pack_start(GTK_BOX(state->body), snapshots, FALSE, FALSE, 0);
+    add_button(state, snapshots, "导出完整云词库快照", Action::SnapshotExport);
+    add_button(state, snapshots, "从完整快照恢复云词库", Action::SnapshotPrepare);
     refresh(*state);
     gtk_widget_show_all(state->window);
     return state->window;
