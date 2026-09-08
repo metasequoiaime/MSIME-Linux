@@ -412,6 +412,7 @@ int main(int argc, char **argv)
     review("预览上传本机设置", GTK_RESPONSE_OK);
     require(http->preference_writes == 1, "unchanged upload unnecessarily incremented revision");
     gtk_text_buffer_set_text(cloud_text, "退出时应丢弃的草稿", -1);
+    const auto saved_account = secrets->lookup(SecretKind::AccountSession, "msime").value;
     click(panel, "退出登录");
     wait([&] { return gtk_widget_get_sensitive(panel); });
     require(secrets->lookup(SecretKind::AccountSession, "msime").status == SecretStatus::NotFound,
@@ -420,6 +421,41 @@ int main(int argc, char **argv)
                 gtk_tree_model_iter_n_children(cloud_model, nullptr) == 0,
             "logout retained cloud data");
     gtk_widget_destroy(window);
+    require(secrets->store(SecretKind::AccountSession, "msime", saved_account), "restore fixture failed");
+    window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+    panel = account::create_account_panel(secrets, http, hooks);
+    gtk_container_add(GTK_CONTAINER(window), panel);
+    gtk_widget_show_all(window);
+    wait([&] { return gtk_widget_get_sensitive(panel); });
+    http->preferences["appearance.page_size"] = 6;
+    bool closed_review = false;
+    struct CloseReview
+    {
+        GtkWidget *window;
+        bool *closed;
+    } close_review{window, &closed_review};
+    g_timeout_add(
+        5,
+        +[](gpointer data) -> gboolean {
+            auto &close = *static_cast<CloseReview *>(data);
+            GList *windows = gtk_window_list_toplevels();
+            bool found = false;
+            for (auto *item = windows; item; item = item->next)
+                found = found || GTK_IS_DIALOG(item->data);
+            g_list_free(windows);
+            if (!found)
+                return G_SOURCE_CONTINUE;
+            *close.closed = true;
+            gtk_widget_destroy(close.window);
+            return G_SOURCE_REMOVE;
+        },
+        &close_review);
+    const auto previous_applied = applied;
+    click(panel, "预览下载云端设置");
+    wait([&] { return closed_review; });
+    require(applied == previous_applied && settings_store->load().page_size == 8,
+            "closing preview applied settings or invoked model callback");
+    require(secrets->erase(SecretKind::AccountSession, "msime"), "fixture credential cleanup failed");
     http->block.store(true);
     panel = account::create_account_panel(secrets, http);
     g_object_ref_sink(panel);
