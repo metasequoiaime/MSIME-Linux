@@ -1,5 +1,6 @@
 #include "AccountPanel.h"
 #include "AccountSession.h"
+#include "DictionaryWindow.h"
 #include "CloudSettingsMapper.h"
 #include <sstream>
 #include <atomic>
@@ -564,6 +565,16 @@ GtkWidget *create_account_panel(std::shared_ptr<SecretStore> secrets, std::share
     gtk_box_pack_start(GTK_BOX(p->root), p->settings_box, FALSE, FALSE, 0);
     button(p, p->settings_box, "预览上传本机设置", Action::SettingsUploadReview);
     button(p, p->settings_box, "预览下载云端设置", Action::SettingsDownloadReview);
+    auto *dictionaries = gtk_button_new_with_label("管理云端个人词库");
+    g_signal_connect_data(
+        dictionaries, "clicked", G_CALLBACK(+[](GtkButton *, gpointer data) {
+            const auto panel = *static_cast<Handle *>(data);
+            create_dictionary_window(GTK_WINDOW(gtk_widget_get_toplevel(panel->root)),
+                                     std::shared_ptr<AccountSession>(panel, &panel->session),
+                                     panel->snapshot.generation);
+        }),
+        new Handle(p), [](gpointer data, GClosure *) { delete static_cast<Handle *>(data); }, G_CONNECT_DEFAULT);
+    gtk_box_pack_start(GTK_BOX(p->details), dictionaries, FALSE, FALSE, 0);
     p->logout = button(p, p->root, "退出登录", Action::Logout);
     p->remove = button(p, p->root, "注销账号", Action::Delete);
     p->retry = button(p, p->root, "重新加载账号", Action::Restore);
