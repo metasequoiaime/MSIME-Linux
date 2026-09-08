@@ -272,6 +272,12 @@ if(METASEQUOIA_IME_BUILD_IBUS)
         target_compile_options(MetasequoiaImeLinuxSettingsTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
         add_test(NAME settings_store COMMAND MetasequoiaImeLinuxSettingsTests)
 
+        add_executable(MetasequoiaImeLinuxSettingsConflictTests tests/SettingsConflictTests.cpp)
+        target_link_libraries(MetasequoiaImeLinuxSettingsConflictTests PRIVATE MetasequoiaImeLinuxSettings Threads::Threads)
+        target_compile_options(MetasequoiaImeLinuxSettingsConflictTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+        add_test(NAME settings_conflicts COMMAND MetasequoiaImeLinuxSettingsConflictTests)
+        set_tests_properties(settings_conflicts PROPERTIES TIMEOUT 20)
+
         add_executable(MetasequoiaImeLinuxSettingsUiModelTests tests/SettingsUiModelTests.cpp)
         target_link_libraries(MetasequoiaImeLinuxSettingsUiModelTests PRIVATE MetasequoiaImeLinuxSettingsUiModel)
         target_include_directories(MetasequoiaImeLinuxSettingsUiModelTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)

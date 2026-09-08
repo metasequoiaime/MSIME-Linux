@@ -15,12 +15,53 @@
 #include <string_view>
 #include <utility>
 #include <unistd.h>
+#include <fcntl.h>
+#include <sys/file.h>
+#include <sys/stat.h>
 #include <vector>
 
 namespace metasequoia::linux_ime
 {
 namespace
 {
+class ConfigWriteLock
+{
+  public:
+    explicit ConfigWriteLock(const std::filesystem::path &path)
+    {
+        if (g_mkdir_with_parents(metasequoia::path_to_utf8(path.parent_path()).c_str(), 0700) != 0)
+            return;
+        const auto lock_path = metasequoia::path_to_utf8(path) + ".lock";
+        descriptor_ = open(lock_path.c_str(), O_RDWR | O_CREAT | O_CLOEXEC | O_NOFOLLOW, 0600);
+        if (descriptor_ < 0)
+            return;
+        struct stat status{};
+        if (fstat(descriptor_, &status) != 0 || !S_ISREG(status.st_mode) || status.st_uid != geteuid())
+            return;
+        int result;
+        do
+        {
+            result = flock(descriptor_, LOCK_EX);
+        } while (result != 0 && errno == EINTR);
+        locked_ = result == 0;
+    }
+    ~ConfigWriteLock()
+    {
+        if (descriptor_ >= 0)
+            close(descriptor_);
+    }
+    ConfigWriteLock(const ConfigWriteLock &) = delete;
+    ConfigWriteLock &operator=(const ConfigWriteLock &) = delete;
+    explicit operator bool() const
+    {
+        return locked_;
+    }
+
+  private:
+    int descriptor_ = -1;
+    bool locked_ = false;
+};
+
 constexpr const char *kGroup = "input";
 constexpr const char *kOnlineGroup = "online";
 constexpr const char *kAiGroup = "ai";
@@ -1086,6 +1127,22 @@ InputSettings SettingsStore::load(const SecretStore &secret_store, std::string *
 
 bool SettingsStore::save(const InputSettings &settings, std::string *error, std::string *digest) const
 {
+    if (!valid_input_settings(settings))
+    {
+        set_message(error, "Input settings were outside the supported range.");
+        return false;
+    }
+    ConfigWriteLock lock(config_path_);
+    if (!lock)
+    {
+        set_message(error, "Unable to lock input settings.");
+        return false;
+    }
+    return save_unlocked(settings, error, digest);
+}
+
+bool SettingsStore::save_unlocked(const InputSettings &settings, std::string *error, std::string *digest) const
+{
     set_message(error, "");
     const char *mode = mode_name(settings.mode);
     const char *default_mode = mode_name(settings.default_mode);
@@ -1272,6 +1329,23 @@ bool SettingsStore::save(const InputSettings &settings, std::string *error, std:
 
 bool SettingsStore::save(const InputSettings &settings, SecretStore &secret_store, std::string *error,
                          std::string *digest) const
+{
+    if (!valid_input_settings(settings))
+    {
+        set_message(error, "Input settings were outside the supported range.");
+        return false;
+    }
+    ConfigWriteLock lock(config_path_);
+    if (!lock)
+    {
+        set_message(error, "Unable to lock input settings.");
+        return false;
+    }
+    return save_with_secrets_unlocked(settings, secret_store, error, digest);
+}
+
+bool SettingsStore::save_with_secrets_unlocked(const InputSettings &settings, SecretStore &secret_store,
+                                               std::string *error, std::string *digest) const
 {
     set_message(error, "");
     if (!valid_input_settings(settings))
@@ -1523,7 +1597,7 @@ bool SettingsStore::save(const InputSettings &settings, SecretStore &secret_stor
         }
     }
 
-    if (!save(settings, error, digest))
+    if (!save_unlocked(settings, error, digest))
     {
         if (!rollback())
         {
@@ -1533,6 +1607,47 @@ bool SettingsStore::save(const InputSettings &settings, SecretStore &secret_stor
         return false;
     }
     return true;
+}
+
+std::optional<SettingsFileVersion> SettingsStore::version() const
+{
+    gchar *contents = nullptr;
+    gsize size = 0;
+    GError *error = nullptr;
+    if (!g_file_get_contents(metasequoia::path_to_utf8(config_path_).c_str(), &contents, &size, &error))
+    {
+        const bool missing = g_error_matches(error, G_FILE_ERROR, G_FILE_ERROR_NOENT);
+        g_clear_error(&error);
+        return missing ? std::optional<SettingsFileVersion>{{true, {}}} : std::nullopt;
+    }
+    auto digest = digest_of(contents, size);
+    g_free(contents);
+    if (digest.empty())
+        return std::nullopt;
+    return SettingsFileVersion{false, std::move(digest)};
+}
+
+bool SettingsStore::save_if_unchanged(const InputSettings &settings, SecretStore &secret_store,
+                                      const SettingsFileVersion &expected, std::string *error) const
+{
+    if (!valid_input_settings(settings))
+    {
+        set_message(error, "Input settings were outside the supported range.");
+        return false;
+    }
+    ConfigWriteLock lock(config_path_);
+    if (!lock)
+    {
+        set_message(error, "Unable to lock input settings.");
+        return false;
+    }
+    const auto current = version();
+    if (!current || !(*current == expected))
+    {
+        set_message(error, "本机设置已变化或无法读取，请重新预览。");
+        return false;
+    }
+    return save_with_secrets_unlocked(settings, secret_store, error, nullptr);
 }
 
 const std::filesystem::path &SettingsStore::config_path() const

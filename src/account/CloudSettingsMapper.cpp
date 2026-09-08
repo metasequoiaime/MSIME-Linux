@@ -129,7 +129,7 @@ SettingsPreview CloudSettingsMapper::prepare_download(const InputSettings &local
     for (const auto &[key, value] : remote.settings)
     {
         const auto binding = std::find_if(std::begin(bindings), std::end(bindings),
-                                          [&](const Binding &item) { return key == item.cloud; });
+                                          [name = key](const Binding &item) { return name == item.cloud; });
         if (binding == std::end(bindings))
         {
             preview.unsupported_fields.push_back(key);
