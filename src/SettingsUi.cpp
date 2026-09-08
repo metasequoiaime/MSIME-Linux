@@ -1,4 +1,5 @@
 #include "SecretStore.h"
+#include "SettingsUiLabels.h"
 #include "SettingsStore.h"
 #include "SettingsUiModel.h"
 #include "ToolLauncher.h"
@@ -51,6 +52,7 @@ struct AppState
     // A pending rebuild of the current page, queued when a control that decides another row's visibility changes. Held
     // so a burst of changes collapses into one rebuild instead of queueing an idle callback per toggle.
     guint rebuild_source = 0;
+    bool dirty = false;
 };
 
 struct PageInfo
@@ -188,71 +190,6 @@ const char *choice_label(const std::string &value)
     return value.c_str();
 }
 
-const char *row_label(const SettingsUiRow &row)
-{
-    static const std::unordered_map<std::string, const char *> labels = {
-        {"mode", "输入模式"},
-        {"scheme", "输入方案"},
-        {"page-size", "每页候选数"},
-        {"punctuation", "标点模式"},
-        {"width", "字符宽度"},
-        {"preedit-style", "预编辑样式"},
-        {"comma-period-paging", "逗号/句号翻页"},
-        {"word-to-character", "词转单字"},
-        {"bracket-paging", "方括号翻页"},
-        {"smart-punctuation", "智能标点"},
-        {"smart-punctuation-repeat-to-chinese", "重复标点切换中文"},
-        {"paired-punctuation", "成对标点"},
-        {"quanpin-helpcode", "全拼辅助码"},
-        {"quanpin-helpcode-schema", "全拼辅助码方案"},
-        {"shuangpin-helpcode", "双拼辅助码"},
-        {"shuangpin-helpcode-schema", "双拼辅助码方案"},
-        {"frequency-adjustment", "调频方式"},
-        {"frequency-trigger-count", "调频触发次数"},
-        {"frequency-linear-step", "线性调频步长"},
-        {"unicode-mode", "Unicode 模式"},
-        {"super-jianpin-mode", "超级简拼模式"},
-        {"temporary-english-mode", "临时英文模式"},
-        {"temporary-japanese-mode", "临时日文模式"},
-        {"mixed-english-candidates", "混合英文候选"},
-        {"mixed-english-minimum-prefix", "英文最短前缀"},
-        {"mixed-emoji-candidates", "混合 Emoji 候选"},
-        {"mixed-kaomoji-candidates", "混合颜文字候选"},
-        {"clipboard-history", "剪贴板历史"},
-        {"floating-toolbar", "悬浮工具栏"},
-        {"voice-enabled", "启用语音输入"},
-        {"voice-provider", "语音服务商"},
-        {"voice-credential", "语音 API 令牌"},
-        {"voice-credential-clear", "清除已保存的语音令牌"},
-        {"voice-endpoint", "语音服务地址"},
-        {"voice-model", "语音模型"},
-        {"voice-language", "语音语言"},
-        {"voice-polish-enabled", "启用语音文本润色"},
-        {"voice-polish-endpoint", "润色服务地址"},
-        {"voice-polish-model", "润色模型"},
-        {"voice-polish-prompt", "润色提示词"},
-        {"cloud-enabled", "云候选"},
-        {"connect-timeout-ms", "连接超时（毫秒）"},
-        {"total-timeout-ms", "总超时（毫秒）"},
-        {"ai-enabled", "AI 联想"},
-        {"ai-provider", "AI 服务商"},
-        {"ai-credential", "AI API 令牌"},
-        {"ai-credential-clear", "清除已保存的 AI 令牌"},
-        {"ai-endpoint", "AI 服务地址"},
-        {"ai-model", "AI 模型"},
-        {"ai-prompt", "AI 提示词"},
-        {"ai-candidate-limit", "AI 候选数"},
-        {"translation-enabled", "候选翻译"},
-        {"translation-provider", "翻译服务商"},
-        {"translation-credential", "翻译 API 令牌"},
-        {"translation-credential-clear", "清除已保存的翻译令牌"},
-        {"translation-target-language", "翻译目标语言"},
-        {"translation-endpoint", "翻译服务地址"},
-    };
-    const auto found = labels.find(row.id);
-    return found == labels.end() ? row.label.c_str() : found->second;
-}
-
 // What the window is allowed to say about a credential. The row carries a presence marker rather than the credential,
 // so the placeholder is the only feedback there is, and both texts have to say that an empty field changes nothing:
 // leaving it alone is how the user edits anything else on the page without touching the stored credential. The second
@@ -381,6 +318,12 @@ bool flush_editors(AppState &state)
     for (const auto &row : rows)
     {
         const auto editor = state.editors.find(row.id);
+        if (editor != state.editors.end())
+        {
+            const auto value = editor_value(row, editor->second);
+            if (row.control == SettingsControl::Secret ? !value.empty() : value != row.value)
+                state.dirty = true;
+        }
         if (editor != state.editors.end() && !state.model.set(row.id, editor_value(row, editor->second), &error))
         {
             // The model reports why a value was refused but not which row produced it, and a page can hold dozens of
@@ -593,7 +536,16 @@ void attach_account_panel(AppState &state)
 {
     if (!state.account_panel)
     {
-        state.account_panel = account::create_account_panel();
+        account::SettingsSyncHooks sync;
+        sync.store = std::make_shared<SettingsStore>(state.store);
+        sync.allow = [&state] { return flush_editors(state) && !state.dirty; };
+        sync.busy = [&state](bool busy) { gtk_widget_set_sensitive(state.window, !busy); };
+        sync.applied = [&state](const InputSettings &settings) {
+            state.model = SettingsUiModel(settings);
+            state.dirty = false;
+        };
+        state.account_panel = account::create_account_panel(
+            std::make_shared<LibsecretSecretStore>(), std::make_shared<online::CurlHttpTransport>(), std::move(sync));
         g_object_ref_sink(state.account_panel);
     }
     gtk_container_add(GTK_CONTAINER(state.content), state.account_panel);
@@ -652,6 +604,7 @@ bool credential_missing(const AppState &state, SecretKind kind, const std::strin
 void reload_from_store(AppState &state, std::string *warning)
 {
     state.model = SettingsUiModel(state.store.load(state.secrets, warning));
+    state.dirty = false;
     state.editors.clear();
     detach_account_panel(state);
     clear_container(state.content);
