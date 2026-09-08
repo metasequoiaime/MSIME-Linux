@@ -278,7 +278,9 @@ def refocus_when_active():
 
 GLib.timeout_add(500, activate_globally_if_needed)
 GLib.timeout_add(20, refocus_when_active)
-GLib.timeout_add_seconds(5, loop.quit)
+# Instrumented startup loads the real dictionary before registering properties.
+# Keep waiting for the registration signal, with a bounded allowance for ASan.
+GLib.timeout_add_seconds(30, loop.quit)
 loop.run()
 
 payload = "\n".join(payloads)

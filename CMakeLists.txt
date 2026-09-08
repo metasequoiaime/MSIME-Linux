@@ -370,10 +370,10 @@ if(METASEQUOIA_IME_BUILD_IBUS)
         target_compile_options(MetasequoiaImeLinuxPrepareInstallation PRIVATE -Wall -Wextra -Wpedantic -Werror)
         add_test(NAME ibus_active_dictionary
                  COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/IBusSmoke.sh ${CMAKE_CURRENT_BINARY_DIR} active)
-        set_tests_properties(ibus_active_dictionary PROPERTIES TIMEOUT 30)
+        set_tests_properties(ibus_active_dictionary PROPERTIES TIMEOUT 60)
         add_test(NAME ibus_smoke
                  COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/IBusSmoke.sh ${CMAKE_CURRENT_BINARY_DIR})
-        set_tests_properties(ibus_smoke PROPERTIES TIMEOUT 15)
+        set_tests_properties(ibus_smoke PROPERTIES TIMEOUT 60)
         add_test(NAME ibus_dictionary_lease COMMAND ${Python3_EXECUTABLE}
                  ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_ibus_dictionary_lease_tests.py
                  $<TARGET_FILE:metasequoia-ime-ibus>)
