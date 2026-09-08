@@ -31,7 +31,7 @@ add_subdirectory(vendor/MetasequoiaImeEngine engine)
 # EndpointPolicy has no dependencies beyond the standard library and is needed by
 # the settings layer as well as the providers, so it belongs here rather than in
 # the online library.
-add_library(MetasequoiaImeLinuxCore STATIC src/DictionaryBootstrap.cpp src/InputController.cpp
+add_library(MetasequoiaImeLinuxCore STATIC src/DictionaryBootstrap.cpp src/DictionaryLease.cpp src/InputController.cpp
                                           src/online/EndpointPolicy.cpp src/TextTransform.cpp
                                           src/ToolLauncher.cpp)
 target_link_libraries(MetasequoiaImeLinuxCore PUBLIC MetasequoiaIme::Engine)
@@ -59,11 +59,16 @@ target_include_directories(MetasequoiaImeLinuxVoice PUBLIC ${CMAKE_CURRENT_SOURC
 target_compile_options(MetasequoiaImeLinuxVoice PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 add_executable(metasequoia-ime-dictionary-replay src/DictionaryReplay.cpp)
-target_link_libraries(metasequoia-ime-dictionary-replay PRIVATE MetasequoiaIme::Engine)
+target_link_libraries(metasequoia-ime-dictionary-replay PRIVATE MetasequoiaImeLinuxCore)
 target_compile_options(metasequoia-ime-dictionary-replay PRIVATE -Wall -Wextra -Wpedantic -Werror)
 install(TARGETS metasequoia-ime-dictionary-replay RUNTIME DESTINATION ${CMAKE_INSTALL_LIBEXECDIR})
 
 if(BUILD_TESTING)
+    add_executable(MetasequoiaImeLinuxDictionaryLeaseTests tests/DictionaryLeaseTests.cpp)
+    target_link_libraries(MetasequoiaImeLinuxDictionaryLeaseTests PRIVATE MetasequoiaImeLinuxCore)
+    target_compile_options(MetasequoiaImeLinuxDictionaryLeaseTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    add_test(NAME dictionary_lease COMMAND MetasequoiaImeLinuxDictionaryLeaseTests)
+    set_tests_properties(dictionary_lease PROPERTIES TIMEOUT 15)
     add_executable(MetasequoiaImeLinuxPreferencesSessionTests tests/PreferencesSessionTests.cpp)
     target_link_libraries(MetasequoiaImeLinuxPreferencesSessionTests PRIVATE MetasequoiaImeLinuxOnline Boost::json)
     target_compile_options(MetasequoiaImeLinuxPreferencesSessionTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
@@ -80,6 +85,10 @@ if(BUILD_TESTING)
     add_test(NAME account_credential_store COMMAND MetasequoiaImeLinuxAccountCredentialTests)
 
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    add_test(NAME dictionary_replay_lease COMMAND ${Python3_EXECUTABLE}
+             ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_dictionary_replay_lease_tests.py
+             $<TARGET_FILE:metasequoia-ime-dictionary-replay>)
+    set_tests_properties(dictionary_replay_lease PROPERTIES TIMEOUT 15)
     add_executable(MetasequoiaImeLinuxBackendSnapshotTransportTests tests/BackendSnapshotTransportTests.cpp)
     target_link_libraries(MetasequoiaImeLinuxBackendSnapshotTransportTests PRIVATE MetasequoiaImeLinuxOnline)
     target_compile_options(MetasequoiaImeLinuxBackendSnapshotTransportTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
