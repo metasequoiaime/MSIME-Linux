@@ -64,6 +64,11 @@ target_compile_options(metasequoia-ime-dictionary-replay PRIVATE -Wall -Wextra -
 install(TARGETS metasequoia-ime-dictionary-replay RUNTIME DESTINATION ${CMAKE_INSTALL_LIBEXECDIR})
 
 if(BUILD_TESTING)
+    add_executable(MetasequoiaImeLinuxPreferencesSessionTests tests/PreferencesSessionTests.cpp)
+    target_link_libraries(MetasequoiaImeLinuxPreferencesSessionTests PRIVATE MetasequoiaImeLinuxOnline Boost::json)
+    target_compile_options(MetasequoiaImeLinuxPreferencesSessionTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    add_test(NAME preferences_session COMMAND MetasequoiaImeLinuxPreferencesSessionTests)
+
     add_executable(MetasequoiaImeLinuxAccountSessionTests tests/AccountSessionTests.cpp)
     target_link_libraries(MetasequoiaImeLinuxAccountSessionTests PRIVATE MetasequoiaImeLinuxOnline Boost::json Threads::Threads)
     target_compile_options(MetasequoiaImeLinuxAccountSessionTests PRIVATE -Wall -Wextra -Wpedantic -Werror)

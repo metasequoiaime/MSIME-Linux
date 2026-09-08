@@ -172,6 +172,73 @@ Profile AccountSession::rename(std::uint64_t generation, const std::string &name
     client_.rename(name, token, cancelled);
     return read_profile(token, cancelled);
 }
+std::string AccountSession::reviewed_token(const PreferencesReview &review, const online::CancellationCheck &cancelled)
+{
+    require_generation(review.generation);
+    if (!session_ || review.user_id != session_->tokens.user.id)
+        throw Failure(0, true);
+    return authorized(review.generation, cancelled);
+}
+PreferencesReview AccountSession::review_preferences(std::uint64_t generation,
+                                                     const online::CancellationCheck &cancelled)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto token = authorized(generation, cancelled);
+    try
+    {
+        auto schema = client_.preferences_schema(token, cancelled);
+        auto remote = client_.preferences(token, cancelled);
+        return {generation_, session_->tokens.user.id, std::move(remote), std::move(schema)};
+    }
+    catch (const Failure &error)
+    {
+        if (error.status() == 401)
+            discard();
+        throw;
+    }
+}
+Preferences AccountSession::upload_preferences(const PreferencesReview &review,
+                                               const std::map<std::string, PreferenceValue> &local,
+                                               const online::CancellationCheck &cancelled)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto token = reviewed_token(review, cancelled);
+    auto replacement = review.remote;
+    for (const auto &[key, value] : local)
+        replacement.settings[key] = value;
+    try
+    {
+        return client_.put_preferences(replacement, review.schema, token, cancelled);
+    }
+    catch (const Failure &error)
+    {
+        if (error.status() == 401)
+            discard();
+        throw;
+    }
+}
+void AccountSession::apply_preferences(const PreferencesReview &review, const std::function<void()> &apply,
+                                       const online::CancellationCheck &cancelled)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto token = reviewed_token(review, cancelled);
+    Preferences current;
+    try
+    {
+        current = client_.preferences(token, cancelled);
+    }
+    catch (const Failure &error)
+    {
+        if (error.status() == 401)
+            discard();
+        throw;
+    }
+    if (current.revision != review.remote.revision || current.settings != review.remote.settings)
+        throw Failure(409);
+    if (cancelled && cancelled())
+        throw Failure(0, true);
+    apply();
+}
 ClipboardSnapshot AccountSession::clipboard_operation(
     std::uint64_t generation, const online::CancellationCheck &cancelled,
     const std::function<ClipboardSnapshot(const std::string &)> &operation)

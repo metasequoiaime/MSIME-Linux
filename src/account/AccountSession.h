@@ -12,6 +12,14 @@ struct SessionSnapshot
     std::optional<User> user;
 };
 
+struct PreferencesReview
+{
+    std::uint64_t generation = 0;
+    std::string user_id;
+    Preferences remote;
+    PreferencesSchema schema;
+};
+
 // All methods can block: call from a background worker. One instance owns one
 // desktop session. Generation binds operations and UI results to an account.
 class AccountSession
@@ -30,6 +38,13 @@ class AccountSession
     std::string access_token(std::uint64_t generation, const online::CancellationCheck &cancelled = {});
     Profile profile(std::uint64_t generation, const online::CancellationCheck &cancelled = {});
     Profile rename(std::uint64_t generation, const std::string &name, const online::CancellationCheck &cancelled = {});
+    PreferencesReview review_preferences(std::uint64_t generation, const online::CancellationCheck &cancelled = {});
+    Preferences upload_preferences(const PreferencesReview &review, const std::map<std::string, PreferenceValue> &local,
+                                   const online::CancellationCheck &cancelled = {});
+    // Holds the account lock through a background persistence callback. The callback
+    // must not call this session or access GTK, and must check local-file conflicts.
+    void apply_preferences(const PreferencesReview &review, const std::function<void()> &apply,
+                           const online::CancellationCheck &cancelled = {});
     ClipboardSnapshot clipboard(std::uint64_t generation, const std::string &query = {},
                                 const online::CancellationCheck &cancelled = {});
     ClipboardSnapshot set_clipboard_enabled(std::uint64_t generation, bool enabled,
@@ -47,6 +62,7 @@ class AccountSession
     std::string authorized(std::uint64_t generation, const online::CancellationCheck &cancelled);
     SavedSession saved(Tokens tokens) const;
     void discard();
+    std::string reviewed_token(const PreferencesReview &review, const online::CancellationCheck &cancelled);
     ClipboardSnapshot clipboard_operation(std::uint64_t generation, const online::CancellationCheck &cancelled,
                                           const std::function<ClipboardSnapshot(const std::string &)> &operation);
     Profile read_profile(const std::string &token, const online::CancellationCheck &cancelled);
