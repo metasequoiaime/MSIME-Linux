@@ -144,6 +144,8 @@ class BackendAccountClient
     DictionaryImportResult import_dictionary(const std::string &kind, const std::string &text,
                                              const std::string &format, const std::string &token,
                                              const online::CancellationCheck &cancelled = {});
+    DictionaryImportResult import_han_dictionary(const std::string &text, std::int64_t weight, const std::string &token,
+                                                 const online::CancellationCheck &cancelled = {});
     std::string export_dictionary(const std::string &kind, const std::string &format, const std::string &token,
                                   const online::CancellationCheck &cancelled = {});
     void logout(const std::string &token, bool all = false, const online::CancellationCheck &cancelled = {});

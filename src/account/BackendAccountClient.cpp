@@ -656,6 +656,24 @@ DictionaryImportResult BackendAccountClient::import_dictionary(const std::string
         throw Failure(0);
     return {static_cast<int>(imported), dictionary_number(result, "revision", 1)};
 }
+DictionaryImportResult BackendAccountClient::import_han_dictionary(const std::string &text, std::int64_t weight,
+                                                                   const std::string &token,
+                                                                   const online::CancellationCheck &cancelled)
+{
+    require_token(token);
+    require_text(text, 65536);
+    if (text.empty() || weight < 0)
+        throw Failure(400);
+    // The backend validates Chinese phrases and generates canonical pinyin with
+    // the native Engine. Do not reproduce its annotation rules in this client.
+    const auto body = boost::json::serialize(boost::json::object{{"text", text}, {"weight", weight}});
+    const auto result = object(
+        request(online::HttpMethod::Post, "/v1/users/me/dictionaries/pinyin/import-hans", body, token, cancelled));
+    const auto count = dictionary_number(result, "imported", 1);
+    if (count > 500)
+        throw Failure(0);
+    return {static_cast<int>(count), dictionary_number(result, "revision", 1)};
+}
 std::string BackendAccountClient::export_dictionary(const std::string &kind, const std::string &format,
                                                     const std::string &token,
                                                     const online::CancellationCheck &cancelled)

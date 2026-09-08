@@ -61,6 +61,8 @@ class AccountSession
     DictionaryImportResult import_dictionary(std::uint64_t generation, const std::string &kind, const std::string &text,
                                              const std::string &format,
                                              const online::CancellationCheck &cancelled = {});
+    DictionaryImportResult import_han_dictionary(std::uint64_t generation, const std::string &text, std::int64_t weight,
+                                                 const online::CancellationCheck &cancelled = {});
     std::string export_dictionary(std::uint64_t generation, const std::string &kind, const std::string &format,
                                   const online::CancellationCheck &cancelled = {});
     void logout(std::uint64_t generation, bool all = false, const online::CancellationCheck &cancelled = {});

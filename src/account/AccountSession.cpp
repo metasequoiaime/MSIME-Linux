@@ -337,6 +337,23 @@ DictionaryImportResult AccountSession::import_dictionary(std::uint64_t generatio
         throw;
     }
 }
+DictionaryImportResult AccountSession::import_han_dictionary(std::uint64_t generation, const std::string &text,
+                                                             std::int64_t weight,
+                                                             const online::CancellationCheck &cancelled)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto token = authorized(generation, cancelled);
+    try
+    {
+        return client_.import_han_dictionary(text, weight, token, cancelled);
+    }
+    catch (const Failure &error)
+    {
+        if (error.status() == 401)
+            discard();
+        throw;
+    }
+}
 std::string AccountSession::export_dictionary(std::uint64_t generation, const std::string &kind,
                                               const std::string &format, const online::CancellationCheck &cancelled)
 {

@@ -152,5 +152,23 @@ int main()
     require(client.export_dictionary("quick", "windows", token).empty(), "empty export rejected");
     http.response.body = R"({"imported":2,"revision":8})";
     fails([&] { client.import_dictionary("quick", "word\tcode\t1", "standard", token); }, 0);
+    http.response.body = R"({"imported":2,"revision":9})";
+    auto annotated = client.import_han_dictionary("中国\n学习", 20, token);
+    require(annotated.imported == 2 && annotated.revision == 9 &&
+                http.last.url == "https://api.msime.app/v1/users/me/dictionaries/pinyin/import-hans",
+            "wrong Han import route");
+    require(boost::json::parse(http.last.body).at("text").as_string() == "中国\n学习" &&
+                boost::json::parse(http.last.body).at("weight").as_int64() == 20,
+            "Han import changed phrases or weight");
+    const auto han_calls = http.calls;
+    fails([&] { client.import_han_dictionary("", 10, token); }, 400);
+    fails([&] { client.import_han_dictionary("中国", -1, token); }, 400);
+    fails([&] { client.import_han_dictionary(std::string(65537, 'x'), 10, token); }, 400);
+    require(http.calls == han_calls, "invalid Han import reached transport");
+    http.response.body = R"({"imported":501,"revision":9})";
+    fails([&] { client.import_han_dictionary("中国", 10, token); }, 0);
+    http.response.status_code = 400;
+    fails([&] { client.import_han_dictionary("English", 10, token); }, 400);
+    require(http.calls == han_calls + 2, "Han import failure retried");
     std::cout << "Four dictionary CRUD, pagination and validation tests passed\n";
 }
