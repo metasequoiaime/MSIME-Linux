@@ -368,6 +368,10 @@ if(METASEQUOIA_IME_BUILD_IBUS)
         add_test(NAME ibus_smoke
                  COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/IBusSmoke.sh ${CMAKE_CURRENT_BINARY_DIR})
         set_tests_properties(ibus_smoke PROPERTIES TIMEOUT 15)
+        add_test(NAME ibus_dictionary_lease COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_ibus_dictionary_lease_tests.py
+                 $<TARGET_FILE:metasequoia-ime-ibus>)
+        set_tests_properties(ibus_dictionary_lease PROPERTIES TIMEOUT 15)
 
         # Guards that install.sh and uninstall.sh stay symmetric. Copying the
         # dictionaries takes a while, so this needs more than the default.
