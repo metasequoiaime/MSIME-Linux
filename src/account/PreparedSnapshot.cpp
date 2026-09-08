@@ -4,6 +4,7 @@
 #include <array>
 #include <cerrno>
 #include <fcntl.h>
+#include <exception>
 #include <glib.h>
 #include <streambuf>
 #include <sys/stat.h>
@@ -98,6 +99,31 @@ std::unique_ptr<PreparedSnapshot> PreparedSnapshot::open(const std::string &sour
     if (input.value < 0 || ::fstat(input.value, &info) != 0 || !S_ISREG(info.st_mode) || info.st_size < 0 ||
         static_cast<std::uint64_t>(info.st_size) > maximum_size)
         throw Failure(400);
+    return receive(
+        [&](const online::HttpResponseSink &sink) {
+            std::array<char, 16384> buffer{};
+            for (;;)
+            {
+                check_cancelled(cancelled);
+                const auto count = ::read(input.value, buffer.data(), buffer.size());
+                if (count < 0 && errno == EINTR)
+                    continue;
+                if (count < 0)
+                    throw Failure(0);
+                if (!count)
+                    break;
+                if (!sink(buffer.data(), static_cast<std::size_t>(count)))
+                    break;
+            }
+        },
+        cancelled);
+}
+std::unique_ptr<PreparedSnapshot> PreparedSnapshot::receive(
+    const std::function<void(const online::HttpResponseSink &)> &producer, const online::CancellationCheck &cancelled)
+{
+    check_cancelled(cancelled);
+    if (!producer)
+        throw Failure(400);
     gchar *path = g_build_filename(g_get_tmp_dir(), "msime-snapshot-XXXXXX", nullptr);
     const int descriptor = g_mkstemp_full(path, O_RDWR | O_CLOEXEC, 0600);
     if (descriptor < 0)
@@ -116,32 +142,48 @@ std::unique_ptr<PreparedSnapshot> PreparedSnapshot::open(const std::string &sour
     Descriptor owned{descriptor};
     std::unique_ptr<PreparedSnapshot> result(new PreparedSnapshot(descriptor));
     owned.value = -1;
-    std::array<char, 16384> buffer{};
-    for (;;)
-    {
-        check_cancelled(cancelled);
-        const auto count = ::read(input.value, buffer.data(), buffer.size());
-        if (count < 0 && errno == EINTR)
-            continue;
-        if (count < 0)
-            throw Failure(0);
-        if (count == 0)
-            break;
-        if (static_cast<std::size_t>(count) > maximum_size - result->size_)
-            throw Failure(400);
-        std::size_t written = 0;
-        while (written < static_cast<std::size_t>(count))
+    std::exception_ptr failure;
+    online::HttpResponseSink sink = [&](const char *data, std::size_t count) {
+        if (failure)
+            return false;
+        try
         {
             check_cancelled(cancelled);
-            const auto amount = ::write(descriptor, buffer.data() + written, count - written);
-            if (amount < 0 && errno == EINTR)
-                continue;
-            if (amount <= 0)
-                throw Failure(0);
-            written += static_cast<std::size_t>(amount);
+            if ((count && !data) || count > maximum_size - result->size_)
+                throw Failure(400);
+            std::size_t written = 0;
+            while (written < count)
+            {
+                check_cancelled(cancelled);
+                const auto amount = ::write(descriptor, data + written, count - written);
+                if (amount < 0 && errno == EINTR)
+                    continue;
+                if (amount <= 0)
+                    throw Failure(0);
+                written += static_cast<std::size_t>(amount);
+            }
+            result->size_ += count;
+            return true;
         }
-        result->size_ += static_cast<std::size_t>(count);
+        catch (...)
+        {
+            failure = std::current_exception();
+            return false;
+        }
+    };
+    try
+    {
+        producer(sink);
     }
+    catch (...)
+    {
+        if (failure)
+            std::rethrow_exception(failure);
+        throw;
+    }
+    if (failure)
+        std::rethrow_exception(failure);
+    check_cancelled(cancelled);
     SnapshotBuffer stream_buffer(*result, cancelled);
     std::istream frozen(&stream_buffer);
     // Preserve cancellation/I/O failures raised by the stream buffer.
