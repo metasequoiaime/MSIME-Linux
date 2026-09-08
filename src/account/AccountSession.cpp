@@ -311,6 +311,42 @@ DictionaryPage AccountSession::dictionary(std::uint64_t generation, const std::s
         throw;
     }
 }
+DictionaryPage AccountSession::dictionary_catalog(std::uint64_t generation, const std::string &kind,
+                                                  const std::string &query, int offset, int limit,
+                                                  const online::CancellationCheck &cancelled,
+                                                  DictionaryCatalogOptions options)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto token = authorized(generation, cancelled);
+    try
+    {
+        return client_.dictionary_catalog(kind, query, offset, limit, token, cancelled, std::move(options));
+    }
+    catch (const Failure &error)
+    {
+        if (error.status() == 401)
+            discard();
+        throw;
+    }
+}
+DictionaryChange AccountSession::manage_dictionary(std::uint64_t generation, const std::string &kind,
+                                                   std::int64_t revision, const DictionaryEntry &previous,
+                                                   const std::optional<DictionaryEntry> &replacement,
+                                                   const online::CancellationCheck &cancelled)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto token = authorized(generation, cancelled);
+    try
+    {
+        return client_.manage_dictionary(kind, revision, previous, replacement, token, cancelled);
+    }
+    catch (const Failure &error)
+    {
+        if (error.status() == 401)
+            discard();
+        throw;
+    }
+}
 DictionaryChange AccountSession::edit_dictionary(std::uint64_t generation, const std::string &kind,
                                                  const std::string &id, std::int64_t revision,
                                                  const std::optional<DictionaryEntry> &replacement,
