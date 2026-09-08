@@ -1,5 +1,6 @@
 #include "account/NativeSnapshot.h"
 #include "account/NativeDictionaryRevision.h"
+#include "account/NativeInstallation.h"
 #include "../vendor/MetasequoiaImeEngine/contracts/assets/assets.h"
 #include "../vendor/MetasequoiaImeEngine/english/english_dictionary.h"
 #include <boost/json.hpp>
@@ -143,6 +144,65 @@ int main()
     int emitted = 0;
     fails([&] { native_dictionary_revision(paths, [&] { return ++emitted == 3; }); });
     require(native_dictionary_revision(paths) == revision, "cancelled inspection changed native state");
+    NativeInstallation installation(root / "installation", paths);
+    require(installation.active().token.empty() && installation.active().paths.user_data == paths.user_data,
+            "missing marker did not retain captured legacy paths");
+    std::filesystem::copy(resources, installation.resources("synthetic-fixture"),
+                          std::filesystem::copy_options::recursive);
+    const auto installed_first = stage_native_snapshot(*snapshot, installation.resources("synthetic-fixture"),
+                                                       installation.generation("first"), "synthetic-fixture");
+    const auto installed_second = stage_native_snapshot(*changed_snapshot, installation.resources("synthetic-fixture"),
+                                                        installation.generation("second"), "synthetic-fixture");
+    const auto publication = installation.publish("first", "synthetic-fixture", "");
+    require(publication.published && publication.durable, "first publication failed");
+    auto active = installation.active();
+    require(active.generation == "first" && active.paths.user_data == installed_first.user_data &&
+                native_dictionary_revision(active.paths) == revision,
+            "active marker resolved wrong generation");
+    require(!installation.publish("second", "synthetic-fixture", "").published &&
+                installation.active().token == active.token,
+            "stale preview changed active generation");
+    require(installation.publish("second", "synthetic-fixture", active.token).published, "second publication failed");
+    require(installation.active().paths.user_data == installed_second.user_data &&
+                std::filesystem::exists(installed_first.user(assets::user_journal)),
+            "publication removed previous generation");
+    const auto marker = root / "installation" / "active-dictionary";
+    const auto published = installation.active().token;
+    {
+        std::ofstream out(marker);
+        out << "corrupt";
+    }
+    fails([&] { installation.active(); });
+    fails([&] { installation.publish("first", "synthetic-fixture", "corrupt"); });
+    {
+        std::ofstream out(marker);
+        out << published;
+    }
+    std::filesystem::rename(marker, marker.string() + ".saved");
+    std::filesystem::create_symlink(marker.string() + ".saved", marker);
+    fails([&] { installation.active(); });
+    fails([&] { installation.publish("first", "synthetic-fixture", published); });
+    std::filesystem::remove(marker);
+    std::filesystem::rename(marker.string() + ".saved", marker);
+    const auto ready_file = installed_second.dictionaries / ".ready";
+    {
+        std::ofstream out(ready_file);
+        out << "wrong-bundle\n";
+    }
+    fails([&] { installation.active(); });
+    {
+        std::ofstream out(ready_file);
+        out << "synthetic-fixture\n";
+    }
+    require(installation.active().token == published, "failed inspection changed marker");
+    fails([&] { installation.generation("../escape"); });
+    fails([&] { installation.resources("bad/bundle"); });
+    fails([&] { installation.publish("missing", "synthetic-fixture", published); });
+    std::filesystem::remove(installed_first.dictionary(assets::main_dictionary));
+    fails([&] { installation.publish("first", "synthetic-fixture", published); });
+    require(installation.active().token == published, "incomplete generation replaced active state");
+    for (const auto &file : std::filesystem::directory_iterator(root / "installation"))
+        require(file.path().filename().string().find(".active-") != 0, "publication leaked temporary marker");
     int entries = 0, positions = 0, selections = 0;
     stream_dictionary_state(paths, [&](const auto &record) {
         if (const auto *value = std::get_if<DictionaryStateEntry>(&record))
