@@ -1,3 +1,4 @@
+#include "DictionaryLease.h"
 #include "core/data_path.h"
 #include "user_dictionary/user_dictionary_journal.h"
 
@@ -45,6 +46,23 @@ int main(int argc, char **argv)
     {
         std::cerr << "Valid absolute data and main-database paths are required.\n";
         return 2;
+    }
+
+    std::unique_ptr<metasequoia::linux_ime::DictionaryLease> lease;
+    try
+    {
+        lease = metasequoia::linux_ime::DictionaryLease::acquire(data_directory,
+                                                                 metasequoia::linux_ime::DictionaryLease::Mode::Shared);
+        if (!lease)
+        {
+            std::cerr << "Dictionary publication is in progress; retry replay after it finishes.\n";
+            return 1;
+        }
+    }
+    catch (const std::exception &)
+    {
+        std::cerr << "Unable to acquire dictionary session lease.\n";
+        return 1;
     }
 
     const auto result =
