@@ -74,6 +74,51 @@ Tokens tokens(const std::string &text)
     }
     return result;
 }
+void require_text(const std::string &text, std::size_t byte_limit)
+{
+    if (text.size() > byte_limit || text.find('\0') != std::string::npos)
+        throw Failure(400);
+    boost::system::error_code error;
+    (void)boost::json::parse(boost::json::serialize(boost::json::value(text)), error);
+    if (error)
+        throw Failure(400);
+}
+void require_clipboard_text(const std::string &text)
+{
+    require_text(text, 16000);
+    std::size_t units = 0;
+    for (unsigned char c : text)
+        if ((c & 0xc0) != 0x80)
+            units += c >= 0xf0 ? 2 : 1;
+    if (units > 4000 || text.find_first_not_of(" \t\r\n") == std::string::npos)
+        throw Failure(400);
+}
+ClipboardItem clipboard_item(const boost::json::object &source)
+{
+    ClipboardItem result{string(source, "id", 64), string(source, "text", 16000), string(source, "updated_at", 128)};
+    if (!valid_token(result.id))
+        throw Failure(0);
+    require_clipboard_text(result.text);
+    return result;
+}
+std::string query_component(const std::string &text)
+{
+    std::string result;
+    constexpr char hex[] = "0123456789ABCDEF";
+    for (unsigned char c : text)
+    {
+        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' ||
+            c == '.' || c == '~')
+            result += static_cast<char>(c);
+        else
+        {
+            result += '%';
+            result += hex[c >> 4];
+            result += hex[c & 15];
+        }
+    }
+    return result;
+}
 void require_token(const std::string &token)
 {
     if (!valid_token(token))
@@ -99,7 +144,8 @@ Failure::Failure(long status, bool cancelled)
 }
 
 std::string BackendAccountClient::request(online::HttpMethod method, const char *path, const std::string &body,
-                                          const std::string &token, const online::CancellationCheck &cancelled)
+                                          const std::string &token, const online::CancellationCheck &cancelled,
+                                          std::size_t response_limit)
 {
     if (!token.empty())
     {
@@ -118,7 +164,7 @@ std::string BackendAccountClient::request(online::HttpMethod method, const char 
     request.url = std::string("https://api.msime.app") + path;
     request.body = body;
     request.total_timeout = std::chrono::seconds(30);
-    request.max_response_bytes = 1024 * 1024;
+    request.max_response_bytes = response_limit;
     request.headers = {"Accept: application/json", "Cache-Control: no-store"};
     if (!body.empty())
     {
@@ -235,6 +281,55 @@ void BackendAccountClient::rename(const std::string &name, const std::string &to
     }
     (void)request(online::HttpMethod::Patch, "/v1/users/me",
                   boost::json::serialize(boost::json::object{{"display_name", name}}), token, cancelled);
+}
+ClipboardSnapshot BackendAccountClient::clipboard(const std::string &token, const std::string &query,
+                                                  const online::CancellationCheck &cancelled)
+{
+    require_token(token);
+    require_text(query, 1024);
+    const auto path = "/v1/users/me/clipboard?q=" + query_component(query);
+    const auto source = object(request(online::HttpMethod::Get, path.c_str(), {}, token, cancelled, 2 * 1024 * 1024));
+    const auto *enabled = source.if_contains("enabled");
+    const auto *items = source.if_contains("items");
+    if (!enabled || !enabled->is_bool() || !items || !items->is_array() || items->as_array().size() > 50)
+        throw Failure(0);
+    ClipboardSnapshot result{enabled->as_bool(), {}};
+    for (const auto &value : items->as_array())
+    {
+        if (!value.is_object())
+            throw Failure(0);
+        result.items.push_back(clipboard_item(value.as_object()));
+    }
+    return result;
+}
+void BackendAccountClient::set_clipboard_enabled(bool enabled, const std::string &token,
+                                                 const online::CancellationCheck &cancelled)
+{
+    require_token(token);
+    const auto source =
+        object(request(online::HttpMethod::Put, "/v1/users/me/clipboard/settings",
+                       boost::json::serialize(boost::json::object{{"enabled", enabled}}), token, cancelled));
+    const auto *value = source.if_contains("enabled");
+    if (!value || !value->is_bool() || value->as_bool() != enabled)
+        throw Failure(0);
+}
+ClipboardItem BackendAccountClient::add_clipboard(const std::string &text, const std::string &token,
+                                                  const online::CancellationCheck &cancelled)
+{
+    require_token(token);
+    require_clipboard_text(text);
+    return clipboard_item(
+        object(request(online::HttpMethod::Post, "/v1/users/me/clipboard",
+                       boost::json::serialize(boost::json::object{{"text", text}}), token, cancelled)));
+}
+void BackendAccountClient::delete_clipboard(const std::string &id, const std::string &token,
+                                            const online::CancellationCheck &cancelled)
+{
+    require_token(token);
+    if (!id.empty())
+        require_token(id);
+    const auto path = std::string("/v1/users/me/clipboard") + (id.empty() ? "" : "/" + id);
+    (void)request(online::HttpMethod::Delete, path.c_str(), {}, token, cancelled);
 }
 void BackendAccountClient::logout(const std::string &token, bool all, const online::CancellationCheck &cancelled)
 {

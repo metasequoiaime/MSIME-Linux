@@ -35,6 +35,15 @@ struct Identity
     std::string provider;
     std::string subject;
 };
+struct ClipboardItem
+{
+    std::string id, text, updated_at;
+};
+struct ClipboardSnapshot
+{
+    bool enabled = false;
+    std::vector<ClipboardItem> items;
+};
 struct Profile
 {
     User user;
@@ -73,12 +82,19 @@ class BackendAccountClient
     Tokens refresh(const std::string &refresh_token, const online::CancellationCheck &cancelled = {});
     Profile profile(const std::string &token, const online::CancellationCheck &cancelled = {});
     void rename(const std::string &name, const std::string &token, const online::CancellationCheck &cancelled = {});
+    ClipboardSnapshot clipboard(const std::string &token, const std::string &query = {},
+                                const online::CancellationCheck &cancelled = {});
+    void set_clipboard_enabled(bool enabled, const std::string &token, const online::CancellationCheck &cancelled = {});
+    ClipboardItem add_clipboard(const std::string &text, const std::string &token,
+                                const online::CancellationCheck &cancelled = {});
+    void delete_clipboard(const std::string &id, const std::string &token,
+                          const online::CancellationCheck &cancelled = {});
     void logout(const std::string &token, bool all = false, const online::CancellationCheck &cancelled = {});
     void delete_account(const std::string &token, const online::CancellationCheck &cancelled = {});
 
   private:
     std::string request(online::HttpMethod method, const char *path, const std::string &body, const std::string &token,
-                        const online::CancellationCheck &cancelled);
+                        const online::CancellationCheck &cancelled, std::size_t response_limit = 1024 * 1024);
     online::HttpTransport &transport_;
 };
 } // namespace metasequoia::linux_ime::account

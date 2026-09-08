@@ -13,6 +13,7 @@ enum class HttpMethod
     Get,
     Post,
     Patch,
+    Put,
     Delete,
 };
 

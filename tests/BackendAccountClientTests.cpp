@@ -123,5 +123,45 @@ int main()
     malformed["access_token"] = "not-a-session-token";
     transport.response = {200, boost::json::serialize(malformed), {}};
     fails([&] { client.login("synthetic-challenge", "synthetic-credential"); }, 0);
+    const auto clip = boost::json::object{{"id", token('f')}, {"text", "合成剪贴板内容"}, {"updated_at", "now"}};
+    transport.response = {
+        200, boost::json::serialize(boost::json::object{{"enabled", true}, {"items", boost::json::array{clip}}}), {}};
+    const auto clipboard = client.clipboard(token('a'), "你&x=#?");
+    require(clipboard.enabled && clipboard.items.size() == 1 && clipboard.items[0].text == "合成剪贴板内容",
+            "clipboard not decoded");
+    require(transport.last.url == "https://api.msime.app/v1/users/me/clipboard?q=%E4%BD%A0%26x%3D%23%3F",
+            "search query escaped incorrectly");
+    require(transport.last.max_response_bytes == 2 * 1024 * 1024, "clipboard response limit too small");
+    transport.response.body = "{\"enabled\":false}";
+    client.set_clipboard_enabled(false, token('a'));
+    require(transport.last.method == online::HttpMethod::Put &&
+                !boost::json::parse(transport.last.body).at("enabled").as_bool(),
+            "clipboard disable not PUT");
+    transport.response.body = boost::json::serialize(clip);
+    require(client.add_clipboard("合成剪贴板内容", token('a')).id == token('f'), "clipboard upload not decoded");
+    require(transport.last.method == online::HttpMethod::Post &&
+                boost::json::parse(transport.last.body).at("text").as_string() == "合成剪贴板内容",
+            "clipboard upload not encoded");
+    std::string emoji;
+    for (int i = 0; i < 2000; ++i)
+        emoji += "😀";
+    (void)client.add_clipboard(emoji, token('a'));
+    const int before_invalid_clipboard = transport.calls;
+    fails([&] { client.add_clipboard(emoji + "😀", token('a')); }, 400);
+    fails([&] { client.add_clipboard(std::string("bad\0text", 8), token('a')); }, 400);
+    fails([&] { client.add_clipboard("\xff", token('a')); }, 400);
+    fails([&] { client.clipboard(token('a'), std::string(1025, 'a')); }, 400);
+    fails([&] { client.delete_clipboard("../other", token('a')); }, 400);
+    require(transport.calls == before_invalid_clipboard, "invalid clipboard input reached network");
+    transport.response = {204, {}, {}};
+    client.delete_clipboard(token('f'), token('a'));
+    require(transport.last.url == "https://api.msime.app/v1/users/me/clipboard/" + token('f'),
+            "single delete URL wrong");
+    client.delete_clipboard({}, token('a'));
+    require(transport.last.method == online::HttpMethod::Delete &&
+                transport.last.url == "https://api.msime.app/v1/users/me/clipboard",
+            "clear URL wrong");
+    transport.response = {200, R"({"enabled":"true","items":[]})", {}};
+    fails([&] { client.clipboard(token('a')); }, 0);
     std::cout << "backend account protocol tests passed\n";
 }
