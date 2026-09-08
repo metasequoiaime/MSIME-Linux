@@ -85,6 +85,9 @@ if(BUILD_TESTING)
     add_test(NAME account_credential_store COMMAND MetasequoiaImeLinuxAccountCredentialTests)
 
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    add_test(NAME native_resources COMMAND ${Python3_EXECUTABLE} -m unittest discover
+             -s ${CMAKE_CURRENT_SOURCE_DIR}/tests -p test_native_resources.py)
+    set_tests_properties(native_resources PROPERTIES TIMEOUT 30)
     add_test(NAME dictionary_replay_lease COMMAND ${Python3_EXECUTABLE}
              ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_dictionary_replay_lease_tests.py
              $<TARGET_FILE:metasequoia-ime-dictionary-replay>)
