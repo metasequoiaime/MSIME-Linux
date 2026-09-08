@@ -98,6 +98,24 @@ int main()
             true);
     }
     require(descriptors() == before, "prepared descriptor not closed");
+    {
+        auto received = PreparedSnapshot::receive([&](const metasequoia::linux_ime::online::HttpResponseSink &sink) {
+            require(sink(original.data(), 17), "first chunk rejected");
+            require(sink(original.data() + 17, original.size() - 17), "second chunk rejected");
+        });
+        require(read(*received) == original, "downloaded content changed");
+    }
+    require(descriptors() == before, "received descriptor leaked");
+    rejected([&] { PreparedSnapshot::receive({}); });
+    rejected([&] { PreparedSnapshot::receive([](const auto &sink) { sink("x", 512U * 1024U * 1024U + 1); }); });
+    rejected([&] { PreparedSnapshot::receive([](const auto &sink) { sink(nullptr, 1); }); });
+    rejected([&] {
+        PreparedSnapshot::receive([&](const auto &sink) {
+            sink(original.data(), 17);
+            throw Failure(503);
+        });
+    });
+    rejected([&] { PreparedSnapshot::receive([&](const auto &sink) { sink(original.data(), 17); }); });
     rejected([&] { PreparedSnapshot::open(source.string()); });
     write(source, original);
     const auto link = directory / "link";
