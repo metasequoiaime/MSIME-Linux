@@ -39,6 +39,7 @@ target_include_directories(MetasequoiaImeLinuxCore PUBLIC ${CMAKE_CURRENT_SOURCE
 target_compile_options(MetasequoiaImeLinuxCore PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 add_library(MetasequoiaImeLinuxOnline STATIC
+            src/account/BackendAccountClient.cpp
             src/online/AiSuggestionProvider.cpp
             src/online/CurlHttpTransport.cpp
             src/online/GoogleCloudProvider.cpp
@@ -61,6 +62,11 @@ target_compile_options(metasequoia-ime-dictionary-replay PRIVATE -Wall -Wextra -
 install(TARGETS metasequoia-ime-dictionary-replay RUNTIME DESTINATION ${CMAKE_INSTALL_LIBEXECDIR})
 
 if(BUILD_TESTING)
+    add_executable(MetasequoiaImeLinuxBackendAccountTests tests/BackendAccountClientTests.cpp)
+    target_link_libraries(MetasequoiaImeLinuxBackendAccountTests PRIVATE MetasequoiaImeLinuxOnline Boost::json)
+    target_compile_options(MetasequoiaImeLinuxBackendAccountTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    add_test(NAME backend_account_client COMMAND MetasequoiaImeLinuxBackendAccountTests)
+
     add_executable(MetasequoiaImeLinuxTextTransformTests tests/TextTransformTests.cpp src/TextTransform.cpp)
     target_include_directories(MetasequoiaImeLinuxTextTransformTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
     target_compile_options(MetasequoiaImeLinuxTextTransformTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
