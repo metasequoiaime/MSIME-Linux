@@ -66,6 +66,7 @@ remove_path() {
 
 remove_path "$libexec_dir/metasequoia-ime-ibus"
 remove_path "$libexec_dir/metasequoia-ime-dictionary-replay"
+remove_path "$libexec_dir/metasequoia-native-resources"
 for tool in settings tools voice toolbar; do
     remove_path "$bin_dir/metasequoia-ime-$tool"
     # A stale desktop entry keeps the tool in the applications menu long after
