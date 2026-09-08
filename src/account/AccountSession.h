@@ -53,6 +53,18 @@ class AccountSession
                                     const online::CancellationCheck &cancelled = {});
     ClipboardSnapshot delete_clipboard(std::uint64_t generation, const std::string &id,
                                        const online::CancellationCheck &cancelled = {});
+    DictionaryPage dictionary(std::uint64_t generation, const std::string &kind, const std::string &query, int offset,
+                              int limit, const online::CancellationCheck &cancelled = {});
+    DictionaryChange edit_dictionary(std::uint64_t generation, const std::string &kind, const std::string &id,
+                                     std::int64_t revision, const std::optional<DictionaryEntry> &replacement,
+                                     const online::CancellationCheck &cancelled = {});
+    DictionaryImportResult import_dictionary(std::uint64_t generation, const std::string &kind, const std::string &text,
+                                             const std::string &format,
+                                             const online::CancellationCheck &cancelled = {});
+    DictionaryImportResult import_han_dictionary(std::uint64_t generation, const std::string &text, std::int64_t weight,
+                                                 const online::CancellationCheck &cancelled = {});
+    std::string export_dictionary(std::uint64_t generation, const std::string &kind, const std::string &format,
+                                  const online::CancellationCheck &cancelled = {});
     void logout(std::uint64_t generation, bool all = false, const online::CancellationCheck &cancelled = {});
     void delete_account(std::uint64_t generation, const online::CancellationCheck &cancelled = {});
 

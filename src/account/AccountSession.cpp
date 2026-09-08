@@ -286,6 +286,90 @@ ClipboardSnapshot AccountSession::delete_clipboard(std::uint64_t generation, con
         return client_.clipboard(token, {}, cancelled);
     });
 }
+DictionaryPage AccountSession::dictionary(std::uint64_t generation, const std::string &kind, const std::string &query,
+                                          int offset, int limit, const online::CancellationCheck &cancelled)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto token = authorized(generation, cancelled);
+    try
+    {
+        return client_.dictionary(kind, query, offset, limit, token, cancelled);
+    }
+    catch (const Failure &error)
+    {
+        if (error.status() == 401)
+            discard();
+        throw;
+    }
+}
+DictionaryChange AccountSession::edit_dictionary(std::uint64_t generation, const std::string &kind,
+                                                 const std::string &id, std::int64_t revision,
+                                                 const std::optional<DictionaryEntry> &replacement,
+                                                 const online::CancellationCheck &cancelled)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto token = authorized(generation, cancelled);
+    try
+    {
+        return client_.edit_dictionary(kind, id, revision, replacement, token, cancelled);
+    }
+    catch (const Failure &error)
+    {
+        if (error.status() == 401)
+            discard();
+        throw;
+    }
+}
+DictionaryImportResult AccountSession::import_dictionary(std::uint64_t generation, const std::string &kind,
+                                                         const std::string &text, const std::string &format,
+                                                         const online::CancellationCheck &cancelled)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto token = authorized(generation, cancelled);
+    try
+    {
+        return client_.import_dictionary(kind, text, format, token, cancelled);
+    }
+    catch (const Failure &error)
+    {
+        if (error.status() == 401)
+            discard();
+        throw;
+    }
+}
+DictionaryImportResult AccountSession::import_han_dictionary(std::uint64_t generation, const std::string &text,
+                                                             std::int64_t weight,
+                                                             const online::CancellationCheck &cancelled)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto token = authorized(generation, cancelled);
+    try
+    {
+        return client_.import_han_dictionary(text, weight, token, cancelled);
+    }
+    catch (const Failure &error)
+    {
+        if (error.status() == 401)
+            discard();
+        throw;
+    }
+}
+std::string AccountSession::export_dictionary(std::uint64_t generation, const std::string &kind,
+                                              const std::string &format, const online::CancellationCheck &cancelled)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto token = authorized(generation, cancelled);
+    try
+    {
+        return client_.export_dictionary(kind, format, token, cancelled);
+    }
+    catch (const Failure &error)
+    {
+        if (error.status() == 401)
+            discard();
+        throw;
+    }
+}
 void AccountSession::logout(std::uint64_t generation, bool all, const online::CancellationCheck &cancelled)
 {
     std::lock_guard<std::mutex> lock(mutex_);

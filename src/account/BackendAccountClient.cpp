@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <charconv>
 #include <limits>
 
 namespace metasequoia::linux_ime::account
@@ -120,6 +121,120 @@ std::string query_component(const std::string &text)
         }
     }
     return result;
+}
+std::string dictionary_path(const std::string &kind)
+{
+    if (kind != "pinyin" && kind != "wubi" && kind != "english" && kind != "quick")
+        throw Failure(400);
+    return "/v1/users/me/dictionaries/" + kind;
+}
+void require_dictionary_entry(const DictionaryEntry &entry, const std::string &kind)
+{
+    require_text(entry.code, 512);
+    require_text(entry.word, 2048);
+    if (entry.weight < 0 || entry.word.find_first_not_of(" \t\r\n") == std::string::npos ||
+        entry.word.find_first_of("\t\r\n") != std::string::npos ||
+        entry.code.find_first_of("\t\r\n") != std::string::npos)
+        throw Failure(400);
+    if (kind == "quick")
+    {
+        std::size_t units = 0;
+        for (unsigned char c : entry.word)
+            if ((c & 0xc0) != 0x80)
+                units += c >= 0xf0 ? 2 : 1;
+        if (units > 199)
+            throw Failure(400);
+    }
+}
+void dictionary_format(const std::string &format)
+{
+    if (format != "standard" && format != "windows")
+        throw Failure(400);
+}
+std::size_t dictionary_tsv(const std::string &text, const std::string &kind, const std::string &format,
+                           std::size_t maximum, bool exported)
+{
+    std::size_t count = 0, start = text.compare(0, 3, "\xef\xbb\xbf") == 0 ? 3 : 0;
+    while (start < text.size())
+    {
+        auto end = text.find('\n', start);
+        if (end == std::string::npos)
+        {
+            if (exported)
+                throw Failure(400);
+            end = text.size();
+        }
+        auto size = end - start;
+        if (size && text[start + size - 1] == '\r')
+            --size;
+        if (size)
+        {
+            if (++count > maximum || size > 2624)
+                throw Failure(400);
+            const auto line = text.substr(start, size);
+            const auto first = line.find('\t');
+            const auto second = first == std::string::npos ? std::string::npos : line.find('\t', first + 1);
+            if (second == std::string::npos || line.find('\t', second + 1) != std::string::npos)
+                throw Failure(400);
+            DictionaryEntry entry;
+            entry.word = line.substr(0, first);
+            entry.code = line.substr(first + 1, second - first - 1);
+            if (format == "windows" && (kind == "english" || kind == "quick"))
+                std::swap(entry.word, entry.code);
+            auto weight = line.substr(second + 1);
+            const auto begin = weight.find_first_not_of(" \r");
+            const auto last = weight.find_last_not_of(" \r");
+            if (begin == std::string::npos)
+                throw Failure(400);
+            weight = weight.substr(begin, last - begin + 1);
+            const auto parsed = std::from_chars(weight.data(), weight.data() + weight.size(), entry.weight);
+            if (parsed.ec != std::errc{} || parsed.ptr != weight.data() + weight.size())
+                throw Failure(400);
+            require_dictionary_entry(entry, kind);
+        }
+        start = end == text.size() ? end : end + 1;
+    }
+    return count;
+}
+std::int64_t dictionary_number(const boost::json::object &source, const char *key, std::int64_t minimum)
+{
+    const auto *value = source.if_contains(key);
+    if (!value || !value->is_int64() || value->as_int64() < minimum)
+        throw Failure(0);
+    return value->as_int64();
+}
+DictionaryEntry dictionary_entry(const boost::json::object &source, const std::string &kind)
+{
+    DictionaryEntry entry{string(source, "id", 64),
+                          string(source, "kind", 16),
+                          string(source, "code", 512),
+                          string(source, "word", 2048),
+                          dictionary_number(source, "weight", 0),
+                          dictionary_number(source, "revision", 1),
+                          string(source, "updated_at", 128)};
+    if (!valid_token(entry.id) || entry.kind != kind || entry.updated_at.empty())
+        throw Failure(0);
+    try
+    {
+        require_dictionary_entry(entry, kind);
+    }
+    catch (const Failure &)
+    {
+        throw Failure(0);
+    }
+    return entry;
+}
+std::optional<DictionaryEntry> optional_dictionary_entry(const boost::json::object &source, const char *key,
+                                                         const std::string &kind)
+{
+    const auto *value = source.if_contains(key);
+    if (!value)
+        throw Failure(0);
+    if (value->is_null())
+        return std::nullopt;
+    if (!value->is_object())
+        throw Failure(0);
+    return dictionary_entry(value->as_object(), kind);
 }
 Preferences preferences_value(const boost::json::object &source)
 {
@@ -451,6 +566,131 @@ void BackendAccountClient::delete_clipboard(const std::string &id, const std::st
         require_token(id);
     const auto path = std::string("/v1/users/me/clipboard") + (id.empty() ? "" : "/" + id);
     (void)request(online::HttpMethod::Delete, path.c_str(), {}, token, cancelled);
+}
+DictionaryPage BackendAccountClient::dictionary(const std::string &kind, const std::string &query, int offset,
+                                                int limit, const std::string &token,
+                                                const online::CancellationCheck &cancelled)
+{
+    require_token(token);
+    auto path = dictionary_path(kind);
+    require_text(query, 1024);
+    if (offset < 0 || offset > 1000000 || limit < 1 || limit > 200)
+        throw Failure(400);
+    path += "?q=" + query_component(query) + "&offset=" + std::to_string(offset) + "&limit=" + std::to_string(limit);
+    const auto source = object(request(online::HttpMethod::Get, path.c_str(), {}, token, cancelled, 4 * 1024 * 1024));
+    const auto *entries = source.if_contains("entries");
+    const auto *more = source.if_contains("has_more");
+    if (!entries || !entries->is_array() || entries->as_array().size() > static_cast<std::size_t>(limit) || !more ||
+        !more->is_bool() || dictionary_number(source, "offset", 0) != offset)
+        throw Failure(0);
+    DictionaryPage page{{}, more->as_bool(), offset};
+    for (const auto &entry : entries->as_array())
+    {
+        if (!entry.is_object())
+            throw Failure(0);
+        auto decoded = dictionary_entry(entry.as_object(), kind);
+        if (std::any_of(page.entries.begin(), page.entries.end(),
+                        [&](const DictionaryEntry &old) { return old.id == decoded.id; }))
+            throw Failure(0);
+        page.entries.push_back(std::move(decoded));
+    }
+    if (page.has_more && page.entries.size() != static_cast<std::size_t>(limit))
+        throw Failure(0);
+    return page;
+}
+DictionaryChange BackendAccountClient::edit_dictionary(const std::string &kind, const std::string &id,
+                                                       std::int64_t revision,
+                                                       const std::optional<DictionaryEntry> &replacement,
+                                                       const std::string &token,
+                                                       const online::CancellationCheck &cancelled)
+{
+    require_token(token);
+    auto path = dictionary_path(kind);
+    if ((id.empty() && (revision != 0 || !replacement)) ||
+        (!id.empty() && (!valid_token(id) || revision < 1 || revision == std::numeric_limits<std::int64_t>::max())))
+        throw Failure(400);
+    boost::json::object body;
+    if (!id.empty())
+    {
+        path += "/" + id;
+        body["revision"] = revision;
+    }
+    if (replacement)
+    {
+        require_dictionary_entry(*replacement, kind);
+        body["code"] = replacement->code;
+        body["word"] = replacement->word;
+        body["weight"] = replacement->weight;
+    }
+    const auto method = id.empty()    ? online::HttpMethod::Post
+                        : replacement ? online::HttpMethod::Put
+                                      : online::HttpMethod::Delete;
+    const auto source = object(request(method, path.c_str(), boost::json::serialize(body), token, cancelled));
+    DictionaryChange change{dictionary_number(source, "revision", 1),
+                            optional_dictionary_entry(source, "previous", kind),
+                            optional_dictionary_entry(source, "replacement", kind)};
+    if (bool(change.previous) != !id.empty() || bool(change.replacement) != bool(replacement) ||
+        change.revision <= revision ||
+        (change.previous && (change.previous->id != id || change.previous->revision != revision)) ||
+        (change.replacement &&
+         (change.replacement->revision != change.revision || (!id.empty() && change.replacement->id != id))))
+        throw Failure(0);
+    return change;
+}
+DictionaryImportResult BackendAccountClient::import_dictionary(const std::string &kind, const std::string &text,
+                                                               const std::string &format, const std::string &token,
+                                                               const online::CancellationCheck &cancelled)
+{
+    require_token(token);
+    const auto path = dictionary_path(kind) + "/import";
+    dictionary_format(format);
+    if (text.size() > 65536)
+        throw Failure(400);
+    const auto count = dictionary_tsv(text, kind, format, 500, false);
+    if (count == 0)
+        throw Failure(400);
+    const auto body = boost::json::serialize(boost::json::object{{"text", text}, {"format", format}});
+    const auto result = object(request(online::HttpMethod::Post, path.c_str(), body, token, cancelled));
+    const auto imported = dictionary_number(result, "imported", 1);
+    if (imported != static_cast<std::int64_t>(count))
+        throw Failure(0);
+    return {static_cast<int>(imported), dictionary_number(result, "revision", 1)};
+}
+DictionaryImportResult BackendAccountClient::import_han_dictionary(const std::string &text, std::int64_t weight,
+                                                                   const std::string &token,
+                                                                   const online::CancellationCheck &cancelled)
+{
+    require_token(token);
+    require_text(text, 65536);
+    if (text.empty() || weight < 0)
+        throw Failure(400);
+    // The backend validates Chinese phrases and generates canonical pinyin with
+    // the native Engine. Do not reproduce its annotation rules in this client.
+    const auto body = boost::json::serialize(boost::json::object{{"text", text}, {"weight", weight}});
+    const auto result = object(
+        request(online::HttpMethod::Post, "/v1/users/me/dictionaries/pinyin/import-hans", body, token, cancelled));
+    const auto count = dictionary_number(result, "imported", 1);
+    if (count > 500)
+        throw Failure(0);
+    return {static_cast<int>(count), dictionary_number(result, "revision", 1)};
+}
+std::string BackendAccountClient::export_dictionary(const std::string &kind, const std::string &format,
+                                                    const std::string &token,
+                                                    const online::CancellationCheck &cancelled)
+{
+    require_token(token);
+    const auto path = dictionary_path(kind) + "/export?format=" + format;
+    dictionary_format(format);
+    auto text = request(online::HttpMethod::Get, path.c_str(), {}, token, cancelled, 256 * 1024 * 1024);
+    try
+    {
+        (void)dictionary_tsv(text, kind, format, 100000, true);
+    }
+    catch (const Failure &)
+    {
+        throw Failure(0);
+    }
+    return text;
 }
 void BackendAccountClient::logout(const std::string &token, bool all, const online::CancellationCheck &cancelled)
 {
