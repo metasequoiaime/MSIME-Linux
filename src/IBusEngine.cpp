@@ -1,4 +1,5 @@
 #include "DictionaryBootstrap.h"
+#include "DictionaryLease.h"
 #include "InputController.h"
 #include "IBusKeyMapper.h"
 #include "SettingsStore.h"
@@ -51,6 +52,16 @@ using metasequoia::linux_ime::online::TranslationBackend;
 using metasequoia::linux_ime::online::TranslationProvider;
 using metasequoia::linux_ime::online::TranslationService;
 
+// One captured layout and lease cover startup seeding and every native session.
+// Contexts retain ownership through worker/controller destruction, even if the
+// bus disconnects before the last GObject is finalized.
+struct DictionaryRuntime
+{
+    metasequoia::RuntimePaths paths;
+    std::unique_ptr<metasequoia::linux_ime::DictionaryLease> lease;
+};
+std::shared_ptr<DictionaryRuntime> dictionary_runtime;
+
 struct _MetasequoiaEngine;
 
 // The worker threads reach the engine only through this handle. Taking a GObject reference from a
@@ -67,6 +78,7 @@ struct _MetasequoiaEngine
 {
     IBusEngine parent;
     InputController *controller = nullptr;
+    std::shared_ptr<DictionaryRuntime> *dictionary_runtime = nullptr;
     IBusModeToggleTracker *mode_toggle = nullptr;
     InputMode default_mode = InputMode::Ime;
     bool show_quanpin_helpcode = true;
@@ -962,6 +974,8 @@ void finalize(GObject *object)
     engine->settings = nullptr;
     delete engine->paths;
     engine->paths = nullptr;
+    delete engine->dictionary_runtime;
+    engine->dictionary_runtime = nullptr;
     delete engine->settings_warning;
     engine->settings_warning = nullptr;
     delete engine->settings_digest;
@@ -1266,7 +1280,8 @@ void settings_file_changed(GFileMonitor *monitor, GFile *file, GFile *other_file
 
 void metasequoia_engine_init(MetasequoiaEngine *engine)
 {
-    engine->paths = new metasequoia::RuntimePaths(metasequoia::RuntimePaths::legacy());
+    engine->dictionary_runtime = new std::shared_ptr<DictionaryRuntime>(dictionary_runtime);
+    engine->paths = new metasequoia::RuntimePaths(dictionary_runtime->paths);
     engine->settings_store = new SettingsStore();
     engine->settings_warning = new std::string();
     engine->settings_digest = new std::string();
@@ -1362,6 +1377,24 @@ int main(int argc, char **argv)
 {
     (void)argc;
     (void)argv;
+    try
+    {
+        auto runtime = std::make_shared<DictionaryRuntime>();
+        runtime->paths = metasequoia::RuntimePaths::legacy();
+        runtime->lease = metasequoia::linux_ime::DictionaryLease::acquire(
+            runtime->paths.user_data, metasequoia::linux_ime::DictionaryLease::Mode::Shared);
+        if (!runtime->lease)
+        {
+            g_printerr("Dictionary publication is in progress; retry starting the input method after it finishes.\n");
+            return 1;
+        }
+        dictionary_runtime = std::move(runtime);
+    }
+    catch (const std::exception &)
+    {
+        g_printerr("Unable to acquire dictionary session lease.\n");
+        return 1;
+    }
     // A packaged install leaves the dictionaries in a system directory that the
     // engine never reads. Seed the per-user directory before anything opens a
     // database, or the engine creates an empty one and produces no candidates.
@@ -1371,7 +1404,8 @@ int main(int argc, char **argv)
     // not success either -- the run that copies the main dictionary and then fails on the others leaves an installation
     // that produces Chinese candidates but no Emoji, kaomoji or English ones, with nothing said about why.
     std::vector<std::string> seed_errors;
-    const std::size_t seeded = metasequoia::linux_ime::seed_user_data(&seed_errors);
+    const std::size_t seeded = metasequoia::linux_ime::seed_user_data(
+        dictionary_runtime->paths.user_data, metasequoia::linux_ime::system_data_directories(), &seed_errors);
     for (const std::string &failure : seed_errors)
     {
         g_warning("Unable to seed the user data directory: %s", failure.c_str());
@@ -1408,5 +1442,6 @@ int main(int argc, char **argv)
 
     g_object_unref(factory);
     g_object_unref(bus);
+    dictionary_runtime.reset();
     return 0;
 }

@@ -105,6 +105,7 @@ ibus list-engine | grep -q 'metasequoiaime'
 
 if ! python3 - <<'PYTHON'
 import gi
+import fcntl
 import os
 from pathlib import Path
 import sqlite3
@@ -281,6 +282,16 @@ if missing:
         f"IBus properties were not registered: {missing}; active engine: {active_name}; "
         f"processes: {engine_processes}; payload: {payload}"
     )
+
+# A live native input context must prevent an independent publisher from
+# replacing its journal/dictionaries, including while the composition is idle.
+with (Path(os.environ["METASEQUOIA_IME_DATA_DIR"]) / "dictionary-sessions.lock").open("r+") as lease:
+    try:
+        fcntl.flock(lease, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        pass
+    else:
+        raise RuntimeError("Active IBus context did not retain its dictionary lease")
 
 initial_properties = property_snapshots[-1]
 if not (
