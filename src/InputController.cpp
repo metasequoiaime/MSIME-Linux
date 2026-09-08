@@ -1,6 +1,8 @@
 #include "InputController.h"
 
 #include <algorithm>
+#include <atomic>
+#include <limits>
 #include <stdexcept>
 #include <utility>
 
@@ -8,6 +10,21 @@ namespace metasequoia::linux_ime
 {
 namespace
 {
+// Async transports outlive a settings/dictionary controller rebuild. Never reuse
+// its request identity, even when the replacement receives the same keystrokes.
+std::uint64_t next_online_generation()
+{
+    static std::atomic<std::uint64_t> sequence{0};
+    auto previous = sequence.load(std::memory_order_relaxed);
+    for (;;)
+    {
+        if (previous == std::numeric_limits<std::uint64_t>::max())
+            throw std::overflow_error("Online request generation exhausted");
+        if (sequence.compare_exchange_weak(previous, previous + 1, std::memory_order_relaxed))
+            return previous + 1;
+    }
+}
+
 InputOptions options_with_page_size(std::size_t page_size)
 {
     InputOptions options;
@@ -78,7 +95,8 @@ InputController::InputController(SchemeType scheme_type, InputOptions options, R
       shuangpin_helpcode_schema_(std::move(options.shuangpin_helpcode_schema)),
       frequency_adjustment_mode_(options.frequency_adjustment_mode),
       frequency_trigger_count_(options.frequency_trigger_count), frequency_linear_step_(options.frequency_linear_step),
-      now_(options.now ? std::move(options.now) : [] { return std::chrono::steady_clock::now(); })
+      now_(options.now ? std::move(options.now) : [] { return std::chrono::steady_clock::now(); }),
+      online_generation_(next_online_generation())
 {
     if (page_size_ == 0)
     {
@@ -326,7 +344,7 @@ ControllerResult InputController::set_mode(InputMode mode)
     apply_punctuation_lock();
     result.handled = true;
     reset_highlight();
-    ++online_generation_;
+    online_generation_ = next_online_generation();
     return result;
 }
 
@@ -368,7 +386,7 @@ ControllerResult InputController::set_punctuation_mode(PunctuationMode mode)
         return {};
     }
     punctuation_mode_ = mode;
-    ++online_generation_;
+    online_generation_ = next_online_generation();
     return {true, std::nullopt};
 }
 
@@ -386,7 +404,7 @@ ControllerResult InputController::set_character_width(CharacterWidth width)
         return {};
     }
     character_width_ = width;
-    ++online_generation_;
+    online_generation_ = next_online_generation();
     return {true, std::nullopt};
 }
 
@@ -412,7 +430,7 @@ ControllerResult InputController::toggle_dedicated_english_mode()
     snapshot_ = session_.snapshot();
     result.handled = true;
     reset_highlight();
-    ++online_generation_;
+    online_generation_ = next_online_generation();
     return result;
 }
 
@@ -433,7 +451,7 @@ ControllerResult InputController::switch_scheme(SchemeType scheme_type)
     select_active_helpcode_schema();
     result.handled = true;
     reset_highlight();
-    ++online_generation_;
+    online_generation_ = next_online_generation();
     return result;
 }
 
@@ -450,7 +468,7 @@ void InputController::invalidate_context()
     // still to the right of it.
     pending_paired_closings_.clear();
     punctuation_formatter_.reset();
-    ++online_generation_;
+    online_generation_ = next_online_generation();
 }
 
 std::optional<OnlineRequest> InputController::online_request() const
@@ -864,7 +882,7 @@ ControllerResult InputController::finish_composition_mutation(ControllerResult r
     snapshot_ = session_.snapshot();
     if (result.handled)
     {
-        ++online_generation_;
+        online_generation_ = next_online_generation();
         reset_highlight();
     }
     return result;
