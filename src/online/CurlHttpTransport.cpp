@@ -33,6 +33,8 @@ struct ResponseBuffer
     std::size_t limit = 0;
     bool exceeded = false;
     bool failed = false;
+    std::size_t received = 0;
+    const std::function<bool(const char *, std::size_t)> *sink = nullptr;
 };
 
 std::size_t write_response(char *data, std::size_t size, std::size_t count, void *user_data) noexcept
@@ -44,14 +46,24 @@ std::size_t write_response(char *data, std::size_t size, std::size_t count, void
         return 0;
     }
     const std::size_t bytes = size * count;
-    if (bytes > buffer.limit - std::min(buffer.limit, buffer.body.size()))
+    if (bytes > buffer.limit - std::min(buffer.limit, buffer.received))
     {
         buffer.exceeded = true;
         return 0;
     }
     try
     {
-        buffer.body.append(data, bytes);
+        if (buffer.sink && *buffer.sink)
+        {
+            if (!(*buffer.sink)(data, bytes))
+            {
+                buffer.failed = true;
+                return 0;
+            }
+        }
+        else
+            buffer.body.append(data, bytes);
+        buffer.received += bytes;
     }
     catch (...)
     {
@@ -59,6 +71,41 @@ std::size_t write_response(char *data, std::size_t size, std::size_t count, void
         return 0;
     }
     return bytes;
+}
+
+struct UploadSource
+{
+    const HttpRequest &request;
+    std::size_t offset = 0;
+    bool failed = false;
+};
+std::size_t read_upload(char *data, std::size_t size, std::size_t count, void *user_data) noexcept
+{
+    auto &source = *static_cast<UploadSource *>(user_data);
+    if (size && count > std::numeric_limits<std::size_t>::max() / size)
+    {
+        source.failed = true;
+        return CURL_READFUNC_ABORT;
+    }
+    const auto capacity = std::min(size * count, source.request.body_size - source.offset);
+    if (!capacity)
+        return 0;
+    try
+    {
+        const auto read = source.request.body_source(source.offset, data, capacity);
+        if (!read || read > capacity)
+        {
+            source.failed = true;
+            return CURL_READFUNC_ABORT;
+        }
+        source.offset += read;
+        return read;
+    }
+    catch (...)
+    {
+        source.failed = true;
+        return CURL_READFUNC_ABORT;
+    }
 }
 
 int transfer_progress(void *user_data, curl_off_t, curl_off_t, curl_off_t, curl_off_t) noexcept
@@ -95,13 +142,17 @@ HttpResponse CurlHttpTransport::perform(const HttpRequest &request, const Cancel
         return {0, {}, "only HTTPS URLs are allowed"};
     }
 
+    if (request.body_source && (!request.body.empty() || request.method == HttpMethod::Get ||
+                                request.body_size > static_cast<std::size_t>(std::numeric_limits<curl_off_t>::max())))
+        return {0, {}, "invalid streaming request source"};
     std::unique_ptr<CURL, CurlHandleDeleter> handle(curl_easy_init());
     if (!handle)
     {
         return {0, {}, "libcurl handle creation failed"};
     }
 
-    ResponseBuffer response_buffer{{}, request.max_response_bytes, false, false};
+    ResponseBuffer response_buffer{{}, request.max_response_bytes, false, false, 0, &request.response_sink};
+    UploadSource upload{request};
     const long connect_timeout = static_cast<long>(request.connect_timeout.count());
     const long total_timeout = static_cast<long>(request.total_timeout.count());
     const bool configured = curl_easy_setopt(handle.get(), CURLOPT_URL, request.url.c_str()) == CURLE_OK &&
@@ -150,12 +201,29 @@ HttpResponse CurlHttpTransport::perform(const HttpRequest &request, const Cancel
         free_headers();
         return {0, {}, "libcurl method configuration failed"};
     }
-    if ((request.method == HttpMethod::Post || request.method == HttpMethod::Patch ||
-         request.method == HttpMethod::Put || (request.method == HttpMethod::Delete && !request.body.empty())) &&
-        ((request.method == HttpMethod::Post && curl_easy_setopt(handle.get(), CURLOPT_POST, 1L) != CURLE_OK) ||
-         curl_easy_setopt(handle.get(), CURLOPT_POSTFIELDS, request.body.data()) != CURLE_OK ||
-         curl_easy_setopt(handle.get(), CURLOPT_POSTFIELDSIZE_LARGE, static_cast<curl_off_t>(request.body.size())) !=
-             CURLE_OK))
+    if (request.body_source)
+    {
+        const auto size = static_cast<curl_off_t>(request.body_size);
+        const bool stream_configured =
+            curl_easy_setopt(handle.get(), CURLOPT_READFUNCTION, read_upload) == CURLE_OK &&
+            curl_easy_setopt(handle.get(), CURLOPT_READDATA, &upload) == CURLE_OK &&
+            (request.method == HttpMethod::Post
+                 ? (curl_easy_setopt(handle.get(), CURLOPT_POST, 1L) == CURLE_OK &&
+                    curl_easy_setopt(handle.get(), CURLOPT_POSTFIELDSIZE_LARGE, size) == CURLE_OK)
+                 : (curl_easy_setopt(handle.get(), CURLOPT_UPLOAD, 1L) == CURLE_OK &&
+                    curl_easy_setopt(handle.get(), CURLOPT_INFILESIZE_LARGE, size) == CURLE_OK));
+        if (!stream_configured)
+        {
+            free_headers();
+            return {0, {}, "libcurl stream configuration failed"};
+        }
+    }
+    else if ((request.method == HttpMethod::Post || request.method == HttpMethod::Patch ||
+              request.method == HttpMethod::Put || (request.method == HttpMethod::Delete && !request.body.empty())) &&
+             ((request.method == HttpMethod::Post && curl_easy_setopt(handle.get(), CURLOPT_POST, 1L) != CURLE_OK) ||
+              curl_easy_setopt(handle.get(), CURLOPT_POSTFIELDS, request.body.data()) != CURLE_OK ||
+              curl_easy_setopt(handle.get(), CURLOPT_POSTFIELDSIZE_LARGE,
+                               static_cast<curl_off_t>(request.body.size())) != CURLE_OK))
     {
         free_headers();
         return {0, {}, "libcurl POST configuration failed"};
@@ -169,6 +237,9 @@ HttpResponse CurlHttpTransport::perform(const HttpRequest &request, const Cancel
     }
     free_headers();
 
+    if (upload.failed || (request.body_source && result == CURLE_OK && status_code >= 200 && status_code < 300 &&
+                          upload.offset != request.body_size))
+        return {0, {}, "HTTP request source incomplete or failed"};
     if (response_buffer.exceeded)
     {
         return {0, {}, "HTTP response exceeded configured limit"};

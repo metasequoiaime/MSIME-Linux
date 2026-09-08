@@ -35,9 +35,25 @@ struct Store final : SecretStore
         return true;
     }
 };
+std::string snapshot_fixture(std::int64_t revision)
+{
+    const auto body =
+        boost::json::serialize(boost::json::object{
+            {"type", "header"}, {"format", "msime-dictionary-snapshot"}, {"version", 1}, {"revision", revision}}) +
+        "\n";
+    gchar *hash =
+        g_compute_checksum_for_data(G_CHECKSUM_SHA256, reinterpret_cast<const guchar *>(body.data()), body.size());
+    auto result =
+        body + boost::json::serialize(boost::json::object{{"type", "footer"}, {"records", 1}, {"sha256", hash}}) + "\n";
+    g_free(hash);
+    return result;
+}
 struct Transport final : online::HttpTransport
 {
     int dictionary_requests = 0;
+    int snapshot_reads = 0, snapshot_writes = 0;
+    bool snapshot_conflict = false;
+    std::string snapshot_uploaded;
     std::int64_t dictionary_revision = 10;
     std::map<std::string, boost::json::array> dictionaries;
     bool dictionary_conflict = false;
@@ -59,6 +75,35 @@ struct Transport final : online::HttpTransport
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
             cancelled.store(true);
             return {0, {}, "cancelled"};
+        }
+        if (request.url.find("/dictionary/snapshot") != std::string::npos)
+        {
+            if (request.method == online::HttpMethod::Get)
+            {
+                ++snapshot_reads;
+                const auto body = snapshot_fixture(dictionary_revision);
+                request.response_sink(body.data(), body.size());
+                return {200, {}, {}};
+            }
+            ++snapshot_writes;
+            if (snapshot_conflict)
+                return {409, {}, {}};
+            snapshot_uploaded.clear();
+            char buffer[64];
+            while (snapshot_uploaded.size() < request.body_size)
+            {
+                auto count = request.body_source(snapshot_uploaded.size(), buffer, sizeof(buffer));
+                require(count > 0, "snapshot upload truncated");
+                snapshot_uploaded.append(buffer, count);
+            }
+            for (auto &[kind, entries] : dictionaries)
+            {
+                (void)kind;
+                entries.clear();
+            }
+            return {200,
+                    boost::json::serialize(boost::json::object{{"revision", ++dictionary_revision}, {"reset", true}}),
+                    {}};
         }
         if (request.url.find("/providers") != std::string::npos)
             return {
@@ -592,34 +637,32 @@ int main(int argc, char **argv)
         bool initialized = false;
     };
     ExportAnswer export_answer{settings_store->config_path().parent_path().string(), "ui-export.tsv", false};
-    g_timeout_add(
-        30,
-        +[](gpointer data) -> gboolean {
-            auto &answer = *static_cast<ExportAnswer *>(data);
-            GList *windows = gtk_window_list_toplevels();
-            GtkWidget *dialog = nullptr;
-            for (auto *item = windows; item; item = item->next)
-                if (GTK_IS_FILE_CHOOSER(item->data))
-                    dialog = GTK_WIDGET(item->data);
-            g_list_free(windows);
-            if (!dialog)
-                return G_SOURCE_CONTINUE;
-            if (!answer.initialized)
-            {
-                gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(dialog), answer.directory.c_str());
-                gtk_file_chooser_set_current_name(GTK_FILE_CHOOSER(dialog), answer.name);
-                answer.initialized = true;
-                return G_SOURCE_CONTINUE;
-            }
-            auto *path = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog));
-            const bool ready = path && std::string(path) == answer.directory + "/" + answer.name;
-            g_free(path);
-            if (!ready)
-                return G_SOURCE_CONTINUE;
-            gtk_dialog_response(GTK_DIALOG(dialog), GTK_RESPONSE_ACCEPT);
-            return G_SOURCE_REMOVE;
-        },
-        &export_answer);
+    const auto choose_export = +[](gpointer data) -> gboolean {
+        auto &answer = *static_cast<ExportAnswer *>(data);
+        GList *windows = gtk_window_list_toplevels();
+        GtkWidget *dialog = nullptr;
+        for (auto *item = windows; item; item = item->next)
+            if (GTK_IS_FILE_CHOOSER(item->data))
+                dialog = GTK_WIDGET(item->data);
+        g_list_free(windows);
+        if (!dialog)
+            return G_SOURCE_CONTINUE;
+        if (!answer.initialized)
+        {
+            gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(dialog), answer.directory.c_str());
+            gtk_file_chooser_set_current_name(GTK_FILE_CHOOSER(dialog), answer.name);
+            answer.initialized = true;
+            return G_SOURCE_CONTINUE;
+        }
+        auto *path = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog));
+        const bool ready = path && std::string(path) == answer.directory + "/" + answer.name;
+        g_free(path);
+        if (!ready)
+            return G_SOURCE_CONTINUE;
+        gtk_dialog_response(GTK_DIALOG(dialog), GTK_RESPONSE_ACCEPT);
+        return G_SOURCE_REMOVE;
+    };
+    g_timeout_add(30, choose_export, &export_answer);
     click(dictionary_window, "导出词库文件");
     ready();
     gchar *exported = nullptr;
@@ -632,6 +675,110 @@ int main(int argc, char **argv)
     g_idle_add(respond, GINT_TO_POINTER(GTK_RESPONSE_CANCEL));
     click(dictionary_window, "导出词库文件");
     require(http->dictionary_requests == requests_before_export_cancel, "cancelled export sent request");
+
+    const auto snapshot_file = (settings_store->config_path().parent_path() / "ui-snapshot.ndjson").string();
+    const auto source_snapshot = snapshot_fixture(0);
+    const auto restore_snapshot = [&](int response) {
+        require(g_file_set_contents(snapshot_file.c_str(), source_snapshot.data(), source_snapshot.size(), nullptr),
+                "snapshot fixture write failed");
+        struct Answer
+        {
+            std::string path;
+            int response;
+            bool initialized = false, preview = false;
+        } answer{snapshot_file, response};
+        g_timeout_add(
+            30,
+            +[](gpointer data) -> gboolean {
+                auto &answer = *static_cast<Answer *>(data);
+                GList *windows = gtk_window_list_toplevels();
+                GtkWidget *chooser = nullptr, *preview = nullptr;
+                for (auto *item = windows; item; item = item->next)
+                {
+                    if (GTK_IS_FILE_CHOOSER(item->data))
+                        chooser = GTK_WIDGET(item->data);
+                    if (GTK_IS_MESSAGE_DIALOG(item->data) &&
+                        std::string(gtk_window_get_title(GTK_WINDOW(item->data))) == "确认恢复完整云词库")
+                        preview = GTK_WIDGET(item->data);
+                }
+                g_list_free(windows);
+                if (chooser)
+                {
+                    if (!answer.initialized)
+                    {
+                        gtk_file_chooser_set_filename(GTK_FILE_CHOOSER(chooser), answer.path.c_str());
+                        answer.initialized = true;
+                        return G_SOURCE_CONTINUE;
+                    }
+                    gchar *path = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(chooser));
+                    const bool ready = path && std::string(path) == answer.path;
+                    g_free(path);
+                    if (ready)
+                        gtk_dialog_response(GTK_DIALOG(chooser), GTK_RESPONSE_ACCEPT);
+                }
+                if (!preview)
+                    return G_SOURCE_CONTINUE;
+                gchar *text = nullptr;
+                g_object_get(preview, "text", &text, nullptr);
+                require(text && std::string(text).find("当前云端：") != std::string::npos &&
+                            std::string(text).find("快照内容：") != std::string::npos,
+                        "restore preview missing counts");
+                g_free(text);
+                require(g_file_set_contents(answer.path.c_str(), "changed after preview", -1, nullptr),
+                        "source replacement failed");
+                answer.preview = true;
+                gtk_dialog_response(GTK_DIALOG(preview), answer.response);
+                return G_SOURCE_REMOVE;
+            },
+            &answer);
+        click(dictionary_window, "从完整快照恢复云词库");
+        wait([&] { return answer.preview; });
+        ready();
+    };
+    const auto writes_before_snapshot = http->snapshot_writes;
+    restore_snapshot(GTK_RESPONSE_CANCEL);
+    require(http->snapshot_writes == writes_before_snapshot, "cancelled preview modified cloud");
+    restore_snapshot(GTK_RESPONSE_ACCEPT);
+    require(http->snapshot_writes == writes_before_snapshot + 1 && http->snapshot_uploaded == source_snapshot,
+            "confirmed restore did not use frozen file");
+    http->snapshot_conflict = true;
+    restore_snapshot(GTK_RESPONSE_ACCEPT);
+    require(http->snapshot_writes == writes_before_snapshot + 2 &&
+                find(dictionary_window, "云词库已变化，请重新选择文件并核对预览。"),
+            "snapshot conflict retried or lost");
+    http->snapshot_conflict = false;
+    const auto reads_before_cancel = http->snapshot_reads;
+    g_idle_add(respond, GINT_TO_POINTER(GTK_RESPONSE_CANCEL));
+    click(dictionary_window, "从完整快照恢复云词库");
+    require(http->snapshot_reads == reads_before_cancel, "cancelled chooser downloaded snapshot");
+
+    ExportAnswer snapshot_export{settings_store->config_path().parent_path().string(), "ui-snapshot-export.ndjson",
+                                 false};
+    const auto snapshot_export_file = snapshot_export.directory + "/" + snapshot_export.name;
+    g_timeout_add(30, choose_export, &snapshot_export);
+    click(dictionary_window, "导出完整云词库快照");
+    ready();
+    gchar *snapshot_bytes = nullptr;
+    gsize snapshot_size = 0;
+    require(g_file_get_contents(snapshot_export_file.c_str(), &snapshot_bytes, &snapshot_size, nullptr) &&
+                std::string(snapshot_bytes, snapshot_size) == snapshot_fixture(http->dictionary_revision),
+            "full snapshot export missing or changed");
+    g_free(snapshot_bytes);
+    require(g_file_set_contents(snapshot_export_file.c_str(), "keep existing file", -1, nullptr),
+            "existing file fixture failed");
+    snapshot_export.initialized = false;
+    g_timeout_add(30, choose_export, &snapshot_export);
+    click(dictionary_window, "导出完整云词库快照");
+    ready();
+    require(find(dictionary_window, "目标文件已存在，请选择新的文件名。") &&
+                g_file_get_contents(snapshot_export_file.c_str(), &snapshot_bytes, &snapshot_size, nullptr) &&
+                std::string(snapshot_bytes, snapshot_size) == "keep existing file",
+            "snapshot export replaced existing file");
+    g_free(snapshot_bytes);
+    const auto reads_before_export_cancel = http->snapshot_reads;
+    g_idle_add(respond, GINT_TO_POINTER(GTK_RESPONSE_CANCEL));
+    click(dictionary_window, "导出完整云词库快照");
+    require(http->snapshot_reads == reads_before_export_cancel, "cancelled snapshot export sent request");
 
     for (int index = 0; index < 51; ++index)
     {

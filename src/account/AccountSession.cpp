@@ -370,6 +370,39 @@ std::string AccountSession::export_dictionary(std::uint64_t generation, const st
         throw;
     }
 }
+void AccountSession::download_snapshot(std::uint64_t generation, const online::HttpResponseSink &sink,
+                                       const online::CancellationCheck &cancelled)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto token = authorized(generation, cancelled);
+    try
+    {
+        client_.download_snapshot(sink, token, cancelled);
+    }
+    catch (const Failure &error)
+    {
+        if (error.status() == 401)
+            discard();
+        throw;
+    }
+}
+std::int64_t AccountSession::restore_snapshot(std::uint64_t generation, std::size_t size,
+                                              const online::HttpBodySource &source, std::int64_t revision,
+                                              const online::CancellationCheck &cancelled)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto token = authorized(generation, cancelled);
+    try
+    {
+        return client_.restore_snapshot(size, source, revision, token, cancelled);
+    }
+    catch (const Failure &error)
+    {
+        if (error.status() == 401)
+            discard();
+        throw;
+    }
+}
 void AccountSession::logout(std::uint64_t generation, bool all, const online::CancellationCheck &cancelled)
 {
     std::lock_guard<std::mutex> lock(mutex_);

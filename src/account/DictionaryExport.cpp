@@ -4,6 +4,9 @@
 #include <vector>
 #include <cerrno>
 #include <unistd.h>
+#include <array>
+#include <algorithm>
+#include <cstring>
 namespace metasequoia::linux_ime::account
 {
 namespace
@@ -24,6 +27,20 @@ struct Temporary
 void save_dictionary_export(const std::string &destination, const std::string &text,
                             const online::CancellationCheck &cancelled)
 {
+    save_dictionary_export(
+        destination, text.size(),
+        [&](std::size_t offset, char *data, std::size_t capacity) {
+            const auto count = std::min(capacity, text.size() - offset);
+            std::memcpy(data, text.data() + offset, count);
+            return count;
+        },
+        cancelled);
+}
+void save_dictionary_export(const std::string &destination, std::size_t size, const online::HttpBodySource &source,
+                            const online::CancellationCheck &cancelled)
+{
+    if (!source || size > 512U * 1024U * 1024U)
+        throw Failure(400);
     const auto check = [&] {
         if (cancelled && cancelled())
             throw Failure(0, true);
@@ -47,16 +64,27 @@ void save_dictionary_export(const std::string &destination, const std::string &t
         temporary.path.clear();
         throw Failure(0);
     }
+    std::array<char, 16384> buffer{};
     std::size_t offset = 0;
-    while (offset < text.size())
+    while (offset < size)
     {
         check();
-        const auto count = write(temporary.descriptor, text.data() + offset, text.size() - offset);
-        if (count < 0 && errno == EINTR)
-            continue;
-        if (count <= 0)
-            throw Failure(0);
-        offset += static_cast<std::size_t>(count);
+        const auto capacity = std::min(buffer.size(), size - offset);
+        const auto count = source(offset, buffer.data(), capacity);
+        if (!count || count > capacity)
+            throw Failure(400);
+        std::size_t written = 0;
+        while (written < count)
+        {
+            check();
+            const auto amount = write(temporary.descriptor, buffer.data() + written, count - written);
+            if (amount < 0 && errno == EINTR)
+                continue;
+            if (amount <= 0)
+                throw Failure(0);
+            written += static_cast<std::size_t>(amount);
+        }
+        offset += count;
     }
     if (fsync(temporary.descriptor) != 0)
         throw Failure(0);

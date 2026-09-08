@@ -10,6 +10,10 @@ class PreparedSnapshot
   public:
     static std::unique_ptr<PreparedSnapshot> open(const std::string &source,
                                                   const online::CancellationCheck &cancelled = {});
+    // Producer and sink are synchronous; downloaded bytes are never published by name.
+    static std::unique_ptr<PreparedSnapshot> receive(
+        const std::function<void(const online::HttpResponseSink &)> &producer,
+        const online::CancellationCheck &cancelled = {});
     ~PreparedSnapshot();
     void inspect_records(const SnapshotRecordVisitor &visitor, const online::CancellationCheck &cancelled = {}) const;
     PreparedSnapshot(const PreparedSnapshot &) = delete;

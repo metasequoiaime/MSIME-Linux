@@ -148,6 +148,12 @@ class BackendAccountClient
                                                  const online::CancellationCheck &cancelled = {});
     std::string export_dictionary(const std::string &kind, const std::string &format, const std::string &token,
                                   const online::CancellationCheck &cancelled = {});
+    // Download bytes remain provisional until envelope and content validation complete.
+    void download_snapshot(const online::HttpResponseSink &sink, const std::string &token,
+                           const online::CancellationCheck &cancelled = {});
+    // The source must be the frozen, validated snapshot approved by the user.
+    std::int64_t restore_snapshot(std::size_t size, const online::HttpBodySource &source, std::int64_t revision,
+                                  const std::string &token, const online::CancellationCheck &cancelled = {});
     void logout(const std::string &token, bool all = false, const online::CancellationCheck &cancelled = {});
     void delete_account(const std::string &token, const online::CancellationCheck &cancelled = {});
 
@@ -155,6 +161,8 @@ class BackendAccountClient
     std::string request(online::HttpMethod method, const char *path, const std::string &body, const std::string &token,
                         const online::CancellationCheck &cancelled, std::size_t response_limit = 1024 * 1024,
                         std::size_t request_limit = 65536);
+    std::string snapshot_request(online::HttpRequest &request, const std::string &token,
+                                 const online::CancellationCheck &cancelled);
     online::HttpTransport &transport_;
 };
 } // namespace metasequoia::linux_ime::account
