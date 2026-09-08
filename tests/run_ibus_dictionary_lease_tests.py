@@ -16,10 +16,10 @@ with tempfile.TemporaryDirectory(prefix="msime-ibus-lease-") as directory:
         result = subprocess.run([sys.argv[1]], env=environment, capture_output=True, text=True, timeout=5)
         assert result.returncode == 1, result
         assert "publication is in progress" in result.stderr, result.stderr
-        assert list(root.iterdir()) == [lock], "IBus seeded files while publication was active"
+        assert set(root.iterdir()) == {lock, root / "dictionary-publication.lock"}, "IBus seeded files while publication was active"
     lock.chmod(0o666)
     result = subprocess.run([sys.argv[1]], env=environment, capture_output=True, text=True, timeout=5)
     assert result.returncode == 1, result
     assert "Unable to acquire dictionary session lease" in result.stderr, result.stderr
-    assert list(root.iterdir()) == [lock], "IBus opened dictionaries without a safe lease"
+    assert set(root.iterdir()) == {lock, root / "dictionary-publication.lock"}, "IBus opened dictionaries without a safe lease"
 print("IBus refuses busy/unsafe dictionary leases before writing")
