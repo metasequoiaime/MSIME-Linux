@@ -7,7 +7,8 @@ import subprocess
 import sys
 import tempfile
 
-build, libexec, dictionary, helpcodes = map(Path, sys.argv[1:])
+build, libexec, dictionary, helpcodes = map(Path, sys.argv[1:5])
+native_prepare = Path(sys.argv[5])
 with tempfile.TemporaryDirectory(prefix="msime-installed-resources-") as temporary:
     root = Path(temporary)
     environment = dict(os.environ, DESTDIR=str(root / "stage"))
@@ -25,7 +26,12 @@ with tempfile.TemporaryDirectory(prefix="msime-installed-resources-") as tempora
         shutil.copyfile(dictionary.parent / name, source / name)
     shutil.copytree(helpcodes, source / "helpcodes")
     command = [sys.executable, str(tools / "native_resources.py"), "prepare", str(source), str(root / "resources"), str(lock)]
-    first = subprocess.run(command, cwd=root, check=True, capture_output=True, text=True).stdout.strip()
+    poison = root / "python-environment"
+    poison.mkdir()
+    (poison / "json.py").write_text("raise RuntimeError('Unexpected Python environment override')\n")
+    native_environment = dict(os.environ, PYTHONPATH=str(poison), PYTHONHOME=str(root / "missing-python-home"))
+    first = subprocess.run([str(native_prepare), str(tools), str(source), str(root / "resources")],
+                           cwd=root, env=native_environment, check=True, capture_output=True, text=True).stdout.strip()
     second = subprocess.run(command, cwd=root, check=True, capture_output=True, text=True).stdout.strip()
     assert first == second and len(Path(first).name) == 64
     assert Path(first).is_dir()
