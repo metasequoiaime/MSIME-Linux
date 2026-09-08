@@ -19,6 +19,7 @@ struct SettingsPreview
 class CloudSettingsMapper
 {
   public:
+    static std::string field_label(const std::string &field);
     static std::map<std::string, PreferenceValue> export_settings(const InputSettings &local);
     static Preferences prepare_upload(const InputSettings &local, const Preferences &remote);
     static SettingsPreview prepare_download(const InputSettings &local, const Preferences &remote);

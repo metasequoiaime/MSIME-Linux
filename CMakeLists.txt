@@ -208,7 +208,7 @@ if(METASEQUOIA_IME_BUILD_IBUS)
             add_test(NAME voice_cli_check COMMAND metasequoia-ime-voice --check)
         endif()
         add_executable(metasequoia-ime-settings src/SettingsUi.cpp src/account/AccountPanel.cpp)
-        target_link_libraries(metasequoia-ime-settings PRIVATE MetasequoiaImeLinuxSettingsUiModel MetasequoiaImeLinuxOnline PkgConfig::GTK3)
+        target_link_libraries(metasequoia-ime-settings PRIVATE MetasequoiaImeLinuxCloudSettings MetasequoiaImeLinuxSettingsUiModel MetasequoiaImeLinuxOnline PkgConfig::GTK3)
         target_compile_options(metasequoia-ime-settings PRIVATE -Wall -Wextra -Wpedantic -Werror)
         install(TARGETS metasequoia-ime-settings RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
         configure_file(resources/metasequoia-ime-settings.desktop.in
@@ -219,7 +219,7 @@ if(METASEQUOIA_IME_BUILD_IBUS)
             add_test(NAME settings_ui_check COMMAND metasequoia-ime-settings --check)
             find_program(XVFB_RUN_EXECUTABLE xvfb-run REQUIRED)
             add_executable(MetasequoiaImeLinuxAccountPanelTests tests/AccountPanelTests.cpp src/account/AccountPanel.cpp)
-            target_link_libraries(MetasequoiaImeLinuxAccountPanelTests PRIVATE MetasequoiaImeLinuxOnline
+            target_link_libraries(MetasequoiaImeLinuxAccountPanelTests PRIVATE MetasequoiaImeLinuxCloudSettings MetasequoiaImeLinuxOnline
                                   MetasequoiaImeLinuxSettings Boost::json PkgConfig::GTK3)
             target_compile_options(MetasequoiaImeLinuxAccountPanelTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
             add_test(NAME account_panel COMMAND ${XVFB_RUN_EXECUTABLE} -a $<TARGET_FILE:MetasequoiaImeLinuxAccountPanelTests>)

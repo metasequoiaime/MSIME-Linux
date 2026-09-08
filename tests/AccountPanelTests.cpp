@@ -1,4 +1,5 @@
 #include "account/AccountPanel.h"
+#include "account/CloudSettingsMapper.h"
 #include <boost/json.hpp>
 #include <atomic>
 #include <chrono>
@@ -17,23 +18,28 @@ void require(bool value, const char *message)
 struct Store final : SecretStore
 {
     SecretLookupResult record;
-    SecretLookupResult lookup(SecretKind, std::string_view) const override
+    SecretLookupResult lookup(SecretKind kind, std::string_view) const override
     {
-        return record;
+        return kind == SecretKind::AccountSession ? record : SecretLookupResult{};
     }
-    bool store(SecretKind, std::string_view, std::string_view value, std::string *) override
+    bool store(SecretKind kind, std::string_view, std::string_view value, std::string *) override
     {
-        record = {SecretStatus::Found, std::string(value), {}};
+        if (kind == SecretKind::AccountSession)
+            record = {SecretStatus::Found, std::string(value), {}};
         return true;
     }
-    bool erase(SecretKind, std::string_view, std::string *) override
+    bool erase(SecretKind kind, std::string_view, std::string *) override
     {
-        record = {};
+        if (kind == SecretKind::AccountSession)
+            record = {};
         return true;
     }
 };
 struct Transport final : online::HttpTransport
 {
+    int preference_requests = 0, preference_writes = 0;
+    std::int64_t revision = 0;
+    boost::json::object preferences{{"appearance.page_size", 5}};
     bool linking = false, linked = false, cloud_enabled = false;
     int cloud_requests = 0;
     boost::json::array cloud_items;
@@ -113,6 +119,37 @@ struct Transport final : online::HttpTransport
                     {"items", request.url.find("missing") != std::string::npos ? boost::json::array{} : cloud_items}}),
                 {}};
         }
+        if (request.url.find("/preferences") != std::string::npos)
+        {
+            ++preference_requests;
+            if (request.url.find("/schema") != std::string::npos)
+            {
+                boost::json::object fields;
+                for (const auto &[key, value] : account::CloudSettingsMapper::export_settings(InputSettings{}))
+                    fields[key] =
+                        boost::json::object{{"type", std::holds_alternative<bool>(value)           ? "boolean"
+                                                     : std::holds_alternative<std::int64_t>(value) ? "integer"
+                                                                                                   : "string"}};
+                return {200,
+                        boost::json::serialize(boost::json::object{{"fields", fields},
+                                                                   {"maximum_bytes", 1048576},
+                                                                   {"update_mode", "replace"},
+                                                                   {"revision_required", true}}),
+                        {}};
+            }
+            if (request.method == online::HttpMethod::Put)
+            {
+                const auto body = boost::json::parse(request.body);
+                if (body.at("revision").as_int64() != revision)
+                    return {409, "{}", {}};
+                preferences = body.at("settings").as_object();
+                ++revision;
+                ++preference_writes;
+            }
+            return {200,
+                    boost::json::serialize(boost::json::object{{"revision", revision}, {"settings", preferences}}),
+                    {}};
+        }
         if (request.url.find("/users/me") != std::string::npos)
         {
             if (request.method == online::HttpMethod::Patch)
@@ -187,7 +224,27 @@ int main(int argc, char **argv)
         secrets = std::make_shared<Store>();
     auto http = std::make_shared<Transport>();
     auto *window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-    auto *panel = account::create_account_panel(secrets, http);
+    gchar *directory = g_dir_make_tmp("msime-settings-ui-XXXXXX", nullptr);
+    require(directory != nullptr, "temporary settings directory failed");
+    auto settings_store = std::make_shared<SettingsStore>(directory);
+    g_free(directory);
+    InputSettings local;
+    local.page_size = 9;
+    require(settings_store->save(local), "fixture settings save failed");
+    bool dirty = false, busy = false;
+    int applied = 0;
+    account::SettingsSyncHooks hooks;
+    hooks.store = settings_store;
+    hooks.allow = [&] { return !dirty; };
+    hooks.busy = [&](bool value) {
+        busy = value;
+        gtk_widget_set_sensitive(window, !value);
+    };
+    hooks.applied = [&](const InputSettings &settings) {
+        ++applied;
+        local = settings;
+    };
+    auto *panel = account::create_account_panel(secrets, http, hooks);
     gtk_container_add(GTK_CONTAINER(window), panel);
     gtk_widget_show_all(window);
     wait([&] { return gtk_widget_get_sensitive(panel); });
@@ -287,6 +344,73 @@ int main(int argc, char **argv)
     click(panel, "关闭云剪贴板");
     wait([&] { return gtk_widget_get_sensitive(panel); });
     require(!http->cloud_enabled && http->cloud_items.empty(), "disable did not clear cloud records");
+    require(http->preference_requests == 0, "preferences accessed without user request");
+    dirty = true;
+    click(panel, "预览下载云端设置");
+    require(http->preference_requests == 0 && !busy, "dirty settings were not blocked");
+    dirty = false;
+    struct ReviewResponse
+    {
+        int response;
+        std::function<void()> before;
+        bool seen = false;
+    };
+    auto review = [&](const char *label, int response, std::function<void()> before = {}) {
+        ReviewResponse answer{response, std::move(before), false};
+        const auto timer = g_timeout_add(
+            5,
+            +[](gpointer data) -> gboolean {
+                auto &answer = *static_cast<ReviewResponse *>(data);
+                GList *windows = gtk_window_list_toplevels();
+                GtkDialog *dialog = nullptr;
+                for (auto *item = windows; item; item = item->next)
+                    if (GTK_IS_DIALOG(item->data))
+                        dialog = GTK_DIALOG(item->data);
+                g_list_free(windows);
+                if (!dialog)
+                    return G_SOURCE_CONTINUE;
+                answer.seen = true;
+                auto *text = find(GTK_WIDGET(dialog), "云端输入");
+                require(text && gtk_text_buffer_get_char_count(gtk_text_view_get_buffer(GTK_TEXT_VIEW(text))) > 0,
+                        "empty settings preview");
+                if (answer.before)
+                    answer.before();
+                gtk_dialog_response(dialog, answer.response);
+                return G_SOURCE_REMOVE;
+            },
+            &answer);
+        click(panel, label);
+        wait([&] { return !busy; });
+        if (!answer.seen)
+            g_source_remove(timer);
+        require(answer.seen, "settings confirmation not shown");
+    };
+    review("预览下载云端设置", GTK_RESPONSE_CANCEL);
+    require(settings_store->load().page_size == 9 && applied == 0, "cancelled download changed settings");
+    review("预览下载云端设置", GTK_RESPONSE_OK);
+    require(settings_store->load().page_size == 5 && applied == 1 && local.page_size == 5,
+            "confirmed download did not persist and update model");
+    review("预览下载云端设置", GTK_RESPONSE_OK);
+    require(applied == 1, "unchanged download unnecessarily saved credentials and file");
+    http->preferences["appearance.page_size"] = 7;
+    review("预览下载云端设置", GTK_RESPONSE_OK, [&] { ++http->revision; });
+    require(settings_store->load().page_size == 5 && applied == 1, "stale cloud review overwrote local settings");
+    review("预览下载云端设置", GTK_RESPONSE_OK, [&] {
+        auto external = settings_store->load();
+        external.page_size = 8;
+        require(settings_store->save(external), "external write failed");
+    });
+    require(settings_store->load().page_size == 8 && applied == 1, "stale local review overwrote external edit");
+    review("预览上传本机设置", GTK_RESPONSE_CANCEL);
+    require(http->preference_writes == 0, "cancelled upload wrote cloud settings");
+    review("预览上传本机设置", GTK_RESPONSE_OK, [&] { dirty = true; });
+    require(http->preference_writes == 0, "draft changed during review was not blocked");
+    dirty = false;
+    review("预览上传本机设置", GTK_RESPONSE_OK);
+    require(http->preference_writes == 1 && http->preferences.at("appearance.page_size").as_int64() == 8,
+            "confirmed upload did not use saved settings");
+    review("预览上传本机设置", GTK_RESPONSE_OK);
+    require(http->preference_writes == 1, "unchanged upload unnecessarily incremented revision");
     gtk_text_buffer_set_text(cloud_text, "退出时应丢弃的草稿", -1);
     click(panel, "退出登录");
     wait([&] { return gtk_widget_get_sensitive(panel); });
@@ -310,5 +434,6 @@ int main(int argc, char **argv)
         }
         g_usleep(1000);
     }
+    std::filesystem::remove_all(settings_store->config_path().parent_path().parent_path());
     std::cout << "GTK account login, logout and close-during-request tests passed\n";
 }

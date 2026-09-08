@@ -1,4 +1,5 @@
 #include "CloudSettingsMapper.h"
+#include "SettingsUiLabels.h"
 #include <algorithm>
 #include <charconv>
 
@@ -93,6 +94,14 @@ std::string local_value(const SettingsUiRow &row, const PreferenceValue &value)
     throw Failure(400);
 }
 } // namespace
+std::string CloudSettingsMapper::field_label(const std::string &field)
+{
+    static const SettingsUiModel model;
+    for (const auto &binding : bindings)
+        if (field == binding.cloud)
+            return row_label(row(model, binding.local));
+    return field;
+}
 std::map<std::string, PreferenceValue> CloudSettingsMapper::export_settings(const InputSettings &local)
 {
     const SettingsUiModel model(local);
