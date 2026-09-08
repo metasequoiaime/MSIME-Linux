@@ -236,6 +236,25 @@ std::optional<DictionaryEntry> optional_dictionary_entry(const boost::json::obje
         throw Failure(0);
     return dictionary_entry(value->as_object(), kind);
 }
+DictionaryEntry catalog_entry(const boost::json::object &source, const std::string &kind)
+{
+    DictionaryEntry entry;
+    entry.kind = string(source, "kind", 16);
+    entry.code = string(source, "code", 512);
+    entry.word = string(source, "word", 2048);
+    entry.weight = dictionary_number(source, "weight", 0);
+    if (entry.kind != kind)
+        throw Failure(0);
+    try
+    {
+        require_dictionary_entry(entry, kind);
+    }
+    catch (const Failure &)
+    {
+        throw Failure(0);
+    }
+    return entry;
+}
 Preferences preferences_value(const boost::json::object &source)
 {
     const auto *revision = source.if_contains("revision");
@@ -597,6 +616,72 @@ DictionaryPage BackendAccountClient::dictionary(const std::string &kind, const s
     if (page.has_more && page.entries.size() != static_cast<std::size_t>(limit))
         throw Failure(0);
     return page;
+}
+DictionaryPage BackendAccountClient::dictionary_catalog(const std::string &kind, const std::string &query, int offset,
+                                                        int limit, const std::string &token,
+                                                        const online::CancellationCheck &cancelled)
+{
+    require_token(token);
+    auto path = dictionary_path(kind);
+    require_text(query, 1024);
+    if ((query.empty() && kind != "quick") || offset < 0 || offset > 1000000 || limit < 1 || limit > 200)
+        throw Failure(400);
+    path += "/catalog?q=" + query_component(query) + "&offset=" + std::to_string(offset) +
+            "&limit=" + std::to_string(limit);
+    const auto source = object(request(online::HttpMethod::Get, path.c_str(), {}, token, cancelled, 4 * 1024 * 1024));
+    const auto *entries = source.if_contains("entries"), *more = source.if_contains("has_more");
+    if (!entries || !entries->is_array() || entries->as_array().size() > static_cast<std::size_t>(limit) || !more ||
+        !more->is_bool() || dictionary_number(source, "offset", 0) != offset)
+        throw Failure(0);
+    DictionaryPage page{{}, more->as_bool(), offset, dictionary_number(source, "revision", 0)};
+    for (const auto &value : entries->as_array())
+    {
+        if (!value.is_object())
+            throw Failure(0);
+        auto entry = catalog_entry(value.as_object(), kind);
+        if (std::any_of(page.entries.begin(), page.entries.end(),
+                        [&](const auto &old) { return old.code == entry.code && old.word == entry.word; }))
+            throw Failure(0);
+        page.entries.push_back(std::move(entry));
+    }
+    if (page.has_more && page.entries.size() != static_cast<std::size_t>(limit))
+        throw Failure(0);
+    return page;
+}
+DictionaryChange BackendAccountClient::manage_dictionary(const std::string &kind, std::int64_t revision,
+                                                         const DictionaryEntry &previous,
+                                                         const std::optional<DictionaryEntry> &replacement,
+                                                         const std::string &token,
+                                                         const online::CancellationCheck &cancelled)
+{
+    require_token(token);
+    const auto path = dictionary_path(kind) + "/edit";
+    if (revision < 0 || revision == std::numeric_limits<std::int64_t>::max() || previous.kind != kind)
+        throw Failure(400);
+    require_dictionary_entry(previous, kind);
+    boost::json::object body{{"revision", revision},
+                             {"previous", boost::json::object{{"code", previous.code}, {"word", previous.word}}},
+                             {"replacement", nullptr}};
+    if (replacement)
+    {
+        require_dictionary_entry(*replacement, kind);
+        body["replacement"] = boost::json::object{
+            {"code", replacement->code}, {"word", replacement->word}, {"weight", replacement->weight}};
+    }
+    const auto source =
+        object(request(online::HttpMethod::Post, path.c_str(), boost::json::serialize(body), token, cancelled));
+    DictionaryChange change;
+    change.revision = dictionary_number(source, "revision", 1);
+    const auto *old = source.if_contains("previous"), *next = source.if_contains("replacement");
+    if (change.revision != revision + 1 || !old || !old->is_object() || !next ||
+        (replacement ? !next->is_object() : !next->is_null()))
+        throw Failure(0);
+    change.previous = catalog_entry(old->as_object(), kind);
+    if (change.previous->code != previous.code || change.previous->word != previous.word)
+        throw Failure(0);
+    if (replacement)
+        change.replacement = catalog_entry(next->as_object(), kind);
+    return change;
 }
 DictionaryChange BackendAccountClient::edit_dictionary(const std::string &kind, const std::string &id,
                                                        std::int64_t revision,

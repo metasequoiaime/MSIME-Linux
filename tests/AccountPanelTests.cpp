@@ -51,6 +51,8 @@ std::string snapshot_fixture(std::int64_t revision)
 struct Transport final : online::HttpTransport
 {
     int dictionary_requests = 0;
+    int catalog_writes = 0, catalog_weight = 8;
+    bool catalog_deleted = false;
     int snapshot_reads = 0, snapshot_writes = 0;
     bool snapshot_conflict = false;
     std::string snapshot_uploaded;
@@ -176,6 +178,41 @@ struct Transport final : online::HttpTransport
             const auto end = request.url.find_first_of("/?", start);
             const auto kind = request.url.substr(start, end - start);
             auto &entries = dictionaries[kind];
+            auto base_entry =
+                boost::json::object{{"kind", kind}, {"code", "test"}, {"word", "基础词条"}, {"weight", catalog_weight}};
+            if (request.url.find("/catalog?") != std::string::npos)
+                return {200,
+                        boost::json::serialize(boost::json::object{
+                            {"entries", catalog_deleted ? boost::json::array{} : boost::json::array{base_entry}},
+                            {"offset", 0},
+                            {"has_more", false},
+                            {"revision", dictionary_revision}}),
+                        {}};
+            if (request.url.find("/edit") != std::string::npos)
+            {
+                const auto body = boost::json::parse(request.body).as_object();
+                require(body.at("revision").as_int64() == dictionary_revision &&
+                            body.at("previous").at("code").as_string() == "test" &&
+                            body.at("previous").at("word").as_string() == "基础词条",
+                        "catalog edit lost revision or selected key");
+                if (dictionary_conflict)
+                    return {409, "{}", {}};
+                ++catalog_writes;
+                const auto &replacement = body.at("replacement");
+                boost::json::value next;
+                if (replacement.is_null())
+                    catalog_deleted = true;
+                else
+                {
+                    catalog_weight = static_cast<int>(replacement.at("weight").as_int64());
+                    next = base_entry;
+                    next.as_object()["weight"] = catalog_weight;
+                }
+                return {200,
+                        boost::json::serialize(boost::json::object{
+                            {"revision", ++dictionary_revision}, {"previous", base_entry}, {"replacement", next}}),
+                        {}};
+            }
             if (request.url.find("/export") != std::string::npos)
                 return {200, "测试\ttest\t10\n", {}};
             if (request.method == online::HttpMethod::Get)
@@ -578,6 +615,48 @@ int main(int argc, char **argv)
         gtk_entry_set_text(GTK_ENTRY(find(dictionary_window, "词条权重")), "10");
     }
     gtk_combo_box_set_active_id(GTK_COMBO_BOX(find(dictionary_window, "登录渠道")), "pinyin");
+    auto *catalog = find(dictionary_window, "包含基础词库（按编码搜索）");
+    require(catalog, "catalog selector missing");
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(catalog), TRUE);
+    gtk_entry_set_text(GTK_ENTRY(find(dictionary_window, "搜索编码或词条")), "test");
+    click(dictionary_window, "搜索云词条");
+    ready();
+    require(gtk_tree_model_iter_n_children(dictionary_model, nullptr) == 1, "base catalog row missing");
+    const auto select_base = [&] {
+        auto *path = gtk_tree_path_new_from_indices(0, -1);
+        gtk_tree_selection_select_path(gtk_tree_view_get_selection(GTK_TREE_VIEW(dictionary_list)), path);
+        gtk_tree_path_free(path);
+    };
+    select_base();
+    gtk_entry_set_text(GTK_ENTRY(find(dictionary_window, "词条权重")), "42");
+    g_idle_add(respond, GINT_TO_POINTER(GTK_RESPONSE_CANCEL));
+    click(dictionary_window, "修改选中词条");
+    require(http->catalog_writes == 0, "cancelled catalog edit mutated data");
+    g_idle_add(respond, GINT_TO_POINTER(GTK_RESPONSE_OK));
+    click(dictionary_window, "修改选中词条");
+    ready();
+    require(http->catalog_writes == 1 && http->catalog_weight == 42, "catalog edit was not applied");
+    select_base();
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(catalog), FALSE);
+    click(dictionary_window, "删除选中词条");
+    require(http->catalog_writes == 1, "scope change reused stale selection");
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(catalog), TRUE);
+    http->dictionary_conflict = true;
+    g_idle_add(respond, GINT_TO_POINTER(GTK_RESPONSE_OK));
+    click(dictionary_window, "删除选中词条");
+    ready();
+    require(http->catalog_writes == 1 && gtk_tree_model_iter_n_children(dictionary_model, nullptr) == 0,
+            "catalog conflict kept stale selection or retried");
+    http->dictionary_conflict = false;
+    click(dictionary_window, "搜索云词条");
+    ready();
+    select_base();
+    g_idle_add(respond, GINT_TO_POINTER(GTK_RESPONSE_OK));
+    click(dictionary_window, "删除选中词条");
+    ready();
+    require(http->catalog_writes == 2 && http->catalog_deleted, "base catalog deletion missing");
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(catalog), FALSE);
+    gtk_entry_set_text(GTK_ENTRY(find(dictionary_window, "搜索编码或词条")), "");
     struct ImportAnswer
     {
         const char *format;

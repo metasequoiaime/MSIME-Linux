@@ -92,6 +92,49 @@ int main()
             boost::json::object{{"revision", 4}, {"previous", previous}, {"replacement", replacement}});
         fails([&] { client.edit_dictionary(kind, id, 2, draft, token); }, 0);
     }
+    for (const auto &kind : {"pinyin", "wubi", "english", "quick"})
+    {
+        boost::json::object base{{"kind", kind}, {"code", "test"}, {"word", "基础词条"}, {"weight", 8}};
+        http.response.body = boost::json::serialize(boost::json::object{
+            {"entries", boost::json::array{base}}, {"has_more", false}, {"offset", 0}, {"revision", 0}});
+        const auto page = client.dictionary_catalog(kind, "test&+", 0, 50, token);
+        require(page.entries.size() == 1 && page.entries[0].id.empty() && page.revision == 0 &&
+                    http.last.url.find("/catalog?q=test%26%2B&offset=0&limit=50") != std::string::npos,
+                "base catalog entry or revision was lost");
+        const auto old = page.entries[0];
+        auto changed = old;
+        changed.weight = 42;
+        auto next = base;
+        next["weight"] = 42;
+        http.response.body =
+            boost::json::serialize(boost::json::object{{"previous", base}, {"replacement", next}, {"revision", 1}});
+        client.manage_dictionary(kind, 0, old, changed, token);
+        const auto body = boost::json::parse(http.last.body).as_object();
+        require(http.last.method == online::HttpMethod::Post && http.last.url.find("/edit") != std::string::npos &&
+                    body.at("revision").as_int64() == 0 && body.at("previous").at("code").as_string() == "test" &&
+                    body.at("replacement").at("weight").as_int64() == 42,
+                "managed edit did not carry catalog CAS or exact key");
+        http.response.body =
+            boost::json::serialize(boost::json::object{{"previous", base}, {"replacement", nullptr}, {"revision", 2}});
+        client.manage_dictionary(kind, 1, old, std::nullopt, token);
+        require(boost::json::parse(http.last.body).at("replacement").is_null(), "managed deletion lost null");
+        http.response.status_code = 409;
+        const auto calls = http.calls;
+        fails([&] { client.manage_dictionary(kind, 1, old, changed, token); }, 409);
+        require(http.calls == calls + 1, "managed conflict retried");
+        http.response.status_code = 200;
+        http.response.body = boost::json::serialize(boost::json::object{
+            {"entries", boost::json::array{base, base}}, {"has_more", false}, {"offset", 0}, {"revision", 0}});
+        fails([&] { client.dictionary_catalog(kind, "test", 0, 50, token); }, 0);
+    }
+    {
+        const auto calls = http.calls;
+        fails([&] { client.dictionary_catalog("pinyin", "", 0, 20, token); }, 400);
+        fails([&] { client.dictionary_catalog("bad", "test", 0, 20, token); }, 400);
+        fails([&] { client.dictionary_catalog("quick", "", -1, 20, token); }, 400);
+        fails([&] { client.dictionary_catalog("english", "test", 0, 20, token, [] { return true; }); }, 0);
+        require(http.calls == calls, "invalid or cancelled catalog reached transport");
+    }
     const auto before = http.calls;
     fails([&] { client.dictionary("../preferences", "", 0, 20, token); }, 400);
     fails([&] { client.dictionary("pinyin", "", 0, 201, token); }, 400);
