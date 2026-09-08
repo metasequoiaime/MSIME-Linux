@@ -34,6 +34,7 @@ struct Store final : SecretStore
 };
 struct Transport final : online::HttpTransport
 {
+    std::string nickname = "测试用户";
     std::atomic<bool> block{false}, entered{false}, cancelled{false};
     online::HttpResponse perform(const online::HttpRequest &request, const online::CancellationCheck &check) override
     {
@@ -61,6 +62,18 @@ struct Transport final : online::HttpTransport
                     {"user",
                      boost::json::object{{"id", "synthetic"}, {"display_name", "测试用户"}, {"created_at", "now"}}}}),
                 {}};
+        if (request.url.find("/users/me") != std::string::npos)
+        {
+            if (request.method == online::HttpMethod::Patch)
+                nickname = std::string(boost::json::parse(request.body).at("display_name").as_string());
+            return {200,
+                    boost::json::serialize(boost::json::object{
+                        {"user",
+                         boost::json::object{{"id", "synthetic"}, {"display_name", nickname}, {"created_at", "now"}}},
+                        {"identities", boost::json::array{boost::json::object{
+                                           {"provider", "email"}, {"subject", "synthetic@example.invalid"}}}}}),
+                    {}};
+        }
         return {204, {}, {}};
     }
 };
@@ -128,6 +141,16 @@ int main(int argc, char **argv)
     wait([&] { return gtk_widget_get_sensitive(panel); });
     require(secrets->record.status == SecretStatus::Found, "login credentials not saved");
     require(std::string(gtk_entry_get_text(GTK_ENTRY(code))).empty(), "verification code not cleared");
+    auto *nickname = find(panel, "昵称");
+    require(std::string(gtk_entry_get_text(GTK_ENTRY(nickname))) == "测试用户", "profile not loaded");
+    gtk_entry_set_text(GTK_ENTRY(nickname), "新昵称");
+    click(panel, "保存昵称");
+    wait([&] { return gtk_widget_get_sensitive(panel); });
+    require(std::string(gtk_entry_get_text(GTK_ENTRY(nickname))) == "新昵称" &&
+                boost::json::parse(secrets->record.value).at("user").at("display_name").as_string() == "新昵称",
+            "nickname did not reach service and credential store");
+    click(panel, "刷新资料");
+    wait([&] { return gtk_widget_get_sensitive(panel); });
     click(panel, "退出登录");
     wait([&] { return gtk_widget_get_sensitive(panel); });
     require(secrets->record.status == SecretStatus::NotFound, "logout credentials remained");

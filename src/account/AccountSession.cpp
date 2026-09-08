@@ -119,6 +119,40 @@ std::string AccountSession::access_token(std::uint64_t generation, const online:
     std::lock_guard<std::mutex> lock(mutex_);
     return authorized(generation, cancelled);
 }
+Profile AccountSession::read_profile(const std::string &token, const online::CancellationCheck &cancelled)
+{
+    Profile profile;
+    try
+    {
+        profile = client_.profile(token, cancelled);
+    }
+    catch (const Failure &error)
+    {
+        if (error.status() == 401)
+            discard();
+        throw;
+    }
+    if (profile.user.id != session_->tokens.user.id)
+        throw Failure(0);
+    auto next = *session_;
+    next.tokens.user = profile.user;
+    store_.save(next);
+    session_ = std::move(next);
+    return profile;
+}
+Profile AccountSession::profile(std::uint64_t generation, const online::CancellationCheck &cancelled)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    return read_profile(authorized(generation, cancelled), cancelled);
+}
+Profile AccountSession::rename(std::uint64_t generation, const std::string &name,
+                               const online::CancellationCheck &cancelled)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto token = authorized(generation, cancelled);
+    client_.rename(name, token, cancelled);
+    return read_profile(token, cancelled);
+}
 void AccountSession::logout(std::uint64_t generation, bool all, const online::CancellationCheck &cancelled)
 {
     std::lock_guard<std::mutex> lock(mutex_);

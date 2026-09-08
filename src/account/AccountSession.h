@@ -24,6 +24,8 @@ class AccountSession
     SessionSnapshot login(std::uint64_t generation, const std::string &challenge, const std::string &credential,
                           const online::CancellationCheck &cancelled = {});
     std::string access_token(std::uint64_t generation, const online::CancellationCheck &cancelled = {});
+    Profile profile(std::uint64_t generation, const online::CancellationCheck &cancelled = {});
+    Profile rename(std::uint64_t generation, const std::string &name, const online::CancellationCheck &cancelled = {});
     void logout(std::uint64_t generation, bool all = false, const online::CancellationCheck &cancelled = {});
     void delete_account(std::uint64_t generation, const online::CancellationCheck &cancelled = {});
 
@@ -33,6 +35,7 @@ class AccountSession
     std::string authorized(std::uint64_t generation, const online::CancellationCheck &cancelled);
     SavedSession saved(Tokens tokens) const;
     void discard();
+    Profile read_profile(const std::string &token, const online::CancellationCheck &cancelled);
     BackendAccountClient &client_;
     AccountCredentialStore &store_;
     Clock clock_;

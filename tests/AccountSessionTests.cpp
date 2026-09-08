@@ -89,9 +89,21 @@ int main()
     secrets.available = true;
     const auto logged = session.login(initial.generation, "challenge", "credential");
     require(logged.user->id == "one" && logged.generation != initial.generation, "login missing generation change");
+    transport.response = {
+        200,
+        R"({"user":{"id":"one","display_name":"更新昵称","created_at":"now"},"identities":[{"provider":"email","subject":"synthetic@example.invalid"}]})",
+        {}};
+    require(session.profile(logged.generation).identities.size() == 1, "profile identities missing");
+    require(storage.load()->tokens.user.display_name == "更新昵称", "profile cache not saved");
+    require(session.rename(logged.generation, "更新昵称").user.display_name == "更新昵称", "rename profile missing");
+    transport.response = {
+        200, R"({"user":{"id":"different-user","display_name":"错误账号","created_at":"now"},"identities":[]})", {}};
+    fails([&] { session.profile(logged.generation); });
+    require(storage.load()->tokens.user.id == "one", "profile switched account");
     const int before_stale = transport.calls;
     fails([&] { session.login(initial.generation, "stale", "credential"); });
     fails([&] { session.access_token(initial.generation); });
+    fails([&] { session.profile(initial.generation); });
     require(transport.calls == before_stale, "stale operation reached network");
     require(session.restore().generation == logged.generation, "restore replaced live session");
     now = 1900;

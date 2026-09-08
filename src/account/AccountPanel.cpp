@@ -22,9 +22,10 @@ struct Panel
     std::atomic<bool> closed{false};
     GtkWidget *root = nullptr, *status = nullptr, *form = nullptr, *provider = nullptr, *target = nullptr,
               *code = nullptr, *send = nullptr, *login = nullptr, *logout = nullptr, *remove = nullptr,
-              *retry = nullptr;
+              *retry = nullptr, *details = nullptr, *nickname = nullptr, *identities = nullptr;
     SessionSnapshot snapshot;
     std::map<std::string, bool> providers;
+    Profile profile;
     Challenge challenge;
     gint64 challenge_deadline = 0;
     bool ready = false;
@@ -36,13 +37,15 @@ enum class Action
     Challenge,
     Login,
     Logout,
-    Delete
+    Delete,
+    Profile,
+    Rename
 };
 struct Work
 {
     Handle panel;
     Action action;
-    std::string provider, target, code;
+    std::string provider, target, code, nickname;
     std::string message;
     bool success = false;
 };
@@ -50,6 +53,7 @@ void render(Panel &p)
 {
     const bool signed_in = p.snapshot.user.has_value();
     gtk_widget_set_visible(p.form, !signed_in);
+    gtk_widget_set_visible(p.details, signed_in);
     gtk_widget_set_visible(p.logout, signed_in);
     gtk_widget_set_visible(p.remove, signed_in);
     gtk_widget_set_sensitive(p.form, p.ready);
@@ -69,6 +73,8 @@ void worker(GTask *task, gpointer, gpointer data, GCancellable *)
         {
         case Action::Restore:
             p.snapshot = p.session.restore();
+            if (p.snapshot.user)
+                p.profile = p.session.profile(p.snapshot.generation, cancelled);
             p.providers = p.client.providers(cancelled);
             p.ready = true;
             break;
@@ -83,6 +89,15 @@ void worker(GTask *task, gpointer, gpointer data, GCancellable *)
                 throw Failure(400);
             p.snapshot = p.session.login(p.snapshot.generation, p.challenge.id, w.code, cancelled);
             p.challenge = {};
+            p.profile = {};
+            p.profile = p.session.profile(p.snapshot.generation, cancelled);
+            break;
+        case Action::Profile:
+            p.profile = p.session.profile(p.snapshot.generation, cancelled);
+            break;
+        case Action::Rename:
+            p.profile = p.session.rename(p.snapshot.generation, w.nickname, cancelled);
+            w.message = "昵称已保存。";
             break;
         case Action::Logout:
             p.session.logout(p.snapshot.generation, false, cancelled);
@@ -124,11 +139,34 @@ void finished(GObject *, GAsyncResult *result, gpointer)
         if (!p.providers["phone"] && !p.providers["email"] && !p.snapshot.user)
             w.message = "手机和邮箱登录暂未开放。此版本暂不支持 Apple、Google 或微信登录。";
     }
-    if (w.success && w.action == Action::Login)
+    if (w.action == Action::Login && p.challenge.id.empty())
     {
         gtk_entry_set_text(GTK_ENTRY(p.code), "");
         gtk_entry_set_text(GTK_ENTRY(p.target), "");
     }
+    if (p.snapshot.user)
+    {
+        if (w.action != Action::Rename || w.success)
+            gtk_entry_set_text(GTK_ENTRY(p.nickname), p.snapshot.user->display_name.c_str());
+        std::string text = "已绑定登录方式：";
+        for (const auto &identity : p.profile.identities)
+        {
+            if (text != "已绑定登录方式：")
+                text += "、";
+            const auto &provider = identity.provider;
+            text += provider == "apple"    ? "Apple"
+                    : provider == "google" ? "Google"
+                    : provider == "wechat" ? "微信"
+                    : provider == "phone"  ? "手机号码"
+                    : provider == "email"  ? "邮箱"
+                                           : "其他方式";
+        }
+        if (p.profile.identities.empty())
+            text += "暂无资料，请刷新。";
+        gtk_label_set_text(GTK_LABEL(p.identities), text.c_str());
+    }
+    if (!p.snapshot.user)
+        p.profile = {};
     if (w.message.empty())
         w.message = p.snapshot.user ? "已登录：" + p.snapshot.user->display_name : "尚未登录";
     gtk_label_set_text(GTK_LABEL(p.status), w.message.c_str());
@@ -145,6 +183,7 @@ void begin(const Handle &p, Action action)
                           provider ? provider : "",
                           gtk_entry_get_text(GTK_ENTRY(p->target)),
                           gtk_entry_get_text(GTK_ENTRY(p->code)),
+                          gtk_entry_get_text(GTK_ENTRY(p->nickname)),
                           {},
                           false};
     gtk_widget_set_sensitive(p->root, FALSE);
@@ -215,6 +254,17 @@ GtkWidget *create_account_panel(std::shared_ptr<SecretStore> secrets, std::share
         gtk_box_pack_start(GTK_BOX(p->form), widget, FALSE, FALSE, 0);
     p->send = button(p, p->form, "发送验证码", Action::Challenge);
     p->login = button(p, p->form, "登录", Action::Login);
+    p->details = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
+    gtk_box_pack_start(GTK_BOX(p->root), p->details, FALSE, FALSE, 0);
+    p->nickname = gtk_entry_new();
+    gtk_entry_set_placeholder_text(GTK_ENTRY(p->nickname), "昵称");
+    gtk_entry_set_max_length(GTK_ENTRY(p->nickname), 128);
+    gtk_box_pack_start(GTK_BOX(p->details), p->nickname, FALSE, FALSE, 0);
+    button(p, p->details, "保存昵称", Action::Rename);
+    p->identities = gtk_label_new("");
+    gtk_label_set_line_wrap(GTK_LABEL(p->identities), TRUE);
+    gtk_box_pack_start(GTK_BOX(p->details), p->identities, FALSE, FALSE, 0);
+    button(p, p->details, "刷新资料", Action::Profile);
     p->logout = button(p, p->root, "退出登录", Action::Logout);
     p->remove = button(p, p->root, "注销账号", Action::Delete);
     p->retry = button(p, p->root, "重新加载账号", Action::Restore);
@@ -229,7 +279,7 @@ GtkWidget *create_account_panel(std::shared_ptr<SecretStore> secrets, std::share
         new Handle(p), [](gpointer data, GClosure *) { delete static_cast<Handle *>(data); }, G_CONNECT_DEFAULT);
     gtk_box_pack_start(GTK_BOX(p->form), change, FALSE, FALSE, 0);
     gtk_widget_show_all(p->root);
-    for (auto *widget : {p->form, p->logout, p->remove, p->retry})
+    for (auto *widget : {p->form, p->details, p->logout, p->remove, p->retry})
         gtk_widget_set_no_show_all(widget, TRUE);
     render(*p);
     begin(p, Action::Restore);
