@@ -2,6 +2,7 @@
 #include "SettingsStore.h"
 #include "SettingsUiModel.h"
 #include "ToolLauncher.h"
+#include "account/AccountPanel.h"
 
 #include <gtk/gtk.h>
 
@@ -18,6 +19,7 @@ namespace
 {
 enum class Page
 {
+    Account,
     Appearance,
     Input,
     Helpcode,
@@ -43,6 +45,7 @@ struct AppState
     GtkWidget *window = nullptr;
     GtkWidget *content = nullptr;
     GtkWidget *sidebar = nullptr;
+    GtkWidget *account_panel = nullptr;
     Page page = Page::Appearance;
     std::unordered_map<std::string, GtkWidget *> editors;
     // A pending rebuild of the current page, queued when a control that decides another row's visibility changes. Held
@@ -57,6 +60,7 @@ struct PageInfo
 };
 
 constexpr PageInfo kPages[] = {
+    {Page::Account, "账号"},
     {Page::Appearance, "外观"},
     {Page::Input, "输入"},
     {Page::Helpcode, "辅助码"},
@@ -579,14 +583,33 @@ void build_static_page(AppState &state, GtkWidget *container)
     gtk_container_add(GTK_CONTAINER(container), box);
 }
 
+void detach_account_panel(AppState &state)
+{
+    if (state.account_panel && gtk_widget_get_parent(state.account_panel))
+        gtk_container_remove(GTK_CONTAINER(state.content), state.account_panel);
+}
+
+void attach_account_panel(AppState &state)
+{
+    if (!state.account_panel)
+    {
+        state.account_panel = account::create_account_panel();
+        g_object_ref_sink(state.account_panel);
+    }
+    gtk_container_add(GTK_CONTAINER(state.content), state.account_panel);
+}
+
 void show_page(AppState &state, Page page)
 {
     if (!flush_editors(state))
         return;
     state.page = page;
     state.editors.clear();
+    detach_account_panel(state);
     clear_container(state.content);
-    if (page_is_model_section(page))
+    if (page == Page::Account)
+        attach_account_panel(state);
+    else if (page_is_model_section(page))
         build_model_page(state, state.content);
     else
         build_static_page(state, state.content);
@@ -630,8 +653,11 @@ void reload_from_store(AppState &state, std::string *warning)
 {
     state.model = SettingsUiModel(state.store.load(state.secrets, warning));
     state.editors.clear();
+    detach_account_panel(state);
     clear_container(state.content);
-    if (page_is_model_section(state.page))
+    if (state.page == Page::Account)
+        attach_account_panel(state);
+    else if (page_is_model_section(state.page))
         build_model_page(state, state.content);
     else
         build_static_page(state, state.content);
@@ -769,5 +795,10 @@ int main(int argc, char **argv)
     if (!warning.empty())
         show_message(GTK_WINDOW(window), GTK_MESSAGE_WARNING, warning);
     gtk_main();
+    if (state.account_panel)
+    {
+        gtk_widget_destroy(state.account_panel);
+        g_object_unref(state.account_panel);
+    }
     return 0;
 }
