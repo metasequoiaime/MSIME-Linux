@@ -42,7 +42,9 @@ NativeResources prepare_native_resources(const std::filesystem::path &tool_direc
     check_cancelled(cancelled);
     for (const auto &path : {tool_directory, source, resources_root})
         check_path(path);
-    const auto root = resources_root.lexically_normal();
+    auto root = resources_root.lexically_normal();
+    if (root.filename().empty())
+        root = root.parent_path();
     const auto script = tool_directory / "native_resources.py";
     const auto lock = tool_directory / "native-resource-lock.json";
     // Ignore Python environment overrides/user site packages. Keep the script's

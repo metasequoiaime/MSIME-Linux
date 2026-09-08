@@ -84,6 +84,8 @@ if mode == 'failure':
     const auto bundle = run("success");
     require(bundle.content_id == std::string(64, 'a') && bundle.directory == resources / bundle.content_id,
             "valid helper result rejected");
+    require(prepare_native_resources(tools, source, resources / "").directory == bundle.directory,
+            "trailing resource separator rejected");
     for (const char *mode : {"escape", "invalid", "extra", "failure", "overflow"})
         fails([&] { run(mode); });
     fails([&] { prepare_native_resources("relative", source, resources); });
@@ -103,9 +105,9 @@ if mode == 'failure':
     {
         prepare_native_resources(tools, source, resources, cancelled);
     }
-    catch (const Failure &)
+    catch (const Failure &error)
     {
-        rejected = true;
+        rejected = error.cancelled();
     }
     cancel_thread.join();
     g_object_unref(cancelled);

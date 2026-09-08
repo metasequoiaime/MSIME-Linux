@@ -222,14 +222,14 @@ if(METASEQUOIA_IME_BUILD_IBUS)
         add_test(NAME installed_native_resources COMMAND ${Python3_EXECUTABLE}
                  "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_installed_native_resources.py"
                  "${CMAKE_CURRENT_BINARY_DIR}" "${CMAKE_INSTALL_LIBEXECDIR}"
-                 "${METASEQUOIA_IME_DICTIONARY}" "${METASEQUOIA_IME_HELPCODE_DIRECTORY}")
+                 "${METASEQUOIA_IME_DICTIONARY}" "${METASEQUOIA_IME_HELPCODE_DIRECTORY}"
+                 $<TARGET_FILE:MetasequoiaImeLinuxNativeResourcesTests>)
         set_tests_properties(installed_native_resources PROPERTIES TIMEOUT 60 RESOURCE_LOCK cmake_install_tree)
     endif()
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(IBUS REQUIRED IMPORTED_TARGET ibus-1.0)
     pkg_check_modules(GLIB REQUIRED IMPORTED_TARGET glib-2.0)
     pkg_check_modules(GIO REQUIRED IMPORTED_TARGET gio-2.0)
-    find_package(Python3 REQUIRED COMPONENTS Interpreter)
     pkg_check_modules(LIBSECRET REQUIRED IMPORTED_TARGET libsecret-1)
 
     add_library(MetasequoiaImeLinuxSettings STATIC src/SecretStore.cpp src/SettingsStore.cpp)
