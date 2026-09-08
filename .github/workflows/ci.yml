@@ -180,7 +180,9 @@ jobs:
   # is about catching them at all rather than catching them everywhere.
   sanitizers:
     name: Linux ASan and UBSan
-    runs-on: ubuntu-24.04
+    # Noble updates publishes the matching GTK debug symbols on arm64.
+    # Keep exact upstream leak attribution; the regular matrix covers amd64 too.
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 45
     steps:
       - name: Check out source
