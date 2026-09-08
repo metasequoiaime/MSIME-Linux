@@ -41,6 +41,7 @@ struct Transport final : online::HttpTransport
     std::int64_t dictionary_revision = 10;
     std::map<std::string, boost::json::array> dictionaries;
     bool dictionary_conflict = false;
+    std::string imported_text, imported_format;
     int preference_requests = 0, preference_writes = 0;
     std::int64_t revision = 0;
     boost::json::object preferences{{"appearance.page_size", 5}};
@@ -147,6 +148,25 @@ struct Transport final : online::HttpTransport
             if (dictionary_conflict)
                 return {409, "{}", {}};
             const auto body = boost::json::parse(request.body).as_object();
+            if (request.url.find("/import") != std::string::npos)
+            {
+                imported_text = std::string(body.at("text").as_string());
+                imported_format = request.url.find("import-hans") != std::string::npos
+                                      ? "hans"
+                                      : std::string(body.at("format").as_string());
+                ++dictionary_revision;
+                entries = {boost::json::object{{"id", std::string(64, 'e')},
+                                               {"kind", kind},
+                                               {"code", "test"},
+                                               {"word", "测试"},
+                                               {"weight", 10},
+                                               {"revision", dictionary_revision},
+                                               {"updated_at", "now"}}};
+                return {200,
+                        boost::json::serialize(boost::json::object{{"imported", 1}, {"revision", dictionary_revision}}),
+                        {}};
+            }
+
             boost::json::value previous = nullptr, replacement = nullptr;
             const std::string id(64, 'd');
             if (request.method != online::HttpMethod::Post)
@@ -511,6 +531,57 @@ int main(int argc, char **argv)
         gtk_entry_set_text(GTK_ENTRY(find(dictionary_window, "词条权重")), "10");
     }
     gtk_combo_box_set_active_id(GTK_COMBO_BOX(find(dictionary_window, "登录渠道")), "pinyin");
+    struct ImportAnswer
+    {
+        const char *format;
+        const char *text;
+        int response;
+        bool draft;
+    };
+    auto import = [&](const char *format, const char *text, int response, bool draft = false) {
+        ImportAnswer answer{format, text, response, draft};
+        g_idle_add(
+            +[](gpointer data) -> gboolean {
+                auto &answer = *static_cast<ImportAnswer *>(data);
+                GList *windows = gtk_window_list_toplevels();
+                for (auto *item = windows; item; item = item->next)
+                {
+                    auto *dialog = GTK_WIDGET(item->data);
+                    if (!GTK_IS_DIALOG(dialog))
+                        continue;
+                    auto *text = find(dialog, "云端输入");
+                    require(text != nullptr, "import editor missing");
+                    auto *buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(text));
+                    if (answer.draft)
+                        require(gtk_text_buffer_get_char_count(buffer) > 0, "failed import lost draft");
+                    gtk_text_buffer_set_text(buffer, answer.text, -1);
+                    require(gtk_combo_box_set_active_id(GTK_COMBO_BOX(find(dialog, "登录渠道")), answer.format),
+                            "import format missing");
+                    gtk_dialog_response(GTK_DIALOG(dialog), answer.response);
+                }
+                g_list_free(windows);
+                return G_SOURCE_REMOVE;
+            },
+            &answer);
+        click(dictionary_window, "批量导入词条");
+        ready();
+    };
+    const auto before_import = http->dictionary_requests;
+    import("standard", "测试\ttest\t10", GTK_RESPONSE_CANCEL);
+    require(http->dictionary_requests == before_import, "cancelled import reached backend");
+    for (const char *format : {"standard", "windows", "hans"})
+    {
+        const auto *text = std::string(format) == "hans" ? "测试" : "测试\ttest\t10";
+        import(format, text, GTK_RESPONSE_OK);
+        require(http->imported_format == format && http->imported_text == text &&
+                    gtk_tree_model_iter_n_children(dictionary_model, nullptr) == 1,
+                "import not reflected in list");
+    }
+    http->dictionary_conflict = true;
+    import("standard", "测试\ttest\t10", GTK_RESPONSE_OK);
+    http->dictionary_conflict = false;
+    import("standard", "测试\ttest\t10", GTK_RESPONSE_CANCEL, true);
+    http->dictionaries["pinyin"].clear();
     for (int index = 0; index < 51; ++index)
     {
         const auto number = std::to_string(index);
