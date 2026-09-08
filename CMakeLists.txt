@@ -200,6 +200,31 @@ set(METASEQUOIA_IME_HELPCODE_DIRECTORY
 set(METASEQUOIA_IME_PRODUCT_MANIFEST "" CACHE FILEPATH "Path to the generated product manifest to install")
 
 if(METASEQUOIA_IME_BUILD_IBUS)
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    file(GLOB_RECURSE native_helpcode_inputs CONFIGURE_DEPENDS "${METASEQUOIA_IME_HELPCODE_DIRECTORY}/*.txt")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+                 "${CMAKE_CURRENT_SOURCE_DIR}/product-lock.json"
+                 "${CMAKE_CURRENT_SOURCE_DIR}/scripts/native_resources.py"
+                 "${CMAKE_CURRENT_SOURCE_DIR}/scripts/product_lock.py"
+                 "${CMAKE_CURRENT_SOURCE_DIR}/scripts/product_lock_shared.py"
+                 "${CMAKE_CURRENT_SOURCE_DIR}/scripts/dictionary_product.py"
+                 "${CMAKE_CURRENT_SOURCE_DIR}/vendor/MetasequoiaImeEngine/contracts/assets/assets.json"
+                 ${native_helpcode_inputs})
+    execute_process(COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/scripts/native_resources.py" build-lock
+                    "${CMAKE_CURRENT_SOURCE_DIR}/product-lock.json" "${METASEQUOIA_IME_HELPCODE_DIRECTORY}"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/vendor/MetasequoiaImeEngine/contracts/assets/assets.json"
+                    "${CMAKE_CURRENT_BINARY_DIR}/native-resource-lock.json"
+                    COMMAND_ERROR_IS_FATAL ANY)
+    install(FILES scripts/native_resources.py scripts/product_lock.py scripts/product_lock_shared.py
+                  scripts/dictionary_product.py "${CMAKE_CURRENT_BINARY_DIR}/native-resource-lock.json"
+            DESTINATION ${CMAKE_INSTALL_LIBEXECDIR}/metasequoia-native-resources COMPONENT NativeResources)
+    if(BUILD_TESTING)
+        add_test(NAME installed_native_resources COMMAND ${Python3_EXECUTABLE}
+                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_installed_native_resources.py"
+                 "${CMAKE_CURRENT_BINARY_DIR}" "${CMAKE_INSTALL_LIBEXECDIR}"
+                 "${METASEQUOIA_IME_DICTIONARY}" "${METASEQUOIA_IME_HELPCODE_DIRECTORY}")
+        set_tests_properties(installed_native_resources PROPERTIES TIMEOUT 60 RESOURCE_LOCK cmake_install_tree)
+    endif()
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(IBUS REQUIRED IMPORTED_TARGET ibus-1.0)
     pkg_check_modules(GLIB REQUIRED IMPORTED_TARGET glib-2.0)
@@ -386,7 +411,7 @@ if(METASEQUOIA_IME_BUILD_IBUS)
         # dictionaries takes a while, so this needs more than the default.
         add_test(NAME uninstall_smoke
                  COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/UninstallSmoke.sh ${CMAKE_CURRENT_BINARY_DIR})
-        set_tests_properties(uninstall_smoke PROPERTIES TIMEOUT 300)
+        set_tests_properties(uninstall_smoke PROPERTIES TIMEOUT 300 RESOURCE_LOCK cmake_install_tree)
     endif()
 
     add_executable(metasequoia-ime-ibus src/IBusEngine.cpp)
@@ -410,6 +435,10 @@ if(METASEQUOIA_IME_BUILD_IBUS)
         endif()
     endforeach()
     get_filename_component(dictionary_directory "${METASEQUOIA_IME_DICTIONARY}" DIRECTORY)
+    if(EXISTS "${dictionary_directory}/SHA256SUMS.txt")
+        install(FILES "${dictionary_directory}/SHA256SUMS.txt"
+                DESTINATION ${CMAKE_INSTALL_DATADIR}/metasequoiaime COMPONENT NativeResources)
+    endif()
     if(EXISTS "${dictionary_directory}/dictionary-manifest.json")
         install(FILES "${dictionary_directory}/dictionary-manifest.json"
                 DESTINATION ${CMAKE_INSTALL_DATADIR}/metasequoiaime)
@@ -465,8 +494,8 @@ set(CPACK_DEBIAN_PACKAGE_SECTION "utils")
 # that way, and the RPM had no ibus requirement at all -- shlibdeps only produced libibus-1.0.so.5,
 # which on Fedora is satisfied by ibus-libs without the daemon. Either path installs cleanly and
 # then never appears in the desktop's input source list.
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "ibus")
-set(CPACK_RPM_PACKAGE_REQUIRES "ibus")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "ibus, python3 (>= 3.10)")
+set(CPACK_RPM_PACKAGE_REQUIRES "ibus, python3 >= 3.10")
 set(CPACK_DEBIAN_PACKAGE_SUGGESTS "tesseract-ocr, tesseract-ocr-chi-sim")
 set(CPACK_RPM_PACKAGE_SUGGESTS "tesseract, tesseract-langpack-chi_sim")
 set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
@@ -489,7 +518,7 @@ if(BUILD_TESTING)
              COMMAND ${CMAKE_CPACK_COMMAND} --config ${CMAKE_CURRENT_BINARY_DIR}/CPackConfig.cmake -G TGZ)
     # Compressing the installed resources can exceed the unit-test timeout on
     # shared runners; give archive creation the same budget as DEB packaging.
-    set_tests_properties(packaging_tgz PROPERTIES TIMEOUT 300)
+    set_tests_properties(packaging_tgz PROPERTIES TIMEOUT 300 RESOURCE_LOCK cmake_install_tree)
 
     # The DEB generator is the one downstreams actually consume, so gate it too
     # wherever dpkg is present. Hosts without dpkg keep the TGZ-only coverage.
@@ -499,6 +528,6 @@ if(BUILD_TESTING)
                  COMMAND ${CMAKE_CPACK_COMMAND} --config ${CMAKE_CURRENT_BINARY_DIR}/CPackConfig.cmake -G DEB)
         # dpkg-shlibdeps walks every installed binary, so this needs more than
         # the short default the unit tests run under.
-        set_tests_properties(packaging_deb PROPERTIES TIMEOUT 300)
+        set_tests_properties(packaging_deb PROPERTIES TIMEOUT 300 RESOURCE_LOCK cmake_install_tree)
     endif()
 endif()

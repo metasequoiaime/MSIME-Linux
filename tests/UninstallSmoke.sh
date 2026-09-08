@@ -26,6 +26,7 @@ mkdir -p "$HOME" "$XDG_DATA_HOME" "$XDG_CONFIG_HOME"
 installed=(
     "$HOME/.local/libexec/metasequoia-ime-ibus"
     "$HOME/.local/libexec/metasequoia-ime-dictionary-replay"
+    "$HOME/.local/libexec/metasequoia-native-resources/native-resource-lock.json"
     "$HOME/.local/bin/metasequoia-ime-settings"
     "$HOME/.local/bin/metasequoia-ime-tools"
     "$HOME/.local/bin/metasequoia-ime-voice"
@@ -51,6 +52,11 @@ for path in "${installed[@]}"; do
         exit 1
     fi
 done
+
+if [[ ! -d "$XDG_DATA_HOME/metasequoiaime/runtime/resources" ]]; then
+    echo "Installer did not preserve verified pristine resources." >&2
+    exit 1
+fi
 
 # Learned data must survive a plain uninstall.
 printf 'learned\n' >"$XDG_DATA_HOME/metasequoiaime/msime_user.db"

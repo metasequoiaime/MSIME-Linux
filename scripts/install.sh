@@ -27,6 +27,7 @@ helpcode_files=(
     shouyouplus_helpcode.txt
     xiaohe_helpcode.txt
 )
+staged_native_source=""
 staged_main_database=""
 staged_others_database=""
 staged_english_database=""
@@ -40,6 +41,9 @@ had_live_others_database=false
 had_live_english_database=false
 original_install_prefix=""
 cleanup() {
+    if [[ -n "$staged_native_source" && -d "$staged_native_source" ]]; then
+        rm -rf -- "$staged_native_source"
+    fi
     if [[ "$database_swap_started" == true && "$database_swap_complete" != true ]]; then
         if [[ "$had_live_main_database" == true && -e "$backup_main_database" ]]; then
             mv -f -- "$backup_main_database" "$data_dir/msime.db" || true
@@ -163,6 +167,25 @@ cmake -S "$project_root" -B "$build_root" -DCMAKE_INSTALL_PREFIX="$user_prefix"
 mkdir -p "$libexec_dir" "$bin_dir" "$component_dir" "$applications_dir" "$data_dir/helpcodes"
 install -m 0755 "$build_root/metasequoia-ime-ibus" "$libexec_dir/metasequoia-ime-ibus"
 install -m 0755 "$replay_executable" "$libexec_dir/metasequoia-ime-dictionary-replay"
+native_resource_tool_dir="$libexec_dir/metasequoia-native-resources"
+mkdir -p "$native_resource_tool_dir"
+for module in native_resources.py product_lock.py product_lock_shared.py dictionary_product.py; do
+    install -m 0644 "$project_root/scripts/$module" "$native_resource_tool_dir/$module"
+done
+install -m 0644 "$build_root/native-resource-lock.json" "$native_resource_tool_dir/native-resource-lock.json"
+# Preserve a verified pristine bundle before replay adds learned words to the
+# user's working databases. This bundle is reusable by native snapshot restore.
+staged_native_source=$(mktemp -d "$data_dir/.native-resource-source.XXXXXX")
+for asset in msime.db others.db english.db SHA256SUMS.txt dictionary-manifest.json dict_japanese.dat mozc_dictionary_oss_README.txt; do
+    install -m 0644 "$project_root/vendor/MetasequoiaImeDict/out/$asset" "$staged_native_source/$asset"
+done
+mkdir -p "$staged_native_source/helpcodes"
+cp -R "$helpcode_source_dir/." "$staged_native_source/helpcodes/"
+python3 "$native_resource_tool_dir/native_resources.py" prepare "$staged_native_source" \
+    "$data_dir/runtime/resources" "$native_resource_tool_dir/native-resource-lock.json"
+rm -rf -- "$staged_native_source"
+staged_native_source=""
+
 install -m 0755 "$settings_executable" "$bin_dir/metasequoia-ime-settings"
 install -m 0755 "$tools_executable" "$bin_dir/metasequoia-ime-tools"
 install -m 0755 "$voice_executable" "$bin_dir/metasequoia-ime-voice"
