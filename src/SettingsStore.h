@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <filesystem>
 #include <string>
+#include <optional>
 
 namespace metasequoia::linux_ime
 {
@@ -122,6 +123,16 @@ const char *translation_provider_name(TranslationProvider provider);
 // parameter. Empty when the file cannot be read, which never compares equal to a digest save() produced.
 std::string settings_file_digest(const std::filesystem::path &path);
 
+struct SettingsFileVersion
+{
+    bool missing = false;
+    std::string digest;
+    bool operator==(const SettingsFileVersion &other) const
+    {
+        return missing == other.missing && digest == other.digest;
+    }
+};
+
 class SettingsStore
 {
   public:
@@ -140,9 +151,17 @@ class SettingsStore
     bool save(const InputSettings &settings, std::string *error = nullptr, std::string *digest = nullptr) const;
     bool save(const InputSettings &settings, SecretStore &secret_store, std::string *error = nullptr,
               std::string *digest = nullptr) const;
+    // Missing is a valid first-save baseline; unreadable is nullopt.
+    std::optional<SettingsFileVersion> version() const;
+    // Serializes with all SettingsStore saves; no credential changes on conflict.
+    bool save_if_unchanged(const InputSettings &settings, SecretStore &secret_store,
+                           const SettingsFileVersion &expected, std::string *error = nullptr) const;
     const std::filesystem::path &config_path() const;
 
   private:
+    bool save_unlocked(const InputSettings &settings, std::string *error, std::string *digest) const;
+    bool save_with_secrets_unlocked(const InputSettings &settings, SecretStore &secret_store, std::string *error,
+                                    std::string *digest) const;
     std::filesystem::path config_path_;
 };
 } // namespace metasequoia::linux_ime

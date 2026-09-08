@@ -431,7 +431,13 @@ int main()
             "Saving settings preserved a legacy plaintext credential.");
     for (const auto &entry : std::filesystem::directory_iterator(config_path.parent_path()))
     {
-        require(entry.path() == config_path, "An atomic settings temporary file was left behind.");
+        auto lock_path = config_path;
+        lock_path += ".lock";
+        require(entry.path() == config_path || entry.path() == lock_path,
+                "An atomic settings temporary file was left behind.");
+        if (entry.path() == lock_path)
+            require(entry.is_regular_file() && entry.file_size() == 0,
+                    "The persistent writer lock must not contain settings or credentials.");
     }
 
     write_file(config_path, "[input]\n"
