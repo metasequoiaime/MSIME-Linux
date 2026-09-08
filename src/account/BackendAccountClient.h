@@ -3,6 +3,8 @@
 #include "online/HttpTransport.h"
 
 #include <map>
+#include <cstdint>
+#include <variant>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -34,6 +36,22 @@ struct Identity
 {
     std::string provider;
     std::string subject;
+};
+using PreferenceValue = std::variant<bool, std::int64_t, double, std::string>;
+struct Preferences
+{
+    std::int64_t revision = 0;
+    std::map<std::string, PreferenceValue> settings;
+};
+struct PreferenceField
+{
+    std::string type;
+    std::size_t maximum_length = 1024;
+};
+struct PreferencesSchema
+{
+    std::size_t maximum_bytes = 0;
+    std::map<std::string, PreferenceField> fields;
 };
 struct ClipboardItem
 {
@@ -82,6 +100,10 @@ class BackendAccountClient
     Tokens refresh(const std::string &refresh_token, const online::CancellationCheck &cancelled = {});
     Profile profile(const std::string &token, const online::CancellationCheck &cancelled = {});
     void rename(const std::string &name, const std::string &token, const online::CancellationCheck &cancelled = {});
+    Preferences preferences(const std::string &token, const online::CancellationCheck &cancelled = {});
+    PreferencesSchema preferences_schema(const std::string &token, const online::CancellationCheck &cancelled = {});
+    Preferences put_preferences(const Preferences &value, const PreferencesSchema &schema, const std::string &token,
+                                const online::CancellationCheck &cancelled = {});
     ClipboardSnapshot clipboard(const std::string &token, const std::string &query = {},
                                 const online::CancellationCheck &cancelled = {});
     void set_clipboard_enabled(bool enabled, const std::string &token, const online::CancellationCheck &cancelled = {});
@@ -94,7 +116,8 @@ class BackendAccountClient
 
   private:
     std::string request(online::HttpMethod method, const char *path, const std::string &body, const std::string &token,
-                        const online::CancellationCheck &cancelled, std::size_t response_limit = 1024 * 1024);
+                        const online::CancellationCheck &cancelled, std::size_t response_limit = 1024 * 1024,
+                        std::size_t request_limit = 65536);
     online::HttpTransport &transport_;
 };
 } // namespace metasequoia::linux_ime::account

@@ -3,6 +3,8 @@
 #include <boost/json.hpp>
 #include <algorithm>
 #include <array>
+#include <cmath>
+#include <limits>
 
 namespace metasequoia::linux_ime::account
 {
@@ -119,6 +121,68 @@ std::string query_component(const std::string &text)
     }
     return result;
 }
+Preferences preferences_value(const boost::json::object &source)
+{
+    const auto *revision = source.if_contains("revision");
+    const auto *settings = source.if_contains("settings");
+    if (!revision || !revision->is_int64() || revision->as_int64() < 0 || !settings || !settings->is_object() ||
+        settings->as_object().size() > 1024)
+        throw Failure(0);
+    Preferences result{revision->as_int64(), {}};
+    for (const auto &entry : settings->as_object())
+    {
+        const std::string key(entry.key());
+        require_text(key, 256);
+        const auto &value = entry.value();
+        if (value.is_bool())
+            result.settings.emplace(key, value.as_bool());
+        else if (value.is_int64() && value.as_int64() >= 0 && value.as_int64() <= 1000000)
+            result.settings.emplace(key, value.as_int64());
+        else if (value.is_double() && std::isfinite(value.as_double()) && value.as_double() >= 0 &&
+                 value.as_double() <= 1000000)
+            result.settings.emplace(key, value.as_double());
+        else if (value.is_string())
+        {
+            auto text = std::string(value.as_string());
+            require_text(text, 1024 * 1024);
+            result.settings.emplace(key, std::move(text));
+        }
+        else
+            throw Failure(0);
+    }
+    return result;
+}
+boost::json::object preference_settings(const Preferences &value, const PreferencesSchema &schema)
+{
+    if (value.revision < 0 || value.revision == std::numeric_limits<std::int64_t>::max() || schema.maximum_bytes == 0 ||
+        schema.maximum_bytes > 1024 * 1024 || value.settings.size() > 1024)
+        throw Failure(400);
+    boost::json::object settings;
+    for (const auto &[key, setting] : value.settings)
+    {
+        const auto it = schema.fields.find(key);
+        if (it == schema.fields.end())
+            throw Failure(400);
+        const auto &field = it->second;
+        const bool type_matches = (field.type == "boolean" && std::holds_alternative<bool>(setting)) ||
+                                  (field.type == "integer" && std::holds_alternative<std::int64_t>(setting)) ||
+                                  (field.type == "number" && (std::holds_alternative<std::int64_t>(setting) ||
+                                                              std::holds_alternative<double>(setting))) ||
+                                  (field.type == "string" && std::holds_alternative<std::string>(setting));
+        if (!type_matches)
+            throw Failure(400);
+        if (const auto *text = std::get_if<std::string>(&setting))
+            require_text(*text, field.maximum_length);
+        if (const auto *number = std::get_if<std::int64_t>(&setting))
+            if (*number < 0 || *number > 1000000)
+                throw Failure(400);
+        if (const auto *number = std::get_if<double>(&setting))
+            if (!std::isfinite(*number) || *number < 0 || *number > 1000000)
+                throw Failure(400);
+        std::visit([&, name = key](const auto &item) { settings[name] = item; }, setting);
+    }
+    return settings;
+}
 void require_token(const std::string &token)
 {
     if (!valid_token(token))
@@ -145,13 +209,13 @@ Failure::Failure(long status, bool cancelled)
 
 std::string BackendAccountClient::request(online::HttpMethod method, const char *path, const std::string &body,
                                           const std::string &token, const online::CancellationCheck &cancelled,
-                                          std::size_t response_limit)
+                                          std::size_t response_limit, std::size_t request_limit)
 {
     if (!token.empty())
     {
         require_token(token);
     }
-    if (body.size() > 65536)
+    if (body.size() > request_limit)
     {
         throw Failure(400);
     }
@@ -281,6 +345,63 @@ void BackendAccountClient::rename(const std::string &name, const std::string &to
     }
     (void)request(online::HttpMethod::Patch, "/v1/users/me",
                   boost::json::serialize(boost::json::object{{"display_name", name}}), token, cancelled);
+}
+Preferences BackendAccountClient::preferences(const std::string &token, const online::CancellationCheck &cancelled)
+{
+    require_token(token);
+    return preferences_value(
+        object(request(online::HttpMethod::Get, "/v1/users/me/preferences", {}, token, cancelled, 2 * 1024 * 1024)));
+}
+PreferencesSchema BackendAccountClient::preferences_schema(const std::string &token,
+                                                           const online::CancellationCheck &cancelled)
+{
+    require_token(token);
+    const auto source =
+        object(request(online::HttpMethod::Get, "/v1/users/me/preferences/schema", {}, token, cancelled));
+    const auto *maximum = source.if_contains("maximum_bytes");
+    const auto *required = source.if_contains("revision_required");
+    const auto *fields = source.if_contains("fields");
+    if (!maximum || !maximum->is_int64() || maximum->as_int64() <= 0 || maximum->as_int64() > 1024 * 1024 ||
+        !required || !required->is_bool() || !required->as_bool() || string(source, "update_mode", 32) != "replace" ||
+        !fields || !fields->is_object() || fields->as_object().size() > 1024)
+        throw Failure(0);
+    PreferencesSchema result{static_cast<std::size_t>(maximum->as_int64()), {}};
+    for (const auto &entry : fields->as_object())
+    {
+        if (!entry.value().is_object())
+            throw Failure(0);
+        const std::string key(entry.key());
+        require_text(key, 256);
+        const auto &field = entry.value().as_object();
+        auto type = string(field, "type", 32);
+        if (type != "boolean" && type != "integer" && type != "number" && type != "string")
+            throw Failure(0);
+        std::size_t length = 1024;
+        if (const auto *limit = field.if_contains("maxLength"))
+        {
+            if (!limit->is_int64() || limit->as_int64() <= 0 || limit->as_int64() > 1024 * 1024)
+                throw Failure(0);
+            length = static_cast<std::size_t>(limit->as_int64());
+        }
+        if (key.find("prompt") != std::string::npos)
+            length = 8192;
+        result.fields.emplace(key, PreferenceField{std::move(type), length});
+    }
+    return result;
+}
+Preferences BackendAccountClient::put_preferences(const Preferences &value, const PreferencesSchema &schema,
+                                                  const std::string &token, const online::CancellationCheck &cancelled)
+{
+    require_token(token);
+    const auto body = boost::json::serialize(
+        boost::json::object{{"revision", value.revision}, {"settings", preference_settings(value, schema)}});
+    if (body.size() > schema.maximum_bytes)
+        throw Failure(400);
+    auto result = preferences_value(object(request(online::HttpMethod::Put, "/v1/users/me/preferences", body, token,
+                                                   cancelled, 2 * 1024 * 1024, schema.maximum_bytes)));
+    if (result.revision != value.revision + 1)
+        throw Failure(0);
+    return result;
 }
 ClipboardSnapshot BackendAccountClient::clipboard(const std::string &token, const std::string &query,
                                                   const online::CancellationCheck &cancelled)

@@ -163,5 +163,38 @@ int main()
             "clear URL wrong");
     transport.response = {200, R"({"enabled":"true","items":[]})", {}};
     fails([&] { client.clipboard(token('a')); }, 0);
+    transport.response = {
+        200,
+        R"({"fields":{"appearance.page_size":{"type":"integer"},"general.cloud_candidates":{"type":"boolean"},"platform.ios.custom_keyboard_skin":{"type":"string","maxLength":786432}},"maximum_bytes":1048576,"update_mode":"replace","revision_required":true})",
+        {}};
+    const auto schema = client.preferences_schema(token('a'));
+    require(schema.fields.size() == 3 && schema.maximum_bytes == 1048576, "settings schema not decoded");
+    transport.response.body = R"({"revision":3,"settings":{"appearance.page_size":5,"general.cloud_candidates":true}})";
+    auto preferences = client.preferences(token('a'));
+    require(preferences.revision == 3 && std::get<std::int64_t>(preferences.settings.at("appearance.page_size")) == 5,
+            "settings snapshot not decoded");
+    preferences.settings["platform.ios.custom_keyboard_skin"] = std::string(70000, 'x');
+    auto response_settings = boost::json::object{{"appearance.page_size", 5},
+                                                 {"general.cloud_candidates", true},
+                                                 {"platform.ios.custom_keyboard_skin", std::string(70000, 'x')}};
+    transport.response.body =
+        boost::json::serialize(boost::json::object{{"revision", 4}, {"settings", response_settings}});
+    require(client.put_preferences(preferences, schema, token('a')).revision == 4, "settings update not decoded");
+    require(transport.last.method == online::HttpMethod::Put && transport.last.body.size() > 65536 &&
+                boost::json::parse(transport.last.body).at("revision").as_int64() == 3,
+            "large settings replace not sent correctly");
+    const int before_invalid_preferences = transport.calls;
+    preferences.settings["private.token"] = std::string("never-send");
+    fails([&] { client.put_preferences(preferences, schema, token('a')); }, 400);
+    preferences.settings.erase("private.token");
+    preferences.settings["appearance.page_size"] = true;
+    fails([&] { client.put_preferences(preferences, schema, token('a')); }, 400);
+    require(transport.calls == before_invalid_preferences, "unknown or mistyped setting reached network");
+    preferences.settings["appearance.page_size"] = std::int64_t(5);
+    transport.response = {409, "private conflict detail", {}};
+    fails([&] { client.put_preferences(preferences, schema, token('a')); }, 409);
+    require(transport.calls == before_invalid_preferences + 1, "conflicting update was retried");
+    transport.response = {200, R"({"revision":0,"settings":{"bad":[]}})", {}};
+    fails([&] { client.preferences(token('a')); }, 0);
     std::cout << "backend account protocol tests passed\n";
 }
