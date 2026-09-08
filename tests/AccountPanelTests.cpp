@@ -37,6 +37,10 @@ struct Store final : SecretStore
 };
 struct Transport final : online::HttpTransport
 {
+    int dictionary_requests = 0;
+    std::int64_t dictionary_revision = 10;
+    std::map<std::string, boost::json::array> dictionaries;
+    bool dictionary_conflict = false;
     int preference_requests = 0, preference_writes = 0;
     std::int64_t revision = 0;
     boost::json::object preferences{{"appearance.page_size", 5}};
@@ -118,6 +122,56 @@ struct Transport final : online::HttpTransport
                     {"enabled", cloud_enabled},
                     {"items", request.url.find("missing") != std::string::npos ? boost::json::array{} : cloud_items}}),
                 {}};
+        }
+        if (const auto prefix = request.url.find("/dictionaries/"); prefix != std::string::npos)
+        {
+            ++dictionary_requests;
+            const auto start = prefix + std::string("/dictionaries/").size();
+            const auto end = request.url.find_first_of("/?", start);
+            const auto kind = request.url.substr(start, end - start);
+            auto &entries = dictionaries[kind];
+            if (request.method == online::HttpMethod::Get)
+            {
+                const int offset = request.url.find("offset=50") != std::string::npos ? 50 : 0;
+                boost::json::array page;
+                for (std::size_t index = offset;
+                     index < entries.size() && index < static_cast<std::size_t>(offset + 50); ++index)
+                    page.push_back(entries[index]);
+                return {200,
+                        boost::json::serialize(
+                            boost::json::object{{"entries", page},
+                                                {"offset", offset},
+                                                {"has_more", entries.size() > static_cast<std::size_t>(offset + 50)}}),
+                        {}};
+            }
+            if (dictionary_conflict)
+                return {409, "{}", {}};
+            const auto body = boost::json::parse(request.body).as_object();
+            boost::json::value previous = nullptr, replacement = nullptr;
+            const std::string id(64, 'd');
+            if (request.method != online::HttpMethod::Post)
+            {
+                require(entries.size() == 1, "wrong mutation fixture");
+                previous = entries[0];
+                require(body.at("revision") == previous.at("revision"), "UI lost selected revision");
+                entries.clear();
+            }
+            ++dictionary_revision;
+            if (request.method != online::HttpMethod::Delete)
+            {
+                replacement = boost::json::object{{"id", id},
+                                                  {"kind", kind},
+                                                  {"code", body.at("code")},
+                                                  {"word", body.at("word")},
+                                                  {"weight", body.at("weight")},
+                                                  {"revision", dictionary_revision},
+                                                  {"updated_at", "now"}};
+                entries.push_back(replacement);
+            }
+            return {200,
+                    boost::json::serialize(boost::json::object{
+                        {"revision", dictionary_revision}, {"previous", previous}, {"replacement", replacement}}),
+                    {}};
         }
         if (request.url.find("/preferences") != std::string::npos)
         {
@@ -412,6 +466,87 @@ int main(int argc, char **argv)
     review("预览上传本机设置", GTK_RESPONSE_OK);
     require(http->preference_writes == 1, "unchanged upload unnecessarily incremented revision");
     gtk_text_buffer_set_text(cloud_text, "退出时应丢弃的草稿", -1);
+    require(http->dictionary_requests == 0, "dictionary loaded without action");
+    click(panel, "管理云端个人词库");
+    GtkWidget *dictionary_window = nullptr;
+    GList *windows = gtk_window_list_toplevels();
+    for (auto *item = windows; item; item = item->next)
+        if (g_strcmp0(gtk_window_get_title(GTK_WINDOW(item->data)), "云端个人词库") == 0)
+            dictionary_window = GTK_WIDGET(item->data);
+    g_list_free(windows);
+    require(dictionary_window != nullptr, "dictionary window missing");
+    auto *dictionary_body = gtk_bin_get_child(GTK_BIN(dictionary_window));
+    auto ready = [&] { wait([&] { return gtk_widget_get_sensitive(dictionary_body); }); };
+    auto *dictionary_list = find(dictionary_window, "云端列表");
+    auto *dictionary_model = gtk_tree_view_get_model(GTK_TREE_VIEW(dictionary_list));
+    for (const char *kind : {"pinyin", "wubi", "english", "quick"})
+    {
+        gtk_combo_box_set_active_id(GTK_COMBO_BOX(find(dictionary_window, "登录渠道")), kind);
+        click(dictionary_window, "搜索云词条");
+        ready();
+        require(gtk_tree_model_iter_n_children(dictionary_model, nullptr) == 0, "empty dictionary not shown");
+        gtk_entry_set_text(GTK_ENTRY(find(dictionary_window, "词条编码")), "test");
+        gtk_entry_set_text(GTK_ENTRY(find(dictionary_window, "词条文字")), "测试词条");
+        click(dictionary_window, "新增云词条");
+        ready();
+        require(gtk_tree_model_iter_n_children(dictionary_model, nullptr) == 1, "new dictionary entry not shown");
+        auto *selected = gtk_tree_path_new_from_indices(0, -1);
+        gtk_tree_selection_select_path(gtk_tree_view_get_selection(GTK_TREE_VIEW(dictionary_list)), selected);
+        gtk_tree_path_free(selected);
+        gtk_entry_set_text(GTK_ENTRY(find(dictionary_window, "词条权重")), "25");
+        g_idle_add(respond, GINT_TO_POINTER(GTK_RESPONSE_CANCEL));
+        click(dictionary_window, "修改选中词条");
+        require(http->dictionaries[kind][0].at("weight").as_int64() == 10, "cancelled edit wrote data");
+        g_idle_add(respond, GINT_TO_POINTER(GTK_RESPONSE_OK));
+        click(dictionary_window, "修改选中词条");
+        ready();
+        require(http->dictionaries[kind][0].at("weight").as_int64() == 25, "weight update missing");
+        selected = gtk_tree_path_new_from_indices(0, -1);
+        gtk_tree_selection_select_path(gtk_tree_view_get_selection(GTK_TREE_VIEW(dictionary_list)), selected);
+        gtk_tree_path_free(selected);
+        g_idle_add(respond, GINT_TO_POINTER(GTK_RESPONSE_OK));
+        click(dictionary_window, "删除选中词条");
+        ready();
+        require(http->dictionaries[kind].empty(), "dictionary deletion failed");
+        gtk_entry_set_text(GTK_ENTRY(find(dictionary_window, "词条权重")), "10");
+    }
+    gtk_combo_box_set_active_id(GTK_COMBO_BOX(find(dictionary_window, "登录渠道")), "pinyin");
+    for (int index = 0; index < 51; ++index)
+    {
+        const auto number = std::to_string(index);
+        http->dictionaries["pinyin"].push_back(
+            boost::json::object{{"id", std::string(64 - number.size(), '0') + number},
+                                {"kind", "pinyin"},
+                                {"code", "test"},
+                                {"word", "测试"},
+                                {"weight", 10},
+                                {"revision", 1},
+                                {"updated_at", "now"}});
+    }
+    click(dictionary_window, "搜索云词条");
+    ready();
+    require(gtk_tree_model_iter_n_children(dictionary_model, nullptr) == 50, "first page incorrect");
+    click(dictionary_window, "下一页");
+    ready();
+    require(gtk_tree_model_iter_n_children(dictionary_model, nullptr) == 1, "second page incorrect");
+    click(dictionary_window, "上一页");
+    ready();
+    require(gtk_tree_model_iter_n_children(dictionary_model, nullptr) == 50, "previous page incorrect");
+    http->dictionary_conflict = true;
+    click(dictionary_window, "新增云词条");
+    ready();
+    require(find(dictionary_window, "词条已变化或与已有词条重复，请刷新后核对。") != nullptr &&
+                gtk_tree_model_iter_n_children(dictionary_model, nullptr) == 0,
+            "conflict retained stale rows");
+    http->dictionary_conflict = false;
+    http->block.store(true);
+    click(dictionary_window, "搜索云词条");
+    wait([&] { return http->entered.load(); });
+    gtk_widget_destroy(dictionary_window);
+    wait([&] { return http->cancelled.load(); });
+    http->block.store(false);
+    http->entered.store(false);
+    http->cancelled.store(false);
     const auto saved_account = secrets->lookup(SecretKind::AccountSession, "msime").value;
     click(panel, "退出登录");
     wait([&] { return gtk_widget_get_sensitive(panel); });
