@@ -110,7 +110,35 @@ int main()
     const auto generation = root / "generation";
     const auto paths = stage_native_snapshot(*snapshot, resources, generation, "synthetic-fixture");
     const auto revision = native_dictionary_revision(paths);
+    auto exported = export_native_snapshot(paths);
+    require(exported->envelope().counts == snapshot->envelope().counts, "native export lost record categories");
+    const auto roundtrip = stage_native_snapshot(*exported, resources, root / "export-roundtrip", "synthetic-fixture");
+    require(native_dictionary_revision(roundtrip) == revision, "native cloud round-trip changed dictionary state");
+    fails([&] { export_native_snapshot(paths, [] { return true; }); });
+    int export_checks = 0;
+    fails([&] { export_native_snapshot(paths, [&] { return ++export_checks > 6; }); });
+    require(native_dictionary_revision(paths) == revision, "cancelled native export changed source");
     require(revision.size() == 64 && native_dictionary_revision(paths) == revision, "unstable native revision");
+    std::vector<DictionaryStateRecord> display_records;
+    stream_dictionary_state(paths, [&](const auto &record) {
+        display_records.push_back(record);
+        return true;
+    });
+    for (auto &record : display_records)
+        if (auto *value = std::get_if<DictionaryStateEntry>(&record);
+            value && value->kind == PersonalDictionaryKind::English)
+            value->display = "Separate display form";
+    std::size_t display_cursor = 0;
+    const auto display_paths = stage_dictionary_state(resources, root / "separate-display", "synthetic-fixture",
+                                                      [&](DictionaryStateRecord &record) {
+                                                          if (display_cursor == display_records.size())
+                                                              return false;
+                                                          record = display_records[display_cursor++];
+                                                          return true;
+                                                      });
+    const auto display_revision = native_dictionary_revision(display_paths);
+    fails([&] { export_native_snapshot(display_paths); });
+    require(native_dictionary_revision(display_paths) == display_revision, "unsupported display export changed state");
     const auto same_paths = stage_native_snapshot(*snapshot, resources, root / "same", "synthetic-fixture");
     require(native_dictionary_revision(same_paths) == revision, "same state has different revision in new directory");
     auto changed_records = records;

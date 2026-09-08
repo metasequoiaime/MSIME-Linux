@@ -242,7 +242,7 @@ if(METASEQUOIA_IME_BUILD_IBUS)
     target_include_directories(MetasequoiaImeLinuxSettingsUiModel PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
     target_compile_options(MetasequoiaImeLinuxSettingsUiModel PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
-    add_library(MetasequoiaImeLinuxSnapshot STATIC src/account/SnapshotEnvelope.cpp src/account/PreparedSnapshot.cpp src/account/SnapshotContents.cpp src/account/SnapshotTransfer.cpp src/account/NativeSnapshot.cpp src/account/NativeDictionaryRevision.cpp src/account/NativeResources.cpp)
+    add_library(MetasequoiaImeLinuxSnapshot STATIC src/account/SnapshotEnvelope.cpp src/account/PreparedSnapshot.cpp src/account/SnapshotContents.cpp src/account/SnapshotTransfer.cpp src/account/NativeSnapshot.cpp src/account/NativeSnapshotExport.cpp src/account/NativeDictionaryRevision.cpp src/account/NativeResources.cpp)
     target_link_libraries(MetasequoiaImeLinuxSnapshot PUBLIC MetasequoiaImeLinuxOnline PRIVATE Boost::json PkgConfig::GLIB PkgConfig::GIO)
     target_compile_definitions(MetasequoiaImeLinuxSnapshot PRIVATE METASEQUOIA_NATIVE_RESOURCE_PYTHON="${Python3_EXECUTABLE}")
     target_compile_options(MetasequoiaImeLinuxSnapshot PRIVATE -Wall -Wextra -Wpedantic -Werror)
