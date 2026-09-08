@@ -84,7 +84,9 @@ std::unique_ptr<PreparedSnapshot> PreparedSnapshot::open(const std::string &sour
     if (source.empty() || source.find('\0') != std::string::npos)
         throw Failure(400);
     Descriptor input{::open(source.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK)};
-    struct stat info{};
+    struct stat info
+    {
+    };
     if (input.value < 0 || ::fstat(input.value, &info) != 0 || !S_ISREG(info.st_mode) || info.st_size < 0 ||
         static_cast<std::uint64_t>(info.st_size) > maximum_size)
         throw Failure(400);
