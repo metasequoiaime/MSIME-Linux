@@ -141,7 +141,8 @@ HttpResponse CurlHttpTransport::perform(const HttpRequest &request, const Cancel
     }
 
     if ((request.method == HttpMethod::Patch || request.method == HttpMethod::Delete) &&
-        curl_easy_setopt(handle.get(), CURLOPT_CUSTOMREQUEST, request.method == HttpMethod::Patch ? "PATCH" : "DELETE") != CURLE_OK)
+        curl_easy_setopt(handle.get(), CURLOPT_CUSTOMREQUEST,
+                         request.method == HttpMethod::Patch ? "PATCH" : "DELETE") != CURLE_OK)
     {
         free_headers();
         return {0, {}, "libcurl method configuration failed"};
