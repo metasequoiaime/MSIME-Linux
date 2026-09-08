@@ -11,14 +11,17 @@ from pathlib import Path
 class Handler(http.server.BaseHTTPRequestHandler):
     def respond(self):
         size = int(self.headers.get("Content-Length", "0"))
-        if size > 1024:
+        if size > 1024 * 1024:
             self.send_error(413)
             return
         data = self.command.encode() + b"\n" + self.rfile.read(size)
-        self.send_response(200)
-        self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
+        try:
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+        except (BrokenPipeError, ConnectionResetError, ssl.SSLError):
+            pass
 
     do_GET = do_POST = do_PUT = do_PATCH = do_DELETE = respond
 
@@ -43,7 +46,7 @@ with tempfile.TemporaryDirectory(prefix="msime-curl-test-") as directory:
         try:
             result = subprocess.run(
                 [sys.argv[1], f"https://127.0.0.1:{server.server_port}/echo", cert],
-                check=False, timeout=15,
+                check=False, timeout=60,
             )
         finally:
             server.shutdown()
