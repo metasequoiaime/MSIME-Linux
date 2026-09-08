@@ -1,0 +1,6 @@
+# An entry/window-only GTK baseline reproduces Fontconfig retention on Ubuntu
+# 24.04 arm64. amd64 CI additionally reports 56 bytes from AT-SPI initialization
+# when its accessibility bus is unavailable. Keep these two origins specific;
+# never suppress g_malloc, GTK, or application symbols.
+leak:libfontconfig.so
+leak:atk_bridge_adaptor_init

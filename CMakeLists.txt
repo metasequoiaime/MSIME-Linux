@@ -40,6 +40,8 @@ target_compile_options(MetasequoiaImeLinuxCore PRIVATE -Wall -Wextra -Wpedantic 
 
 add_library(MetasequoiaImeLinuxOnline STATIC
             src/account/BackendAccountClient.cpp
+            src/account/AccountCredentialStore.cpp
+            src/account/AccountSession.cpp
             src/online/AiSuggestionProvider.cpp
             src/online/CurlHttpTransport.cpp
             src/online/GoogleCloudProvider.cpp
@@ -62,6 +64,16 @@ target_compile_options(metasequoia-ime-dictionary-replay PRIVATE -Wall -Wextra -
 install(TARGETS metasequoia-ime-dictionary-replay RUNTIME DESTINATION ${CMAKE_INSTALL_LIBEXECDIR})
 
 if(BUILD_TESTING)
+    add_executable(MetasequoiaImeLinuxAccountSessionTests tests/AccountSessionTests.cpp)
+    target_link_libraries(MetasequoiaImeLinuxAccountSessionTests PRIVATE MetasequoiaImeLinuxOnline Boost::json Threads::Threads)
+    target_compile_options(MetasequoiaImeLinuxAccountSessionTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    add_test(NAME account_session COMMAND MetasequoiaImeLinuxAccountSessionTests)
+
+    add_executable(MetasequoiaImeLinuxAccountCredentialTests tests/AccountCredentialStoreTests.cpp)
+    target_link_libraries(MetasequoiaImeLinuxAccountCredentialTests PRIVATE MetasequoiaImeLinuxOnline Boost::json)
+    target_compile_options(MetasequoiaImeLinuxAccountCredentialTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    add_test(NAME account_credential_store COMMAND MetasequoiaImeLinuxAccountCredentialTests)
+
     add_executable(MetasequoiaImeLinuxBackendAccountTests tests/BackendAccountClientTests.cpp)
     target_link_libraries(MetasequoiaImeLinuxBackendAccountTests PRIVATE MetasequoiaImeLinuxOnline Boost::json)
     target_compile_options(MetasequoiaImeLinuxBackendAccountTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
@@ -180,8 +192,8 @@ if(METASEQUOIA_IME_BUILD_IBUS)
         if(BUILD_TESTING)
             add_test(NAME voice_cli_check COMMAND metasequoia-ime-voice --check)
         endif()
-        add_executable(metasequoia-ime-settings src/SettingsUi.cpp)
-        target_link_libraries(metasequoia-ime-settings PRIVATE MetasequoiaImeLinuxSettingsUiModel PkgConfig::GTK3)
+        add_executable(metasequoia-ime-settings src/SettingsUi.cpp src/account/AccountPanel.cpp)
+        target_link_libraries(metasequoia-ime-settings PRIVATE MetasequoiaImeLinuxSettingsUiModel MetasequoiaImeLinuxOnline PkgConfig::GTK3)
         target_compile_options(metasequoia-ime-settings PRIVATE -Wall -Wextra -Wpedantic -Werror)
         install(TARGETS metasequoia-ime-settings RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
         configure_file(resources/metasequoia-ime-settings.desktop.in
@@ -190,6 +202,17 @@ if(METASEQUOIA_IME_BUILD_IBUS)
                 DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
         if(BUILD_TESTING)
             add_test(NAME settings_ui_check COMMAND metasequoia-ime-settings --check)
+            find_program(XVFB_RUN_EXECUTABLE xvfb-run REQUIRED)
+            add_executable(MetasequoiaImeLinuxAccountPanelTests tests/AccountPanelTests.cpp src/account/AccountPanel.cpp)
+            target_link_libraries(MetasequoiaImeLinuxAccountPanelTests PRIVATE MetasequoiaImeLinuxOnline
+                                  MetasequoiaImeLinuxSettings Boost::json PkgConfig::GTK3)
+            target_compile_options(MetasequoiaImeLinuxAccountPanelTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+            add_test(NAME account_panel COMMAND ${XVFB_RUN_EXECUTABLE} -a $<TARGET_FILE:MetasequoiaImeLinuxAccountPanelTests>)
+            add_test(NAME account_panel_secret_service COMMAND ${XVFB_RUN_EXECUTABLE} -a
+                     bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/SecretStoreIntegration.sh
+                     $<TARGET_FILE:MetasequoiaImeLinuxAccountPanelTests>)
+            set_tests_properties(account_panel account_panel_secret_service PROPERTIES TIMEOUT 45
+                                 ENVIRONMENT "LSAN_OPTIONS=suppressions=${CMAKE_CURRENT_SOURCE_DIR}/tests/gtk-lsan.supp:print_suppressions=1")
         endif()
 
         add_executable(metasequoia-ime-tools src/DesktopToolsUi.cpp)

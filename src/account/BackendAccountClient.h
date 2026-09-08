@@ -63,6 +63,8 @@ class BackendAccountClient
     explicit BackendAccountClient(online::HttpTransport &transport) : transport_(transport)
     {
     }
+    // Shared strict decoder for network responses and Secret Service records.
+    static Tokens decode_tokens(const std::string &text);
     std::map<std::string, bool> providers(const online::CancellationCheck &cancelled = {});
     Challenge challenge(const std::string &provider, const std::string &target = {}, const std::string &link_token = {},
                         const online::CancellationCheck &cancelled = {});

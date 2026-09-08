@@ -38,6 +38,14 @@ int main(int argc, char **argv)
                 diagnostic.empty(),
             "The translation credential could not be stored in Secret Service.");
 
+    require(store.store(SecretKind::AccountSession, ai_provider, "synthetic-account-session", &diagnostic),
+            "Account session could not be stored in Secret Service.");
+    require(store.lookup(SecretKind::AccountSession, ai_provider).value == "synthetic-account-session",
+            "Account session did not round trip.");
+    require(store.erase(SecretKind::AccountSession, ai_provider, &diagnostic) &&
+                store.lookup(SecretKind::AccountSession, ai_provider).status == SecretStatus::NotFound,
+            "Account session could not be cleared.");
+
     const auto ai = store.lookup(SecretKind::AiApiToken, ai_provider);
     const auto translation = store.lookup(SecretKind::TranslationApiToken, translation_provider);
     const auto isolated = store.lookup(SecretKind::TranslationApiToken, ai_provider);

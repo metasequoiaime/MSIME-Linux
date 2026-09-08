@@ -83,6 +83,15 @@ void require_token(const std::string &token)
 }
 } // namespace
 
+Tokens BackendAccountClient::decode_tokens(const std::string &text)
+{
+    if (text.size() > 1024 * 1024)
+    {
+        throw Failure(0);
+    }
+    return tokens(text);
+}
+
 Failure::Failure(long status, bool cancelled)
     : std::runtime_error(cancelled ? "操作已取消" : "账号请求未完成，请稍后重试"), status_(status),
       cancelled_(cancelled)
