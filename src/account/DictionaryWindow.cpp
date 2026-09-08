@@ -1,4 +1,5 @@
 #include "DictionaryWindow.h"
+#include "DictionaryExport.h"
 #include <atomic>
 #include <charconv>
 namespace metasequoia::linux_ime::account
@@ -26,13 +27,14 @@ enum class Action
     Add,
     Update,
     Delete,
-    Import
+    Import,
+    Export
 };
 struct Work
 {
     Handle state;
     Action action;
-    std::string kind, query, message, import_text, import_format;
+    std::string kind, query, message, import_text, import_format, export_path;
     int imported = 0;
     int offset = 0;
     std::optional<DictionaryEntry> selected;
@@ -72,12 +74,25 @@ void worker(GTask *task, gpointer, gpointer data, GCancellable *)
             work.changed = true;
             work.query.clear();
         }
+        if (work.action == Action::Export)
+        {
+            const auto text =
+                state.session->export_dictionary(state.generation, work.kind, work.import_format, cancelled);
+            save_dictionary_export(work.export_path, text, cancelled);
+            work.message = "词库已导出。";
+            work.success = true;
+            g_task_return_boolean(task, TRUE);
+            return;
+        }
         work.result = state.session->dictionary(state.generation, work.kind, work.query, work.offset, 50, cancelled);
         work.success = true;
     }
     catch (const Failure &error)
     {
-        work.message = work.changed ? "词条已保存，但列表刷新失败。请重新搜索，勿重复提交。"
+        work.message = work.action == Action::Export && error.status() != 401
+                           ? (error.status() == 409 ? "目标文件已存在，请选择新的文件名。"
+                                                    : "导出未完成，请检查保存位置或稍后重试。")
+                       : work.changed ? "词条已保存，但列表刷新失败。请重新搜索，勿重复提交。"
                        : error.status() == 409 ? "词条已变化或与已有词条重复，请刷新后核对。"
                        : error.status() == 401 ? "登录已失效，请关闭窗口后重新登录。"
                        : error.status() == 400 ? "词条格式不正确，请检查编码、文字和权重。"
@@ -96,6 +111,12 @@ void finished(GObject *, GAsyncResult *result, gpointer)
     if (state.closed.load())
         return;
     gtk_widget_set_sensitive(state.body, TRUE);
+    if (work.action == Action::Export)
+    {
+        gtk_label_set_text(GTK_LABEL(state.status), work.message.c_str());
+        refresh(state);
+        return;
+    }
     if (work.changed && work.action == Action::Import)
     {
         state.import_draft.clear();
@@ -177,6 +198,36 @@ void clicked(GtkButton *button, gpointer data)
             gtk_label_set_text(GTK_LABEL(state->status), "权重须为非负整数。");
             return;
         }
+    }
+    if (work.action == Action::Export)
+    {
+        auto *dialog =
+            gtk_file_chooser_dialog_new("导出词库为新文件", GTK_WINDOW(state->window), GTK_FILE_CHOOSER_ACTION_SAVE,
+                                        "取消", GTK_RESPONSE_CANCEL, "导出", GTK_RESPONSE_ACCEPT, nullptr);
+        gtk_window_set_destroy_with_parent(GTK_WINDOW(dialog), TRUE);
+        gtk_window_set_modal(GTK_WINDOW(dialog), TRUE);
+        g_object_ref_sink(dialog);
+        gtk_file_chooser_set_local_only(GTK_FILE_CHOOSER(dialog), TRUE);
+        gtk_file_chooser_set_current_name(GTK_FILE_CHOOSER(dialog), ("dictionary-" + work.kind + ".tsv").c_str());
+        auto *format = gtk_combo_box_text_new();
+        gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(format), "standard", "标准 TSV");
+        gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(format), "windows", "Windows TSV");
+        gtk_combo_box_set_active(GTK_COMBO_BOX(format), 0);
+        gtk_widget_show(format);
+        gtk_file_chooser_set_extra_widget(GTK_FILE_CHOOSER(dialog), format);
+        const auto response = gtk_dialog_run(GTK_DIALOG(dialog));
+        if (!state->closed.load() && response == GTK_RESPONSE_ACCEPT)
+        {
+            auto *path = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog));
+            if (path)
+                work.export_path = path;
+            g_free(path);
+            work.import_format = gtk_combo_box_get_active_id(GTK_COMBO_BOX(format));
+        }
+        gtk_widget_destroy(dialog);
+        g_object_unref(dialog);
+        if (state->closed.load() || response != GTK_RESPONSE_ACCEPT || work.export_path.empty())
+            return;
     }
     if (work.action == Action::Import)
     {
@@ -337,6 +388,7 @@ GtkWidget *create_dictionary_window(GtkWindow *parent, std::shared_ptr<AccountSe
         new Handle(state), [](gpointer data, GClosure *) { delete static_cast<Handle *>(data); }, G_CONNECT_DEFAULT);
     auto *actions = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
     gtk_box_pack_start(GTK_BOX(state->body), actions, FALSE, FALSE, 0);
+    add_button(state, actions, "导出词库文件", Action::Export);
     add_button(state, actions, "批量导入词条", Action::Import);
     add_button(state, actions, "新增云词条", Action::Add);
     add_button(state, actions, "修改选中词条", Action::Update);

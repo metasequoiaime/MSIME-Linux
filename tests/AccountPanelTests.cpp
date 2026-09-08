@@ -131,6 +131,8 @@ struct Transport final : online::HttpTransport
             const auto end = request.url.find_first_of("/?", start);
             const auto kind = request.url.substr(start, end - start);
             auto &entries = dictionaries[kind];
+            if (request.url.find("/export") != std::string::npos)
+                return {200, "测试\ttest\t10\n", {}};
             if (request.method == online::HttpMethod::Get)
             {
                 const int offset = request.url.find("offset=50") != std::string::npos ? 50 : 0;
@@ -582,6 +584,55 @@ int main(int argc, char **argv)
     http->dictionary_conflict = false;
     import("standard", "测试\ttest\t10", GTK_RESPONSE_CANCEL, true);
     http->dictionaries["pinyin"].clear();
+    const auto export_file = (settings_store->config_path().parent_path() / "ui-export.tsv").string();
+    struct ExportAnswer
+    {
+        std::string directory;
+        const char *name;
+        bool initialized = false;
+    };
+    ExportAnswer export_answer{settings_store->config_path().parent_path().string(), "ui-export.tsv", false};
+    g_timeout_add(
+        30,
+        +[](gpointer data) -> gboolean {
+            auto &answer = *static_cast<ExportAnswer *>(data);
+            GList *windows = gtk_window_list_toplevels();
+            GtkWidget *dialog = nullptr;
+            for (auto *item = windows; item; item = item->next)
+                if (GTK_IS_FILE_CHOOSER(item->data))
+                    dialog = GTK_WIDGET(item->data);
+            g_list_free(windows);
+            if (!dialog)
+                return G_SOURCE_CONTINUE;
+            if (!answer.initialized)
+            {
+                gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(dialog), answer.directory.c_str());
+                gtk_file_chooser_set_current_name(GTK_FILE_CHOOSER(dialog), answer.name);
+                answer.initialized = true;
+                return G_SOURCE_CONTINUE;
+            }
+            auto *path = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog));
+            const bool ready = path && std::string(path) == answer.directory + "/" + answer.name;
+            g_free(path);
+            if (!ready)
+                return G_SOURCE_CONTINUE;
+            gtk_dialog_response(GTK_DIALOG(dialog), GTK_RESPONSE_ACCEPT);
+            return G_SOURCE_REMOVE;
+        },
+        &export_answer);
+    click(dictionary_window, "导出词库文件");
+    ready();
+    gchar *exported = nullptr;
+    gsize exported_size = 0;
+    require(g_file_get_contents(export_file.c_str(), &exported, &exported_size, nullptr) &&
+                std::string(exported, exported_size) == "测试\ttest\t10\n",
+            "UI export did not save validated data");
+    g_free(exported);
+    const auto requests_before_export_cancel = http->dictionary_requests;
+    g_idle_add(respond, GINT_TO_POINTER(GTK_RESPONSE_CANCEL));
+    click(dictionary_window, "导出词库文件");
+    require(http->dictionary_requests == requests_before_export_cancel, "cancelled export sent request");
+
     for (int index = 0; index < 51; ++index)
     {
         const auto number = std::to_string(index);
