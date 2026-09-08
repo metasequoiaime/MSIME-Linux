@@ -3,6 +3,7 @@
 #include "online/HttpTransport.h"
 
 #include <map>
+#include <optional>
 #include <cstdint>
 #include <variant>
 #include <stdexcept>
@@ -84,6 +85,23 @@ class Failure final : public std::runtime_error
     long status_;
     bool cancelled_;
 };
+struct DictionaryEntry
+{
+    std::string id, kind, code, word;
+    std::int64_t weight = 10, revision = 0;
+    std::string updated_at;
+};
+struct DictionaryPage
+{
+    std::vector<DictionaryEntry> entries;
+    bool has_more = false;
+    int offset = 0;
+};
+struct DictionaryChange
+{
+    std::int64_t revision = 0;
+    std::optional<DictionaryEntry> previous, replacement;
+};
 class BackendAccountClient
 {
   public:
@@ -111,6 +129,13 @@ class BackendAccountClient
                                 const online::CancellationCheck &cancelled = {});
     void delete_clipboard(const std::string &id, const std::string &token,
                           const online::CancellationCheck &cancelled = {});
+    DictionaryPage dictionary(const std::string &kind, const std::string &query, int offset, int limit,
+                              const std::string &token, const online::CancellationCheck &cancelled = {});
+    // Empty id creates an entry (revision must be zero). An existing id requires
+    // its exact entry revision; null replacement deletes. No conflict retries.
+    DictionaryChange edit_dictionary(const std::string &kind, const std::string &id, std::int64_t revision,
+                                     const std::optional<DictionaryEntry> &replacement, const std::string &token,
+                                     const online::CancellationCheck &cancelled = {});
     void logout(const std::string &token, bool all = false, const online::CancellationCheck &cancelled = {});
     void delete_account(const std::string &token, const online::CancellationCheck &cancelled = {});
 

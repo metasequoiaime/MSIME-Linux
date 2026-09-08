@@ -151,7 +151,7 @@ HttpResponse CurlHttpTransport::perform(const HttpRequest &request, const Cancel
         return {0, {}, "libcurl method configuration failed"};
     }
     if ((request.method == HttpMethod::Post || request.method == HttpMethod::Patch ||
-         request.method == HttpMethod::Put) &&
+         request.method == HttpMethod::Put || (request.method == HttpMethod::Delete && !request.body.empty())) &&
         ((request.method == HttpMethod::Post && curl_easy_setopt(handle.get(), CURLOPT_POST, 1L) != CURLE_OK) ||
          curl_easy_setopt(handle.get(), CURLOPT_POSTFIELDS, request.body.data()) != CURLE_OK ||
          curl_easy_setopt(handle.get(), CURLOPT_POSTFIELDSIZE_LARGE, static_cast<curl_off_t>(request.body.size())) !=

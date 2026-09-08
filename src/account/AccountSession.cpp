@@ -286,6 +286,40 @@ ClipboardSnapshot AccountSession::delete_clipboard(std::uint64_t generation, con
         return client_.clipboard(token, {}, cancelled);
     });
 }
+DictionaryPage AccountSession::dictionary(std::uint64_t generation, const std::string &kind, const std::string &query,
+                                          int offset, int limit, const online::CancellationCheck &cancelled)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto token = authorized(generation, cancelled);
+    try
+    {
+        return client_.dictionary(kind, query, offset, limit, token, cancelled);
+    }
+    catch (const Failure &error)
+    {
+        if (error.status() == 401)
+            discard();
+        throw;
+    }
+}
+DictionaryChange AccountSession::edit_dictionary(std::uint64_t generation, const std::string &kind,
+                                                 const std::string &id, std::int64_t revision,
+                                                 const std::optional<DictionaryEntry> &replacement,
+                                                 const online::CancellationCheck &cancelled)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto token = authorized(generation, cancelled);
+    try
+    {
+        return client_.edit_dictionary(kind, id, revision, replacement, token, cancelled);
+    }
+    catch (const Failure &error)
+    {
+        if (error.status() == 401)
+            discard();
+        throw;
+    }
+}
 void AccountSession::logout(std::uint64_t generation, bool all, const online::CancellationCheck &cancelled)
 {
     std::lock_guard<std::mutex> lock(mutex_);

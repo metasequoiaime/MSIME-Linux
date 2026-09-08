@@ -79,6 +79,21 @@ if(BUILD_TESTING)
     target_compile_options(MetasequoiaImeLinuxAccountCredentialTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
     add_test(NAME account_credential_store COMMAND MetasequoiaImeLinuxAccountCredentialTests)
 
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    add_executable(MetasequoiaImeLinuxCurlRequestBodyTests tests/CurlRequestBodyTests.cpp)
+    target_link_libraries(MetasequoiaImeLinuxCurlRequestBodyTests PRIVATE MetasequoiaImeLinuxOnline CURL::libcurl)
+    target_link_options(MetasequoiaImeLinuxCurlRequestBodyTests PRIVATE "-Wl,--wrap=curl_easy_init")
+    target_compile_options(MetasequoiaImeLinuxCurlRequestBodyTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    add_test(NAME curl_request_body COMMAND ${Python3_EXECUTABLE}
+             ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_curl_request_body_tests.py
+             $<TARGET_FILE:MetasequoiaImeLinuxCurlRequestBodyTests>)
+    set_tests_properties(curl_request_body PROPERTIES TIMEOUT 20)
+
+    add_executable(MetasequoiaImeLinuxDictionaryClientTests tests/DictionaryClientTests.cpp)
+    target_link_libraries(MetasequoiaImeLinuxDictionaryClientTests PRIVATE MetasequoiaImeLinuxOnline Boost::json)
+    target_compile_options(MetasequoiaImeLinuxDictionaryClientTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    add_test(NAME dictionary_client COMMAND MetasequoiaImeLinuxDictionaryClientTests)
+
     add_executable(MetasequoiaImeLinuxBackendAccountTests tests/BackendAccountClientTests.cpp)
     target_link_libraries(MetasequoiaImeLinuxBackendAccountTests PRIVATE MetasequoiaImeLinuxOnline Boost::json)
     target_compile_options(MetasequoiaImeLinuxBackendAccountTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
