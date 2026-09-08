@@ -211,6 +211,32 @@ int main()
         english_database.execute("INSERT INTO english_words VALUES('hello','Hello',100)");
         english_database.execute("INSERT INTO english_words VALUES('help','Help',90)");
 
+        // Settings/dictionary reload destroys and recreates a controller while
+        // transport callbacks may still refer to the previous instance.
+        std::optional<metasequoia::linux_ime::OnlineRequest> previous_instance_request;
+        {
+            InputController previous(SchemeType::Quanpin, 3);
+            for (const char character : std::string("nihao"))
+                previous.handle_key({FrontendKey::Character, character});
+            previous_instance_request = previous.online_request();
+        }
+        require(previous_instance_request.has_value(), "Previous instance did not expose request.");
+        {
+            InputController replacement(SchemeType::Quanpin, 3);
+            for (const char character : std::string("nihao"))
+                replacement.handle_key({FrontendKey::Character, character});
+            require(replacement.online_generation() != previous_instance_request->generation,
+                    "Recreated controller reused a generation accepted by the translation delivery guard.");
+            require(!replacement.apply_online_candidate(previous_instance_request->generation,
+                                                        previous_instance_request->query, "旧会话候选",
+                                                        CandidateSource::CloudSuggestion),
+                    "Recreated controller accepted a response from the previous instance.");
+            const auto current = replacement.online_request();
+            require(current && replacement.apply_online_candidate(current->generation, current->query, "当前会话候选",
+                                                                  CandidateSource::CloudSuggestion),
+                    "Replacement rejected its own response.");
+        }
+
         InputController online_controller(SchemeType::Quanpin, 3);
         const std::uint64_t initial_generation = online_controller.online_generation();
         for (const char character : std::string("nihao"))
