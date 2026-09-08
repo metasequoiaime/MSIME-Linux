@@ -692,6 +692,74 @@ std::string BackendAccountClient::export_dictionary(const std::string &kind, con
     }
     return text;
 }
+std::string BackendAccountClient::snapshot_request(online::HttpRequest &request, const std::string &token,
+                                                   const online::CancellationCheck &cancelled)
+{
+    require_token(token);
+    if (cancelled && cancelled())
+        throw Failure(0, true);
+    request.total_timeout = std::chrono::minutes(2);
+    request.headers.emplace_back("Authorization: Bearer " + token);
+    request.headers.emplace_back("Cache-Control: no-store");
+    auto response = transport_.perform(request, cancelled);
+    if (cancelled && cancelled())
+        throw Failure(0, true);
+    if (!response.error.empty() || response.body.size() > request.max_response_bytes)
+        throw Failure(0);
+    if (response.status_code != 200)
+        throw Failure(response.status_code);
+    return response.body;
+}
+void BackendAccountClient::download_snapshot(const online::HttpResponseSink &sink, const std::string &token,
+                                             const online::CancellationCheck &cancelled)
+{
+    if (!sink)
+        throw Failure(400);
+    online::HttpRequest request;
+    request.url = "https://api.msime.app/v1/users/me/dictionary/snapshot";
+    request.headers = {"Accept: application/x-ndjson"};
+    request.max_response_bytes = 512U * 1024U * 1024U;
+    std::size_t received = 0;
+    bool failed = false;
+    request.response_sink = [&](const char *data, std::size_t bytes) {
+        if (bytes > request.max_response_bytes - received || (bytes && !data))
+        {
+            failed = true;
+            return false;
+        }
+        if (!sink(data, bytes))
+        {
+            failed = true;
+            return false;
+        }
+        received += bytes;
+        return true;
+    };
+    const auto body = snapshot_request(request, token, cancelled);
+    if (failed || !body.empty() || received == 0)
+        throw Failure(0);
+}
+std::int64_t BackendAccountClient::restore_snapshot(std::size_t size, const online::HttpBodySource &source,
+                                                    std::int64_t revision, const std::string &token,
+                                                    const online::CancellationCheck &cancelled)
+{
+    if (!source || size == 0 || size > 512U * 1024U * 1024U || revision < 0 ||
+        revision == std::numeric_limits<std::int64_t>::max())
+        throw Failure(400);
+    online::HttpRequest request;
+    request.method = online::HttpMethod::Put;
+    request.url = "https://api.msime.app/v1/users/me/dictionary/snapshot?revision=" + std::to_string(revision);
+    request.headers = {"Accept: application/json", "Content-Type: application/x-ndjson"};
+    request.body_source = source;
+    request.body_size = size;
+    request.max_response_bytes = 65536;
+    const auto result = object(snapshot_request(request, token, cancelled));
+    const auto *reset = result.if_contains("reset"), *updated = result.if_contains("revision");
+    if (result.size() != 2 || !reset || !reset->is_bool() || !reset->as_bool() || !updated || !updated->is_int64() ||
+        updated->as_int64() <= revision)
+        throw Failure(0);
+    return updated->as_int64();
+}
 void BackendAccountClient::logout(const std::string &token, bool all, const online::CancellationCheck &cancelled)
 {
     require_token(token);
