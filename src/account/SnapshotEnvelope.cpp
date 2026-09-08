@@ -129,7 +129,8 @@ std::string string(const boost::json::object &object, const char *key)
     return std::string(value->as_string());
 }
 } // namespace
-SnapshotEnvelope inspect_snapshot_envelope(std::istream &input, const online::CancellationCheck &cancelled)
+SnapshotEnvelope inspect_snapshot_envelope(std::istream &input, const online::CancellationCheck &cancelled,
+                                           const SnapshotRecordVisitor &visitor)
 {
     std::unique_ptr<GChecksum, decltype(&g_checksum_free)> hash(g_checksum_new(G_CHECKSUM_SHA256), g_checksum_free);
     if (!hash)
@@ -200,6 +201,8 @@ SnapshotEnvelope inspect_snapshot_envelope(std::istream &input, const online::Ca
                     throw Failure(400);
             }
             ++result.counts[next - 1];
+            if (visitor)
+                visitor(line, result.revision);
         }
         category = next;
         ++result.records;

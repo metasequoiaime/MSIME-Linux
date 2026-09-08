@@ -53,6 +53,14 @@ class SnapshotBuffer final : public std::streambuf
     std::array<char, 16384> buffer_{};
 };
 } // namespace
+void PreparedSnapshot::inspect_records(const SnapshotRecordVisitor &visitor,
+                                       const online::CancellationCheck &cancelled) const
+{
+    SnapshotBuffer buffer(*this, cancelled);
+    std::istream stream(&buffer);
+    stream.exceptions(std::ios::badbit);
+    inspect_snapshot_envelope(stream, cancelled, visitor);
+}
 PreparedSnapshot::~PreparedSnapshot()
 {
     ::close(descriptor_);
