@@ -24,6 +24,15 @@ SessionSnapshot AccountSession::snapshot() const
     std::lock_guard<std::mutex> lock(mutex_);
     return current();
 }
+void AccountSession::with_current_user(std::uint64_t generation, const std::string &user_id,
+                                       const std::function<void()> &operation)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    require_generation(generation);
+    if (!session_ || session_->tokens.user.id != user_id)
+        throw Failure(0, true);
+    operation();
+}
 SessionSnapshot AccountSession::restore()
 {
     std::lock_guard<std::mutex> lock(mutex_);

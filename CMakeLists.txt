@@ -215,6 +215,12 @@ if(METASEQUOIA_IME_BUILD_IBUS)
                     "${CMAKE_CURRENT_SOURCE_DIR}/vendor/MetasequoiaImeEngine/contracts/assets/assets.json"
                     "${CMAKE_CURRENT_BINARY_DIR}/native-resource-lock.json"
                     COMMAND_ERROR_IS_FATAL ANY)
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/metasequoia-native-resources")
+    foreach(module native_resources.py product_lock.py product_lock_shared.py dictionary_product.py)
+        configure_file("scripts/${module}" "metasequoia-native-resources/${module}" COPYONLY)
+    endforeach()
+    configure_file("${CMAKE_CURRENT_BINARY_DIR}/native-resource-lock.json"
+                   "metasequoia-native-resources/native-resource-lock.json" COPYONLY)
     install(FILES scripts/native_resources.py scripts/product_lock.py scripts/product_lock_shared.py
                   scripts/dictionary_product.py "${CMAKE_CURRENT_BINARY_DIR}/native-resource-lock.json"
             DESTINATION ${CMAKE_INSTALL_LIBEXECDIR}/metasequoia-native-resources COMPONENT NativeResources)
@@ -242,9 +248,10 @@ if(METASEQUOIA_IME_BUILD_IBUS)
     target_include_directories(MetasequoiaImeLinuxSettingsUiModel PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
     target_compile_options(MetasequoiaImeLinuxSettingsUiModel PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
-    add_library(MetasequoiaImeLinuxSnapshot STATIC src/account/SnapshotEnvelope.cpp src/account/PreparedSnapshot.cpp src/account/SnapshotContents.cpp src/account/SnapshotTransfer.cpp src/account/NativeSnapshot.cpp src/account/NativeDictionaryRevision.cpp src/account/NativeResources.cpp)
+    add_library(MetasequoiaImeLinuxSnapshot STATIC src/account/SnapshotEnvelope.cpp src/account/PreparedSnapshot.cpp src/account/SnapshotContents.cpp src/account/SnapshotTransfer.cpp src/account/NativeSnapshot.cpp src/account/NativeDictionaryRevision.cpp src/account/NativeResources.cpp src/account/NativeRestoreReview.cpp)
     target_link_libraries(MetasequoiaImeLinuxSnapshot PUBLIC MetasequoiaImeLinuxOnline PRIVATE Boost::json PkgConfig::GLIB PkgConfig::GIO)
-    target_compile_definitions(MetasequoiaImeLinuxSnapshot PRIVATE METASEQUOIA_NATIVE_RESOURCE_PYTHON="${Python3_EXECUTABLE}")
+    target_compile_definitions(MetasequoiaImeLinuxSnapshot PRIVATE METASEQUOIA_NATIVE_RESOURCE_PYTHON="${Python3_EXECUTABLE}"
+                               METASEQUOIA_NATIVE_RESOURCE_LIBEXECDIR="${CMAKE_INSTALL_LIBEXECDIR}")
     target_compile_options(MetasequoiaImeLinuxSnapshot PRIVATE -Wall -Wextra -Wpedantic -Werror)
     if(BUILD_TESTING)
         add_executable(MetasequoiaImeLinuxNativeResourcesTests tests/NativeResourcesTests.cpp)
@@ -315,6 +322,19 @@ if(METASEQUOIA_IME_BUILD_IBUS)
         if(BUILD_TESTING)
             add_test(NAME settings_ui_check COMMAND metasequoia-ime-settings --check)
             find_program(XVFB_RUN_EXECUTABLE xvfb-run REQUIRED)
+            add_executable(MetasequoiaImeLinuxNativeRestoreWindowTests tests/NativeRestoreWindowTests.cpp
+                           src/account/DictionaryWindow.cpp src/account/DictionaryExport.cpp)
+            target_link_libraries(MetasequoiaImeLinuxNativeRestoreWindowTests PRIVATE MetasequoiaImeLinuxSnapshot Boost::json PkgConfig::GTK3)
+            target_compile_options(MetasequoiaImeLinuxNativeRestoreWindowTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+            add_test(NAME native_restore_window COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_native_restore_window.py"
+                     $<TARGET_FILE:MetasequoiaImeLinuxNativeRestoreWindowTests> "${METASEQUOIA_IME_DICTIONARY}"
+                     "${METASEQUOIA_IME_HELPCODE_DIRECTORY}" "${CMAKE_CURRENT_BINARY_DIR}/metasequoia-native-resources")
+            add_test(NAME native_restore_live COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_native_restore_window.py"
+                     $<TARGET_FILE:MetasequoiaImeLinuxNativeRestoreWindowTests> "${METASEQUOIA_IME_DICTIONARY}"
+                     "${METASEQUOIA_IME_HELPCODE_DIRECTORY}" "${CMAKE_CURRENT_BINARY_DIR}/metasequoia-native-resources"
+                     $<TARGET_FILE:metasequoia-ime-ibus>)
+            set_tests_properties(native_restore_window native_restore_live PROPERTIES TIMEOUT 180
+                                 ENVIRONMENT "LSAN_OPTIONS=suppressions=${CMAKE_CURRENT_SOURCE_DIR}/tests/gtk-lsan.supp:print_suppressions=1")
             add_executable(MetasequoiaImeLinuxAccountPanelTests tests/AccountPanelTests.cpp src/account/AccountPanel.cpp src/account/DictionaryWindow.cpp src/account/DictionaryExport.cpp)
             target_link_libraries(MetasequoiaImeLinuxAccountPanelTests PRIVATE MetasequoiaImeLinuxSnapshot MetasequoiaImeLinuxCloudSettings MetasequoiaImeLinuxOnline
                                   MetasequoiaImeLinuxSettings Boost::json PkgConfig::GTK3)
