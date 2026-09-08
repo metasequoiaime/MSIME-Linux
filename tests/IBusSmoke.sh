@@ -46,6 +46,16 @@ cp --reflink=auto "$source_data_dir/msime.db" "$METASEQUOIA_IME_DATA_DIR/msime.d
 cp --reflink=auto "$source_data_dir/others.db" "$METASEQUOIA_IME_DATA_DIR/others.db"
 cp --reflink=auto "$source_data_dir/english.db" "$METASEQUOIA_IME_DATA_DIR/english.db"
 ln -s "$source_helpcode_dir" "$METASEQUOIA_IME_DATA_DIR/helpcodes"
+export MSIME_SMOKE_DICTIONARY_DIR="$METASEQUOIA_IME_DATA_DIR"
+export MSIME_SMOKE_USER_DIR="$METASEQUOIA_IME_DATA_DIR"
+export MSIME_SMOKE_RESOURCE_DIR="$METASEQUOIA_IME_DATA_DIR"
+if [[ ${2:-legacy} == active ]]; then
+    "$build_dir/MetasequoiaImeLinuxPrepareInstallation" "$METASEQUOIA_IME_DATA_DIR"
+    export MSIME_SMOKE_RESOURCE_DIR="$METASEQUOIA_IME_DATA_DIR/runtime/resources/smoke"
+    export MSIME_SMOKE_USER_DIR="$METASEQUOIA_IME_DATA_DIR/runtime/generations/smoke/user"
+    export MSIME_SMOKE_DICTIONARY_DIR="$MSIME_SMOKE_USER_DIR/dictionaries/smoke"
+fi
+
 sed "s|<exec>.*</exec>|<exec>$engine --ibus</exec>|" "$component" >"$IBUS_COMPONENT_PATH/metasequoiaime.xml"
 mkdir -p "$XDG_CONFIG_HOME/metasequoiaime"
 printf '%s\n' \
@@ -105,6 +115,7 @@ ibus list-engine | grep -q 'metasequoiaime'
 
 if ! python3 - <<'PYTHON'
 import gi
+import fcntl
 import os
 from pathlib import Path
 import sqlite3
@@ -267,7 +278,9 @@ def refocus_when_active():
 
 GLib.timeout_add(500, activate_globally_if_needed)
 GLib.timeout_add(20, refocus_when_active)
-GLib.timeout_add_seconds(5, loop.quit)
+# Instrumented startup loads the real dictionary before registering properties.
+# Keep waiting for the registration signal, with a bounded allowance for ASan.
+GLib.timeout_add_seconds(30, loop.quit)
 loop.run()
 
 payload = "\n".join(payloads)
@@ -281,6 +294,16 @@ if missing:
         f"IBus properties were not registered: {missing}; active engine: {active_name}; "
         f"processes: {engine_processes}; payload: {payload}"
     )
+
+# A live native input context must prevent an independent publisher from
+# replacing its journal/dictionaries, including while the composition is idle.
+with (Path(os.environ["METASEQUOIA_IME_DATA_DIR"]) / "dictionary-sessions.lock").open("r+") as lease:
+    try:
+        fcntl.flock(lease, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        pass
+    else:
+        raise RuntimeError("Active IBus context did not retain its dictionary lease")
 
 initial_properties = property_snapshots[-1]
 if not (
@@ -464,14 +487,14 @@ def wait_for_commit(expected_text):
 
 
 lookup_candidate_updates.clear()
-data_directory = Path(os.environ["METASEQUOIA_IME_DATA_DIR"])
+data_directory = Path(os.environ["MSIME_SMOKE_DICTIONARY_DIR"])
 with sqlite3.connect(data_directory / "english.db") as database:
     expected_mixed_english = database.execute(
         "SELECT display FROM english_words WHERE word>=? AND word<? "
         "ORDER BY CASE WHEN word=? THEN 0 ELSE 1 END,weight DESC,length(word),word,display LIMIT 1",
         ("ni", "ni{", "ni"),
     ).fetchone()[0]
-with sqlite3.connect(data_directory / "others.db") as database:
+with sqlite3.connect(Path(os.environ["MSIME_SMOKE_RESOURCE_DIR"]) / "others.db") as database:
     expected_mixed_emoji = database.execute(
         "SELECT emoji FROM emoji_pinyin WHERE key>=? AND key<? ORDER BY sort_order LIMIT 1",
         ("ni", "ni\x7f"),
@@ -680,7 +703,7 @@ jianpin_candidates = next(
 )
 if jianpin_candidates is None:
     raise RuntimeError(f"Super-jianpin did not publish nh candidates: {lookup_candidate_updates}")
-data_directory = Path(os.environ["METASEQUOIA_IME_DATA_DIR"])
+data_directory = Path(os.environ["MSIME_SMOKE_DICTIONARY_DIR"])
 canonical_groups = {}
 with sqlite3.connect(data_directory / "msime.db") as dictionary_connection:
     for candidate in jianpin_candidates:
@@ -914,13 +937,13 @@ for character in learned_english:
 if not context.process_key_event(IBus.KEY_Return, 0, 0):
     raise RuntimeError("Enter did not commit raw dedicated English input.")
 wait_for_commit(learned_english)
-data_directory = Path(os.environ["METASEQUOIA_IME_DATA_DIR"])
+data_directory = Path(os.environ["MSIME_SMOKE_DICTIONARY_DIR"])
 with sqlite3.connect(data_directory / "english.db") as english_connection:
     learned_rows = english_connection.execute(
         "SELECT COUNT(*) FROM english_words WHERE word=? AND display=?",
         (learned_english.lower(), learned_english),
     ).fetchone()[0]
-with sqlite3.connect(data_directory / "msime_user.db") as user_connection:
+with sqlite3.connect(Path(os.environ["MSIME_SMOKE_USER_DIR"]) / "msime_user.db") as user_connection:
     journaled_rows = user_connection.execute(
         "SELECT COUNT(*) FROM user_dictionary_operations "
         "WHERE dictionary='english' AND key=? AND value=? AND operation='upsert'",
@@ -1018,7 +1041,7 @@ GLib.timeout_add_seconds(5, learned_order_loop.quit)
 learned_order_loop.run()
 if not any(first_candidate == "拟好" and visible for first_candidate, visible in lookup_updates):
     raise RuntimeError(f"The persisted frequency adjustment did not change candidate order: {lookup_updates}")
-user_database = Path(os.environ["METASEQUOIA_IME_DATA_DIR"]) / "msime_user.db"
+user_database = Path(os.environ["MSIME_SMOKE_USER_DIR"]) / "msime_user.db"
 with sqlite3.connect(user_database) as user_connection:
     learned_rows = user_connection.execute(
         "SELECT COUNT(*) FROM user_dictionary_operations "
@@ -1213,3 +1236,9 @@ fi
 SESSION
 
 daemon_pid=$(<"$smoke_root/ibus-daemon.pid")
+
+if [[ ${2:-legacy} == active ]]; then
+    "$build_dir/metasequoia-ime-dictionary-replay" --data-dir "$METASEQUOIA_IME_DATA_DIR"
+    [[ ! -e "$METASEQUOIA_IME_DATA_DIR/msime.db" && ! -e "$METASEQUOIA_IME_DATA_DIR/english.db" ]]
+    [[ $(cat "$METASEQUOIA_IME_DATA_DIR/msime_user.db") == "synthetic old journal must stay untouched" ]]
+fi

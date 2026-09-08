@@ -1,4 +1,5 @@
 #include "DictionaryLease.h"
+#include "account/NativeInstallation.h"
 #include "core/data_path.h"
 #include "user_dictionary/user_dictionary_journal.h"
 
@@ -33,6 +34,7 @@ int main(int argc, char **argv)
         }
     }
 
+    const bool explicit_databases = !main_database.empty() || !english_database.empty();
     if (main_database.empty())
     {
         main_database = data_directory / "msime.db";
@@ -65,8 +67,28 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    auto journal_directory = data_directory;
+    if (!explicit_databases)
+    {
+        try
+        {
+            const metasequoia::RuntimePaths legacy{data_directory, data_directory, data_directory / "cache",
+                                                   data_directory};
+            metasequoia::linux_ime::account::NativeInstallation installation(data_directory / "runtime", legacy);
+            const auto active = installation.active();
+            journal_directory = active.paths.user_data;
+            main_database = active.paths.dictionary("msime.db");
+            english_database = active.paths.dictionary("english.db");
+        }
+        catch (const std::exception &)
+        {
+            std::cerr << "Unable to resolve the active dictionary installation.\n";
+            return 1;
+        }
+    }
+
     const auto result =
-        user_dictionary::replay(metasequoia::path_to_utf8(data_directory / "msime_user.db"),
+        user_dictionary::replay(metasequoia::path_to_utf8(journal_directory / "msime_user.db"),
                                 metasequoia::path_to_utf8(main_database), metasequoia::path_to_utf8(english_database));
     if (!result.error.empty())
     {

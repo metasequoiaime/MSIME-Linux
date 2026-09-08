@@ -31,7 +31,7 @@ add_subdirectory(vendor/MetasequoiaImeEngine engine)
 # EndpointPolicy has no dependencies beyond the standard library and is needed by
 # the settings layer as well as the providers, so it belongs here rather than in
 # the online library.
-add_library(MetasequoiaImeLinuxCore STATIC src/DictionaryBootstrap.cpp src/DictionaryLease.cpp src/InputController.cpp
+add_library(MetasequoiaImeLinuxCore STATIC src/DictionaryBootstrap.cpp src/DictionaryLease.cpp src/account/NativeInstallation.cpp src/InputController.cpp
                                           src/online/EndpointPolicy.cpp src/TextTransform.cpp
                                           src/ToolLauncher.cpp)
 target_link_libraries(MetasequoiaImeLinuxCore PUBLIC MetasequoiaIme::Engine)
@@ -215,7 +215,7 @@ if(METASEQUOIA_IME_BUILD_IBUS)
     target_include_directories(MetasequoiaImeLinuxSettingsUiModel PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
     target_compile_options(MetasequoiaImeLinuxSettingsUiModel PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
-    add_library(MetasequoiaImeLinuxSnapshot STATIC src/account/SnapshotEnvelope.cpp src/account/PreparedSnapshot.cpp src/account/SnapshotContents.cpp src/account/SnapshotTransfer.cpp src/account/NativeSnapshot.cpp)
+    add_library(MetasequoiaImeLinuxSnapshot STATIC src/account/SnapshotEnvelope.cpp src/account/PreparedSnapshot.cpp src/account/SnapshotContents.cpp src/account/SnapshotTransfer.cpp src/account/NativeSnapshot.cpp src/account/NativeDictionaryRevision.cpp)
     target_link_libraries(MetasequoiaImeLinuxSnapshot PUBLIC MetasequoiaImeLinuxOnline PRIVATE Boost::json PkgConfig::GLIB)
     target_compile_options(MetasequoiaImeLinuxSnapshot PRIVATE -Wall -Wextra -Wpedantic -Werror)
     if(BUILD_TESTING)
@@ -368,9 +368,19 @@ if(METASEQUOIA_IME_BUILD_IBUS)
                               $<TARGET_FILE:MetasequoiaImeLinuxSecretStoreTests>)
         set_tests_properties(secret_store PROPERTIES TIMEOUT 15)
 
+        add_executable(MetasequoiaImeLinuxPrepareInstallation tests/PrepareNativeInstallation.cpp)
+        target_link_libraries(MetasequoiaImeLinuxPrepareInstallation PRIVATE MetasequoiaImeLinuxCore)
+        target_compile_options(MetasequoiaImeLinuxPrepareInstallation PRIVATE -Wall -Wextra -Wpedantic -Werror)
+        add_test(NAME ibus_active_dictionary
+                 COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/IBusSmoke.sh ${CMAKE_CURRENT_BINARY_DIR} active)
+        set_tests_properties(ibus_active_dictionary PROPERTIES TIMEOUT 60)
         add_test(NAME ibus_smoke
                  COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/IBusSmoke.sh ${CMAKE_CURRENT_BINARY_DIR})
-        set_tests_properties(ibus_smoke PROPERTIES TIMEOUT 15)
+        set_tests_properties(ibus_smoke PROPERTIES TIMEOUT 60)
+        add_test(NAME ibus_dictionary_lease COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_ibus_dictionary_lease_tests.py
+                 $<TARGET_FILE:metasequoia-ime-ibus>)
+        set_tests_properties(ibus_dictionary_lease PROPERTIES TIMEOUT 15)
 
         # Guards that install.sh and uninstall.sh stay symmetric. Copying the
         # dictionaries takes a while, so this needs more than the default.
@@ -380,6 +390,9 @@ if(METASEQUOIA_IME_BUILD_IBUS)
     endif()
 
     add_executable(metasequoia-ime-ibus src/IBusEngine.cpp)
+    if(BUILD_TESTING)
+        add_dependencies(metasequoia-ime-ibus MetasequoiaImeLinuxPrepareInstallation metasequoia-ime-dictionary-replay)
+    endif()
     target_link_libraries(metasequoia-ime-ibus PRIVATE MetasequoiaImeLinuxIBusKeyMapper MetasequoiaImeLinuxSettings
                                                        MetasequoiaImeLinuxOnline)
     target_compile_options(metasequoia-ime-ibus PRIVATE -Wall -Wextra -Wpedantic -Werror)
