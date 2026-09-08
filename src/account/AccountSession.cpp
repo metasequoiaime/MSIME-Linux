@@ -65,6 +65,25 @@ SessionSnapshot AccountSession::login(std::uint64_t generation, const std::strin
     ++generation_;
     return current();
 }
+Challenge AccountSession::begin_link(std::uint64_t generation, const std::string &provider, const std::string &target,
+                                     const online::CancellationCheck &cancelled)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    return client_.challenge(provider, target, authorized(generation, cancelled), cancelled);
+}
+SessionSnapshot AccountSession::link(std::uint64_t generation, const std::string &challenge,
+                                     const std::string &credential, const online::CancellationCheck &cancelled)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto token = authorized(generation, cancelled);
+    auto next = saved(client_.login(challenge, credential, token, cancelled));
+    if (next.tokens.user.id != session_->tokens.user.id)
+        throw Failure(0);
+    store_.save(next);
+    session_ = std::move(next);
+    ++generation_;
+    return current();
+}
 void AccountSession::discard()
 {
     // Server revocation already succeeded. Never keep using the revoked token,

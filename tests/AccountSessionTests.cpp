@@ -38,9 +38,11 @@ struct Store final : SecretStore
 struct Transport final : online::HttpTransport
 {
     int calls = 0;
+    online::HttpRequest last;
     online::HttpResponse response;
-    online::HttpResponse perform(const online::HttpRequest &, const online::CancellationCheck &) override
+    online::HttpResponse perform(const online::HttpRequest &request, const online::CancellationCheck &) override
     {
+        last = request;
         ++calls;
         return response;
     }
@@ -87,8 +89,27 @@ int main()
     fails([&] { session.login(initial.generation, "challenge", "credential"); });
     require(!session.snapshot().user, "failed persistence published login");
     secrets.available = true;
-    const auto logged = session.login(initial.generation, "challenge", "credential");
+    auto logged = session.login(initial.generation, "challenge", "credential");
     require(logged.user->id == "one" && logged.generation != initial.generation, "login missing generation change");
+    transport.response = {201, R"({"challenge_id":"link-challenge","expires_in":300})", {}};
+    const auto challenge = session.begin_link(logged.generation, "email", "synthetic@example.invalid");
+    require(boost::json::parse(transport.last.body).at("purpose").as_string() == "link", "binding purpose missing");
+    require(transport.last.headers.back() == "Authorization: Bearer " + std::string(64, 'c'),
+            "binding authorization missing");
+    transport.tokens("wrong-account");
+    fails([&] { session.link(logged.generation, challenge.id, "123456"); });
+    require(session.snapshot().user->id == "one", "binding switched account");
+    transport.tokens("one");
+    secrets.available = false;
+    fails([&] { session.link(logged.generation, challenge.id, "123456"); });
+    require(session.snapshot().generation == logged.generation, "failed binding save published session");
+    secrets.available = true;
+    const auto before_link = logged.generation;
+    logged = session.link(logged.generation, challenge.id, "123456");
+    require(logged.generation != before_link && logged.user->id == "one", "binding did not rotate generation");
+    const auto calls_after_link = transport.calls;
+    fails([&] { session.link(before_link, challenge.id, "123456"); });
+    require(transport.calls == calls_after_link, "stale binding reached network");
     transport.response = {
         200,
         R"({"user":{"id":"one","display_name":"更新昵称","created_at":"now"},"identities":[{"provider":"email","subject":"synthetic@example.invalid"}]})",

@@ -34,6 +34,7 @@ struct Store final : SecretStore
 };
 struct Transport final : online::HttpTransport
 {
+    bool linking = false, linked = false;
     std::string nickname = "测试用户";
     std::atomic<bool> block{false}, entered{false}, cancelled{false};
     online::HttpResponse perform(const online::HttpRequest &request, const online::CancellationCheck &check) override
@@ -48,10 +49,25 @@ struct Transport final : online::HttpTransport
         }
         if (request.url.find("/providers") != std::string::npos)
             return {
-                200, R"({"providers":{"apple":false,"google":false,"wechat":false,"phone":false,"email":true}})", {}};
+                200, R"({"providers":{"apple":false,"google":false,"wechat":false,"phone":true,"email":true}})", {}};
         if (request.url.find("/challenges") != std::string::npos)
+        {
+            linking = boost::json::parse(request.body).at("purpose").as_string() == "link";
+            const auto provider = boost::json::parse(request.body).at("provider").as_string();
+            require(provider == (linking ? "phone" : "email"), "wrong selected login provider");
+            if (linking)
+                require(request.headers.back().find("Authorization: Bearer ") == 0,
+                        "link challenge lacks authorization");
             return {201, R"({"challenge_id":"synthetic-challenge","expires_in":300})", {}};
+        }
         if (request.url.find("/login") != std::string::npos)
+        {
+            if (linking)
+            {
+                require(request.headers.back().find("Authorization: Bearer ") == 0,
+                        "link exchange lacks authorization");
+                linked = true;
+            }
             return {
                 200,
                 boost::json::serialize(boost::json::object{
@@ -62,16 +78,20 @@ struct Transport final : online::HttpTransport
                     {"user",
                      boost::json::object{{"id", "synthetic"}, {"display_name", "测试用户"}, {"created_at", "now"}}}}),
                 {}};
+        }
         if (request.url.find("/users/me") != std::string::npos)
         {
             if (request.method == online::HttpMethod::Patch)
                 nickname = std::string(boost::json::parse(request.body).at("display_name").as_string());
+            boost::json::array identities{
+                boost::json::object{{"provider", "email"}, {"subject", "synthetic@example.invalid"}}};
+            if (linked)
+                identities.push_back(boost::json::object{{"provider", "phone"}, {"subject", "+819012345678"}});
             return {200,
                     boost::json::serialize(boost::json::object{
                         {"user",
                          boost::json::object{{"id", "synthetic"}, {"display_name", nickname}, {"created_at", "now"}}},
-                        {"identities", boost::json::array{boost::json::object{
-                                           {"provider", "email"}, {"subject", "synthetic@example.invalid"}}}}}),
+                        {"identities", identities}}),
                     {}};
         }
         return {204, {}, {}};
@@ -91,6 +111,10 @@ template <typename Predicate> void wait(Predicate done)
 }
 GtkWidget *find(GtkWidget *root, const char *text)
 {
+    if (GTK_IS_COMBO_BOX(root) && g_strcmp0(text, "登录渠道") == 0)
+        return root;
+    if (GTK_IS_LABEL(root) && g_strcmp0(gtk_label_get_text(GTK_LABEL(root)), text) == 0)
+        return root;
     if (GTK_IS_BUTTON(root) && g_strcmp0(gtk_button_get_label(GTK_BUTTON(root)), text) == 0)
         return root;
     if (GTK_IS_ENTRY(root) && g_strcmp0(gtk_entry_get_placeholder_text(GTK_ENTRY(root)), text) == 0)
@@ -127,6 +151,7 @@ int main(int argc, char **argv)
     auto *target = find(panel, "邮箱或含国家区号的手机号码");
     auto *code = find(panel, "验证码");
     require(gtk_widget_get_visible(target), "login input hidden");
+    gtk_combo_box_set_active_id(GTK_COMBO_BOX(find(panel, "登录渠道")), "email");
     gtk_entry_set_text(GTK_ENTRY(target), "synthetic@example.invalid");
     click(panel, "发送验证码");
     wait([&] { return gtk_widget_get_sensitive(panel); });
@@ -149,6 +174,17 @@ int main(int argc, char **argv)
     require(std::string(gtk_entry_get_text(GTK_ENTRY(nickname))) == "新昵称" &&
                 boost::json::parse(secrets->record.value).at("user").at("display_name").as_string() == "新昵称",
             "nickname did not reach service and credential store");
+    gtk_combo_box_set_active_id(GTK_COMBO_BOX(find(panel, "登录渠道")), "phone");
+    gtk_entry_set_text(GTK_ENTRY(target), "+819012345678");
+    click(panel, "发送验证码");
+    wait([&] { return gtk_widget_get_sensitive(panel); });
+    gtk_entry_set_text(GTK_ENTRY(code), "123456");
+    click(panel, "绑定登录方式");
+    wait([&] { return gtk_widget_get_sensitive(panel); });
+    require(http->linked, "signed-in flow did not bind identity");
+    require(find(panel, "已绑定登录方式：邮箱、手机号码") != nullptr, "linked identity not shown");
+    require(boost::json::parse(secrets->record.value).at("user").at("id").as_string() == "synthetic",
+            "binding replaced user");
     click(panel, "刷新资料");
     wait([&] { return gtk_widget_get_sensitive(panel); });
     click(panel, "退出登录");

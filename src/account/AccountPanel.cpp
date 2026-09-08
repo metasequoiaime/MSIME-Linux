@@ -27,6 +27,8 @@ struct Panel
     std::map<std::string, bool> providers;
     Profile profile;
     Challenge challenge;
+    std::uint64_t challenge_generation = 0;
+    bool challenge_is_link = false;
     gint64 challenge_deadline = 0;
     bool ready = false;
 };
@@ -52,7 +54,8 @@ struct Work
 void render(Panel &p)
 {
     const bool signed_in = p.snapshot.user.has_value();
-    gtk_widget_set_visible(p.form, !signed_in);
+    gtk_widget_set_visible(p.form, TRUE);
+    gtk_button_set_label(GTK_BUTTON(p.login), signed_in ? "绑定登录方式" : "登录");
     gtk_widget_set_visible(p.details, signed_in);
     gtk_widget_set_visible(p.logout, signed_in);
     gtk_widget_set_visible(p.remove, signed_in);
@@ -79,15 +82,22 @@ void worker(GTask *task, gpointer, gpointer data, GCancellable *)
             p.ready = true;
             break;
         case Action::Challenge:
-            p.challenge = p.client.challenge(w.provider, w.target, {}, cancelled);
+            p.challenge_is_link = p.snapshot.user.has_value();
+            p.challenge_generation = p.snapshot.generation;
+            p.challenge = p.challenge_is_link
+                              ? p.session.begin_link(p.snapshot.generation, w.provider, w.target, cancelled)
+                              : p.client.challenge(w.provider, w.target, {}, cancelled);
             p.challenge_deadline =
                 g_get_monotonic_time() + static_cast<gint64>(p.challenge.expires_in) * G_USEC_PER_SEC;
             w.message = "验证码已发送，请在有效期内输入。";
             break;
         case Action::Login:
-            if (p.challenge.id.empty() || g_get_monotonic_time() >= p.challenge_deadline)
+            if (p.challenge.id.empty() || g_get_monotonic_time() >= p.challenge_deadline ||
+                p.challenge_generation != p.snapshot.generation || p.challenge_is_link != p.snapshot.user.has_value())
                 throw Failure(400);
-            p.snapshot = p.session.login(p.snapshot.generation, p.challenge.id, w.code, cancelled);
+            p.snapshot = p.challenge_is_link
+                             ? p.session.link(p.snapshot.generation, p.challenge.id, w.code, cancelled)
+                             : p.session.login(p.snapshot.generation, p.challenge.id, w.code, cancelled);
             p.challenge = {};
             p.profile = {};
             p.profile = p.session.profile(p.snapshot.generation, cancelled);
@@ -170,6 +180,8 @@ void finished(GObject *, GAsyncResult *result, gpointer)
     if (w.message.empty())
         w.message = p.snapshot.user ? "已登录：" + p.snapshot.user->display_name : "尚未登录";
     gtk_label_set_text(GTK_LABEL(p.status), w.message.c_str());
+    if (p.challenge_generation != p.snapshot.generation)
+        p.challenge = {};
     render(p);
     gtk_widget_set_sensitive(p.send, gtk_combo_box_get_active_id(GTK_COMBO_BOX(p.provider)) != nullptr);
 }

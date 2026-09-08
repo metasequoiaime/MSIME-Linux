@@ -23,6 +23,10 @@ class AccountSession
     SessionSnapshot snapshot() const;
     SessionSnapshot login(std::uint64_t generation, const std::string &challenge, const std::string &credential,
                           const online::CancellationCheck &cancelled = {});
+    Challenge begin_link(std::uint64_t generation, const std::string &provider, const std::string &target,
+                         const online::CancellationCheck &cancelled = {});
+    SessionSnapshot link(std::uint64_t generation, const std::string &challenge, const std::string &credential,
+                         const online::CancellationCheck &cancelled = {});
     std::string access_token(std::uint64_t generation, const online::CancellationCheck &cancelled = {});
     Profile profile(std::uint64_t generation, const online::CancellationCheck &cancelled = {});
     Profile rename(std::uint64_t generation, const std::string &name, const online::CancellationCheck &cancelled = {});
