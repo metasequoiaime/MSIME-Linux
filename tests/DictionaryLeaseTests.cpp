@@ -56,6 +56,9 @@ int main(int argc, char **argv)
     auto second = DictionaryLease::acquire(root, Mode::Shared);
     require(first && second, "shared sessions excluded one another");
     require(!DictionaryLease::acquire(root, Mode::Exclusive), "publication bypassed active sessions");
+    bool called = false;
+    require(!first->exclusively([&] { called = true; }) && !called, "upgrade ignored another session");
+    require(!DictionaryLease::acquire(root, Mode::Exclusive), "failed upgrade lost shared lease");
     first.reset();
     require(!DictionaryLease::acquire(root, Mode::Exclusive), "publication ignored remaining session");
     second.reset();
@@ -64,6 +67,19 @@ int main(int argc, char **argv)
     require(!DictionaryLease::acquire(root, Mode::Shared) && !DictionaryLease::acquire(root, Mode::Exclusive),
             "exclusive publication did not exclude sessions/writers");
     writer.reset();
+
+    auto publisher = DictionaryLease::acquire(root, Mode::Shared);
+    require(publisher->exclusively([&] {
+        require(!DictionaryLease::acquire(root, Mode::Shared), "new reader entered during publication");
+        require(!DictionaryLease::acquire(root, Mode::Exclusive), "second publisher entered conversion");
+        fails([&] { publisher->exclusively([] {}); });
+    }),
+            "sole session could not publish");
+    require(bool(DictionaryLease::acquire(root, Mode::Shared)), "successful publication did not restore sharing");
+    fails([&] { publisher->exclusively([] { throw std::runtime_error("synthetic publication failure"); }); });
+    require(bool(DictionaryLease::acquire(root, Mode::Shared)), "exception stranded exclusive lease");
+    require(!DictionaryLease::acquire(root, Mode::Exclusive), "exception lost original shared lease");
+    publisher.reset();
 
     // Exercise independent processes, crash release, and the stable inode.
     int ready[2];
@@ -89,6 +105,32 @@ int main(int argc, char **argv)
     require(waitpid(child, &status, 0) == child && WIFSIGNALED(status), "crashed child not reaped");
     require(bool(DictionaryLease::acquire(root, Mode::Exclusive)), "crash stranded lock");
     require(fs::is_regular_file(root / "dictionary-sessions.lock"), "lease deleted stable inode");
+
+    // A publisher crashing inside its operation must release BOTH locks.
+    require(pipe(ready) == 0, "pipe failed");
+    const auto publishing_child = fork();
+    require(publishing_child >= 0, "fork failed");
+    if (publishing_child == 0)
+    {
+        close(ready[0]);
+        auto lease = DictionaryLease::acquire(root, Mode::Shared);
+        if (!lease || !lease->exclusively([&] {
+                if (write(ready[1], "r", 1) != 1)
+                    _exit(2);
+                for (;;)
+                    pause();
+            }))
+            _exit(2);
+        _exit(3);
+    }
+    close(ready[1]);
+    require(read(ready[0], &byte, 1) == 1, "publisher not ready");
+    close(ready[0]);
+    require(!DictionaryLease::acquire(root, Mode::Shared), "reader bypassed publisher gate");
+    require(!DictionaryLease::acquire(root, Mode::Exclusive), "publisher bypassed publisher gate");
+    require(kill(publishing_child, SIGKILL) == 0, "kill failed");
+    require(waitpid(publishing_child, &status, 0) == publishing_child && WIFSIGNALED(status), "publisher not reaped");
+    require(bool(DictionaryLease::acquire(root, Mode::Exclusive)), "crash stranded publication gate");
 
     // A forked child inherits flock descriptions, but exec must close them.
     auto inherited = DictionaryLease::acquire(root, Mode::Shared);

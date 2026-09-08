@@ -15,7 +15,7 @@ with tempfile.TemporaryDirectory(prefix="msime-replay-lease-") as name:
         result = subprocess.run(command, capture_output=True, text=True, timeout=5)
         assert result.returncode == 1, result
         assert "publication is in progress" in result.stderr, result.stderr
-        assert list(root.iterdir()) == [lock], "busy replay wrote dictionary files"
+        assert set(root.iterdir()) == {lock, root / "dictionary-publication.lock"}, "busy replay wrote dictionary files"
         fcntl.flock(handle, fcntl.LOCK_UN)
     result = subprocess.run(command, capture_output=True, text=True, timeout=5)
     assert result.returncode == 0, result.stderr

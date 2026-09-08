@@ -1,5 +1,6 @@
 #pragma once
 #include <filesystem>
+#include <functional>
 #include <memory>
 namespace metasequoia::linux_ime
 {
@@ -16,14 +17,21 @@ class DictionaryLease
         Exclusive
     };
     static std::unique_ptr<DictionaryLease> acquire(const std::filesystem::path &directory, Mode mode);
+    // Main-thread/externally serialized use only. The host must destroy native
+    // references before calling. Busy leaves this lease shared; after callback
+    // success or exception it is shared again. The callback must not reenter.
+    bool exclusively(const std::function<void()> &operation);
     ~DictionaryLease();
     DictionaryLease(const DictionaryLease &) = delete;
     DictionaryLease &operator=(const DictionaryLease &) = delete;
 
   private:
-    explicit DictionaryLease(int descriptor) : descriptor_(descriptor)
+    DictionaryLease(int descriptor, int gate, Mode mode) : descriptor_(descriptor), gate_(gate), mode_(mode)
     {
     }
     int descriptor_;
+    int gate_;
+    Mode mode_;
+    bool publishing_ = false;
 };
 } // namespace metasequoia::linux_ime
