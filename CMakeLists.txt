@@ -404,6 +404,9 @@ if(METASEQUOIA_IME_BUILD_IBUS)
         add_executable(MetasequoiaImeLinuxPrepareInstallation tests/PrepareNativeInstallation.cpp)
         target_link_libraries(MetasequoiaImeLinuxPrepareInstallation PRIVATE MetasequoiaImeLinuxCore)
         target_compile_options(MetasequoiaImeLinuxPrepareInstallation PRIVATE -Wall -Wextra -Wpedantic -Werror)
+        add_test(NAME ibus_dictionary_publication
+                 COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/IBusSmoke.sh ${CMAKE_CURRENT_BINARY_DIR} live)
+        set_tests_properties(ibus_dictionary_publication PROPERTIES TIMEOUT 120)
         add_test(NAME ibus_active_dictionary
                  COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/IBusSmoke.sh ${CMAKE_CURRENT_BINARY_DIR} active)
         set_tests_properties(ibus_active_dictionary PROPERTIES TIMEOUT 60)
@@ -427,7 +430,7 @@ if(METASEQUOIA_IME_BUILD_IBUS)
         add_dependencies(metasequoia-ime-ibus MetasequoiaImeLinuxPrepareInstallation metasequoia-ime-dictionary-replay)
     endif()
     target_link_libraries(metasequoia-ime-ibus PRIVATE MetasequoiaImeLinuxIBusKeyMapper MetasequoiaImeLinuxSettings
-                                                       MetasequoiaImeLinuxOnline)
+                                                       MetasequoiaImeLinuxOnline MetasequoiaImeLinuxSnapshot)
     target_compile_options(metasequoia-ime-ibus PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
     configure_file(resources/metasequoiaime.xml.in ${CMAKE_CURRENT_BINARY_DIR}/metasequoiaime.xml @ONLY)

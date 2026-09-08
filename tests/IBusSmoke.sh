@@ -49,8 +49,13 @@ ln -s "$source_helpcode_dir" "$METASEQUOIA_IME_DATA_DIR/helpcodes"
 export MSIME_SMOKE_DICTIONARY_DIR="$METASEQUOIA_IME_DATA_DIR"
 export MSIME_SMOKE_USER_DIR="$METASEQUOIA_IME_DATA_DIR"
 export MSIME_SMOKE_RESOURCE_DIR="$METASEQUOIA_IME_DATA_DIR"
-if [[ ${2:-legacy} == active ]]; then
-    "$build_dir/MetasequoiaImeLinuxPrepareInstallation" "$METASEQUOIA_IME_DATA_DIR"
+if [[ ${2:-legacy} == active || ${2:-legacy} == live ]]; then
+    if [[ ${2:-legacy} == live ]]; then
+        "$build_dir/MetasequoiaImeLinuxPrepareInstallation" "$METASEQUOIA_IME_DATA_DIR" live
+        export MSIME_SMOKE_PUBLISH=1
+    else
+        "$build_dir/MetasequoiaImeLinuxPrepareInstallation" "$METASEQUOIA_IME_DATA_DIR"
+    fi
     export MSIME_SMOKE_RESOURCE_DIR="$METASEQUOIA_IME_DATA_DIR/runtime/resources/smoke"
     export MSIME_SMOKE_USER_DIR="$METASEQUOIA_IME_DATA_DIR/runtime/generations/smoke/user"
     export MSIME_SMOKE_DICTIONARY_DIR="$MSIME_SMOKE_USER_DIR/dictionaries/smoke"
@@ -1227,6 +1232,90 @@ if (expected_warning, True) not in auxiliary_messages:
     raise RuntimeError(f"A settings save failure did not publish the expected warning: {auxiliary_messages}")
 if not context.process_key_event(IBus.KEY_n, 0, 0):
     raise RuntimeError("A settings save failure interrupted subsequent input.")
+if os.environ.get("MSIME_SMOKE_PUBLISH"):
+    connection = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+    def inspect_dictionary():
+        return connection.call_sync("app.msime.Dictionary", "/app/msime/Dictionary", "app.msime.Dictionary",
+                                    "Inspect", None, GLib.VariantType.new("(sss)"),
+                                    Gio.DBusCallFlags.NO_AUTO_START, 30000, None).unpack()
+    root, token, revision = inspect_dictionary()
+    if Path(root) != Path(os.environ["METASEQUOIA_IME_DATA_DIR"]):
+        raise RuntimeError("Dictionary service resolved the wrong coordination root")
+    def publish(expected_token=token, expected_revision=revision, generation="replacement"):
+        return connection.call_sync("app.msime.Dictionary", "/app/msime/Dictionary", "app.msime.Dictionary",
+                                    "Publish", GLib.Variant("(ssss)", (generation, "smoke", expected_token, expected_revision)),
+                                    GLib.VariantType.new("(sb)"), Gio.DBusCallFlags.NO_AUTO_START, 30000, None).unpack()
+    # The final key above deliberately leaves an active composition.
+    if publish() != ("busy", False):
+        raise RuntimeError("Publication discarded an active composition")
+    context.process_key_event(IBus.KEY_Escape, 0, 0)
+    with (Path(root) / "dictionary-sessions.lock").open("r+") as reader:
+        fcntl.flock(reader, fcntl.LOCK_SH | fcntl.LOCK_NB)
+        if publish() != ("busy", False):
+            raise RuntimeError("Publication ignored another native reader")
+    if not context.process_key_event(IBus.KEY_n, 0, 0):
+        raise RuntimeError("Busy publication did not reconstruct the original controller")
+    context.process_key_event(IBus.KEY_Escape, 0, 0)
+    private_bus = bus.get_connection()
+    extra_engine = private_bus.call_sync("com.houko.inputmethod.MetasequoiaImeLinux", "/org/freedesktop/IBus/Factory",
+                                        "org.freedesktop.IBus.Factory", "CreateEngine",
+                                        GLib.Variant("(s)", ("metasequoiaime",)), GLib.VariantType.new("(o)"),
+                                        Gio.DBusCallFlags.NO_AUTO_START, 30000, None).unpack()[0]
+    def extra_call(method, parameters=None, result_type=None):
+        return private_bus.call_sync("com.houko.inputmethod.MetasequoiaImeLinux", extra_engine,
+                                     "org.freedesktop.IBus.Engine", method, parameters,
+                                     GLib.VariantType.new(result_type) if result_type else None,
+                                     Gio.DBusCallFlags.NO_AUTO_START, 30000, None)
+    extra_call("Enable")
+    extra_call("PropertyActivate", GLib.Variant("(su)", ("Scheme.Quanpin", int(IBus.PropState.CHECKED))))
+    extra_call("PropertyActivate", GLib.Variant("(su)", ("InputMode", int(IBus.PropState.CHECKED))))
+    private_bus.signal_subscribe(None, "org.freedesktop.IBus.Engine", "CommitText", extra_engine,
+                                 None, Gio.DBusSignalFlags.NONE, text_committed)
+    if not extra_call("ProcessKeyEvent", GLib.Variant("(uuu)", (IBus.KEY_n, 0, 0)), "(b)").unpack()[0]:
+        raise RuntimeError("Second native context did not accept its composition")
+    if publish() != ("busy", False):
+        raise RuntimeError("Publication ignored another local input context")
+    extra_call("Reset")
+    if publish(expected_revision="0" * 64) != ("conflict", False):
+        raise RuntimeError("Publication ignored the native journal revision")
+    if publish(expected_token=token + "obsolete") != ("conflict", False):
+        raise RuntimeError("Publication ignored the active generation token")
+    try:
+        publish(generation="missing")
+    except GLib.Error:
+        pass
+    else:
+        raise RuntimeError("An unstaged generation was accepted")
+    if inspect_dictionary()[1] != token:
+        raise RuntimeError("Rejected publication changed the active marker")
+    if publish() != ("published", True):
+        raise RuntimeError("Idle native publication did not succeed")
+    switched_root, switched_token, switched_revision = inspect_dictionary()
+    if switched_root != root or "replacement" not in switched_token or switched_token == token:
+        raise RuntimeError("Publication did not adopt the new generation")
+    committed_text.clear()
+    for key in (IBus.KEY_q, IBus.KEY_q, IBus.KEY_space):
+        if not context.process_key_event(key, 0, 0):
+            raise RuntimeError(f"Rebuilt controller stopped accepting Wubi key {key}")
+    wait_for_commit("代际测试词")
+    committed_text.clear()
+    for key in [ord(letter) for letter in "daijiceshici"] + [IBus.KEY_space]:
+        if not extra_call("ProcessKeyEvent", GLib.Variant("(uuu)", (key, 0, 0)), "(b)").unpack()[0]:
+            raise RuntimeError("Second native context did not retain its Quanpin scheme")
+    wait_for_commit("代际测试词")
+    extra_call("Reset")
+    private_bus.call_sync("com.houko.inputmethod.MetasequoiaImeLinux", extra_engine,
+                          "org.freedesktop.IBus.Service", "Destroy", None, None,
+                          Gio.DBusCallFlags.NO_AUTO_START, 30000, None)
+    # The process lifetime lease remains shared after a successful publication.
+    with (Path(root) / "dictionary-sessions.lock").open("r+") as publisher:
+        try:
+            fcntl.flock(publisher, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            pass
+        else:
+            raise RuntimeError("Rebuilt native session no longer holds its lease")
+    print("Live dictionary publication preserved input, checked conflicts and rebuilt native sessions")
 print("Registered IBus properties: " + ", ".join(sorted(expected)))
 PYTHON
 then
@@ -1237,7 +1326,7 @@ SESSION
 
 daemon_pid=$(<"$smoke_root/ibus-daemon.pid")
 
-if [[ ${2:-legacy} == active ]]; then
+if [[ ${2:-legacy} == active || ${2:-legacy} == live ]]; then
     "$build_dir/metasequoia-ime-dictionary-replay" --data-dir "$METASEQUOIA_IME_DATA_DIR"
     [[ ! -e "$METASEQUOIA_IME_DATA_DIR/msime.db" && ! -e "$METASEQUOIA_IME_DATA_DIR/english.db" ]]
     [[ $(cat "$METASEQUOIA_IME_DATA_DIR/msime_user.db") == "synthetic old journal must stay untouched" ]]
