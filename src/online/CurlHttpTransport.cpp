@@ -140,14 +140,18 @@ HttpResponse CurlHttpTransport::perform(const HttpRequest &request, const Cancel
         return {0, {}, "libcurl header configuration failed"};
     }
 
-    if ((request.method == HttpMethod::Patch || request.method == HttpMethod::Delete) &&
+    if ((request.method == HttpMethod::Patch || request.method == HttpMethod::Put ||
+         request.method == HttpMethod::Delete) &&
         curl_easy_setopt(handle.get(), CURLOPT_CUSTOMREQUEST,
-                         request.method == HttpMethod::Patch ? "PATCH" : "DELETE") != CURLE_OK)
+                         request.method == HttpMethod::Patch ? "PATCH"
+                         : request.method == HttpMethod::Put ? "PUT"
+                                                             : "DELETE") != CURLE_OK)
     {
         free_headers();
         return {0, {}, "libcurl method configuration failed"};
     }
-    if ((request.method == HttpMethod::Post || request.method == HttpMethod::Patch) &&
+    if ((request.method == HttpMethod::Post || request.method == HttpMethod::Patch ||
+         request.method == HttpMethod::Put) &&
         ((request.method == HttpMethod::Post && curl_easy_setopt(handle.get(), CURLOPT_POST, 1L) != CURLE_OK) ||
          curl_easy_setopt(handle.get(), CURLOPT_POSTFIELDS, request.body.data()) != CURLE_OK ||
          curl_easy_setopt(handle.get(), CURLOPT_POSTFIELDSIZE_LARGE, static_cast<curl_off_t>(request.body.size())) !=

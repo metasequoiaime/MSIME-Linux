@@ -123,5 +123,78 @@ int main()
     malformed["access_token"] = "not-a-session-token";
     transport.response = {200, boost::json::serialize(malformed), {}};
     fails([&] { client.login("synthetic-challenge", "synthetic-credential"); }, 0);
+    const auto clip = boost::json::object{{"id", token('f')}, {"text", "合成剪贴板内容"}, {"updated_at", "now"}};
+    transport.response = {
+        200, boost::json::serialize(boost::json::object{{"enabled", true}, {"items", boost::json::array{clip}}}), {}};
+    const auto clipboard = client.clipboard(token('a'), "你&x=#?");
+    require(clipboard.enabled && clipboard.items.size() == 1 && clipboard.items[0].text == "合成剪贴板内容",
+            "clipboard not decoded");
+    require(transport.last.url == "https://api.msime.app/v1/users/me/clipboard?q=%E4%BD%A0%26x%3D%23%3F",
+            "search query escaped incorrectly");
+    require(transport.last.max_response_bytes == 2 * 1024 * 1024, "clipboard response limit too small");
+    transport.response.body = "{\"enabled\":false}";
+    client.set_clipboard_enabled(false, token('a'));
+    require(transport.last.method == online::HttpMethod::Put &&
+                !boost::json::parse(transport.last.body).at("enabled").as_bool(),
+            "clipboard disable not PUT");
+    transport.response.body = boost::json::serialize(clip);
+    require(client.add_clipboard("合成剪贴板内容", token('a')).id == token('f'), "clipboard upload not decoded");
+    require(transport.last.method == online::HttpMethod::Post &&
+                boost::json::parse(transport.last.body).at("text").as_string() == "合成剪贴板内容",
+            "clipboard upload not encoded");
+    std::string emoji;
+    for (int i = 0; i < 2000; ++i)
+        emoji += "😀";
+    (void)client.add_clipboard(emoji, token('a'));
+    const int before_invalid_clipboard = transport.calls;
+    fails([&] { client.add_clipboard(emoji + "😀", token('a')); }, 400);
+    fails([&] { client.add_clipboard(std::string("bad\0text", 8), token('a')); }, 400);
+    fails([&] { client.add_clipboard("\xff", token('a')); }, 400);
+    fails([&] { client.clipboard(token('a'), std::string(1025, 'a')); }, 400);
+    fails([&] { client.delete_clipboard("../other", token('a')); }, 400);
+    require(transport.calls == before_invalid_clipboard, "invalid clipboard input reached network");
+    transport.response = {204, {}, {}};
+    client.delete_clipboard(token('f'), token('a'));
+    require(transport.last.url == "https://api.msime.app/v1/users/me/clipboard/" + token('f'),
+            "single delete URL wrong");
+    client.delete_clipboard({}, token('a'));
+    require(transport.last.method == online::HttpMethod::Delete &&
+                transport.last.url == "https://api.msime.app/v1/users/me/clipboard",
+            "clear URL wrong");
+    transport.response = {200, R"({"enabled":"true","items":[]})", {}};
+    fails([&] { client.clipboard(token('a')); }, 0);
+    transport.response = {
+        200,
+        R"({"fields":{"appearance.page_size":{"type":"integer"},"general.cloud_candidates":{"type":"boolean"},"platform.ios.custom_keyboard_skin":{"type":"string","maxLength":786432}},"maximum_bytes":1048576,"update_mode":"replace","revision_required":true})",
+        {}};
+    const auto schema = client.preferences_schema(token('a'));
+    require(schema.fields.size() == 3 && schema.maximum_bytes == 1048576, "settings schema not decoded");
+    transport.response.body = R"({"revision":3,"settings":{"appearance.page_size":5,"general.cloud_candidates":true}})";
+    auto preferences = client.preferences(token('a'));
+    require(preferences.revision == 3 && std::get<std::int64_t>(preferences.settings.at("appearance.page_size")) == 5,
+            "settings snapshot not decoded");
+    preferences.settings["platform.ios.custom_keyboard_skin"] = std::string(70000, 'x');
+    auto response_settings = boost::json::object{{"appearance.page_size", 5},
+                                                 {"general.cloud_candidates", true},
+                                                 {"platform.ios.custom_keyboard_skin", std::string(70000, 'x')}};
+    transport.response.body =
+        boost::json::serialize(boost::json::object{{"revision", 4}, {"settings", response_settings}});
+    require(client.put_preferences(preferences, schema, token('a')).revision == 4, "settings update not decoded");
+    require(transport.last.method == online::HttpMethod::Put && transport.last.body.size() > 65536 &&
+                boost::json::parse(transport.last.body).at("revision").as_int64() == 3,
+            "large settings replace not sent correctly");
+    const int before_invalid_preferences = transport.calls;
+    preferences.settings["private.token"] = std::string("never-send");
+    fails([&] { client.put_preferences(preferences, schema, token('a')); }, 400);
+    preferences.settings.erase("private.token");
+    preferences.settings["appearance.page_size"] = true;
+    fails([&] { client.put_preferences(preferences, schema, token('a')); }, 400);
+    require(transport.calls == before_invalid_preferences, "unknown or mistyped setting reached network");
+    preferences.settings["appearance.page_size"] = std::int64_t(5);
+    transport.response = {409, "private conflict detail", {}};
+    fails([&] { client.put_preferences(preferences, schema, token('a')); }, 409);
+    require(transport.calls == before_invalid_preferences + 1, "conflicting update was retried");
+    transport.response = {200, R"({"revision":0,"settings":{"bad":[]}})", {}};
+    fails([&] { client.preferences(token('a')); }, 0);
     std::cout << "backend account protocol tests passed\n";
 }

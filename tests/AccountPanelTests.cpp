@@ -34,7 +34,9 @@ struct Store final : SecretStore
 };
 struct Transport final : online::HttpTransport
 {
-    bool linking = false, linked = false;
+    bool linking = false, linked = false, cloud_enabled = false;
+    int cloud_requests = 0;
+    boost::json::array cloud_items;
     std::string nickname = "测试用户";
     std::atomic<bool> block{false}, entered{false}, cancelled{false};
     online::HttpResponse perform(const online::HttpRequest &request, const online::CancellationCheck &check) override
@@ -79,6 +81,38 @@ struct Transport final : online::HttpTransport
                      boost::json::object{{"id", "synthetic"}, {"display_name", "测试用户"}, {"created_at", "now"}}}}),
                 {}};
         }
+        if (request.url.find("/clipboard") != std::string::npos)
+        {
+            ++cloud_requests;
+            if (request.url.find("/settings") != std::string::npos)
+            {
+                cloud_enabled = boost::json::parse(request.body).at("enabled").as_bool();
+                if (!cloud_enabled)
+                    cloud_items.clear();
+                return {200, boost::json::serialize(boost::json::object{{"enabled", cloud_enabled}}), {}};
+            }
+            if (request.method == online::HttpMethod::Post)
+            {
+                if (!cloud_enabled)
+                    return {403, "{}", {}};
+                auto item = boost::json::object{{"id", std::string(64, 'f')},
+                                                {"text", boost::json::parse(request.body).at("text")},
+                                                {"updated_at", "now"}};
+                cloud_items.push_back(item);
+                return {200, boost::json::serialize(item), {}};
+            }
+            if (request.method == online::HttpMethod::Delete)
+            {
+                cloud_items.clear();
+                return {204, {}, {}};
+            }
+            return {
+                200,
+                boost::json::serialize(boost::json::object{
+                    {"enabled", cloud_enabled},
+                    {"items", request.url.find("missing") != std::string::npos ? boost::json::array{} : cloud_items}}),
+                {}};
+        }
         if (request.url.find("/users/me") != std::string::npos)
         {
             if (request.method == online::HttpMethod::Patch)
@@ -111,6 +145,10 @@ template <typename Predicate> void wait(Predicate done)
 }
 GtkWidget *find(GtkWidget *root, const char *text)
 {
+    if (GTK_IS_TEXT_VIEW(root) && g_strcmp0(text, "云端输入") == 0)
+        return root;
+    if (GTK_IS_TREE_VIEW(root) && g_strcmp0(text, "云端列表") == 0)
+        return root;
     if (GTK_IS_COMBO_BOX(root) && g_strcmp0(text, "登录渠道") == 0)
         return root;
     if (GTK_IS_LABEL(root) && g_strcmp0(gtk_label_get_text(GTK_LABEL(root)), text) == 0)
@@ -200,10 +238,63 @@ int main(int argc, char **argv)
             "binding replaced user");
     click(panel, "刷新资料");
     wait([&] { return gtk_widget_get_sensitive(panel); });
+    require(http->cloud_requests == 0, "cloud data accessed without explicit action");
+    click(panel, "加载或搜索云记录");
+    wait([&] { return gtk_widget_get_sensitive(panel); });
+    require(!gtk_widget_is_sensitive(find(panel, "上传文字")), "upload allowed while disabled");
+    click(panel, "开启云剪贴板");
+    wait([&] { return gtk_widget_get_sensitive(panel); });
+    auto *cloud_text = gtk_text_view_get_buffer(GTK_TEXT_VIEW(find(panel, "云端输入")));
+    auto *cloud_model = gtk_tree_view_get_model(GTK_TREE_VIEW(find(panel, "云端列表")));
+    auto *cloud_query = find(panel, "搜索云剪贴板");
+    gtk_text_buffer_set_text(cloud_text, "合成云端文字", -1);
+    click(panel, "上传文字");
+    wait([&] { return gtk_widget_get_sensitive(panel); });
+    require(http->cloud_items.size() == 1 && gtk_tree_model_iter_n_children(cloud_model, nullptr) == 1,
+            "cloud upload not shown");
+    gtk_entry_set_text(GTK_ENTRY(cloud_query), "missing");
+    click(panel, "加载或搜索云记录");
+    wait([&] { return gtk_widget_get_sensitive(panel); });
+    require(gtk_tree_model_iter_n_children(cloud_model, nullptr) == 0, "cloud search not applied");
+    gtk_entry_set_text(GTK_ENTRY(cloud_query), "");
+    click(panel, "加载或搜索云记录");
+    wait([&] { return gtk_widget_get_sensitive(panel); });
+    auto *path = gtk_tree_path_new_from_indices(0, -1);
+    gtk_tree_selection_select_path(gtk_tree_view_get_selection(GTK_TREE_VIEW(find(panel, "云端列表"))), path);
+    gtk_tree_path_free(path);
+    click(panel, "复制选中记录");
+    gchar *copied = gtk_clipboard_wait_for_text(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD));
+    require(copied && std::string(copied) == "合成云端文字", "selected cloud record not copied");
+    g_free(copied);
+    click(panel, "删除选中记录");
+    wait([&] { return gtk_widget_get_sensitive(panel); });
+    require(http->cloud_items.empty(), "selected record not deleted");
+    gtk_text_buffer_set_text(cloud_text, "关闭清理合成记录", -1);
+    click(panel, "上传文字");
+    wait([&] { return gtk_widget_get_sensitive(panel); });
+    auto respond = +[](gpointer response) -> gboolean {
+        GList *windows = gtk_window_list_toplevels();
+        for (auto *item = windows; item; item = item->next)
+            if (GTK_IS_DIALOG(item->data))
+                gtk_dialog_response(GTK_DIALOG(item->data), GPOINTER_TO_INT(response));
+        g_list_free(windows);
+        return G_SOURCE_REMOVE;
+    };
+    g_idle_add(respond, GINT_TO_POINTER(GTK_RESPONSE_CANCEL));
+    click(panel, "清空云记录");
+    require(http->cloud_items.size() == 1, "cancelled clear mutated data");
+    g_idle_add(respond, GINT_TO_POINTER(GTK_RESPONSE_OK));
+    click(panel, "关闭云剪贴板");
+    wait([&] { return gtk_widget_get_sensitive(panel); });
+    require(!http->cloud_enabled && http->cloud_items.empty(), "disable did not clear cloud records");
+    gtk_text_buffer_set_text(cloud_text, "退出时应丢弃的草稿", -1);
     click(panel, "退出登录");
     wait([&] { return gtk_widget_get_sensitive(panel); });
     require(secrets->lookup(SecretKind::AccountSession, "msime").status == SecretStatus::NotFound,
             "logout credentials remained");
+    require(gtk_text_buffer_get_char_count(cloud_text) == 0 &&
+                gtk_tree_model_iter_n_children(cloud_model, nullptr) == 0,
+            "logout retained cloud data");
     gtk_widget_destroy(window);
     http->block.store(true);
     panel = account::create_account_panel(secrets, http);

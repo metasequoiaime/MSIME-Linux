@@ -172,6 +172,53 @@ Profile AccountSession::rename(std::uint64_t generation, const std::string &name
     client_.rename(name, token, cancelled);
     return read_profile(token, cancelled);
 }
+ClipboardSnapshot AccountSession::clipboard_operation(
+    std::uint64_t generation, const online::CancellationCheck &cancelled,
+    const std::function<ClipboardSnapshot(const std::string &)> &operation)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto token = authorized(generation, cancelled);
+    try
+    {
+        return operation(token);
+    }
+    catch (const Failure &error)
+    {
+        if (error.status() == 401)
+            discard();
+        throw;
+    }
+}
+ClipboardSnapshot AccountSession::clipboard(std::uint64_t generation, const std::string &query,
+                                            const online::CancellationCheck &cancelled)
+{
+    return clipboard_operation(generation, cancelled,
+                               [&](const std::string &token) { return client_.clipboard(token, query, cancelled); });
+}
+ClipboardSnapshot AccountSession::set_clipboard_enabled(std::uint64_t generation, bool enabled,
+                                                        const online::CancellationCheck &cancelled)
+{
+    return clipboard_operation(generation, cancelled, [&](const std::string &token) {
+        client_.set_clipboard_enabled(enabled, token, cancelled);
+        return client_.clipboard(token, {}, cancelled);
+    });
+}
+ClipboardSnapshot AccountSession::add_clipboard(std::uint64_t generation, const std::string &text,
+                                                const online::CancellationCheck &cancelled)
+{
+    return clipboard_operation(generation, cancelled, [&](const std::string &token) {
+        (void)client_.add_clipboard(text, token, cancelled);
+        return client_.clipboard(token, {}, cancelled);
+    });
+}
+ClipboardSnapshot AccountSession::delete_clipboard(std::uint64_t generation, const std::string &id,
+                                                   const online::CancellationCheck &cancelled)
+{
+    return clipboard_operation(generation, cancelled, [&](const std::string &token) {
+        client_.delete_clipboard(id, token, cancelled);
+        return client_.clipboard(token, {}, cancelled);
+    });
+}
 void AccountSession::logout(std::uint64_t generation, bool all, const online::CancellationCheck &cancelled)
 {
     std::lock_guard<std::mutex> lock(mutex_);
