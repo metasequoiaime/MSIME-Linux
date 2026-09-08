@@ -10,6 +10,7 @@ enum class SecretKind
     AiApiToken,
     TranslationApiToken,
     VoiceApiToken,
+    AccountSession,
 };
 
 enum class SecretStatus

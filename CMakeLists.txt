@@ -40,6 +40,7 @@ target_compile_options(MetasequoiaImeLinuxCore PRIVATE -Wall -Wextra -Wpedantic 
 
 add_library(MetasequoiaImeLinuxOnline STATIC
             src/account/BackendAccountClient.cpp
+            src/account/AccountCredentialStore.cpp
             src/online/AiSuggestionProvider.cpp
             src/online/CurlHttpTransport.cpp
             src/online/GoogleCloudProvider.cpp
@@ -62,6 +63,11 @@ target_compile_options(metasequoia-ime-dictionary-replay PRIVATE -Wall -Wextra -
 install(TARGETS metasequoia-ime-dictionary-replay RUNTIME DESTINATION ${CMAKE_INSTALL_LIBEXECDIR})
 
 if(BUILD_TESTING)
+    add_executable(MetasequoiaImeLinuxAccountCredentialTests tests/AccountCredentialStoreTests.cpp)
+    target_link_libraries(MetasequoiaImeLinuxAccountCredentialTests PRIVATE MetasequoiaImeLinuxOnline Boost::json)
+    target_compile_options(MetasequoiaImeLinuxAccountCredentialTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    add_test(NAME account_credential_store COMMAND MetasequoiaImeLinuxAccountCredentialTests)
+
     add_executable(MetasequoiaImeLinuxBackendAccountTests tests/BackendAccountClientTests.cpp)
     target_link_libraries(MetasequoiaImeLinuxBackendAccountTests PRIVATE MetasequoiaImeLinuxOnline Boost::json)
     target_compile_options(MetasequoiaImeLinuxBackendAccountTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
