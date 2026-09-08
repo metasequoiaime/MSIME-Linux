@@ -139,8 +139,14 @@ void click(GtkWidget *panel, const char *text)
 } // namespace
 int main(int argc, char **argv)
 {
+    const bool integration = argc == 2 && std::string(argv[1]) == "--integration";
+    argc = 1;
     gtk_init(&argc, &argv);
-    auto secrets = std::make_shared<Store>();
+    std::shared_ptr<SecretStore> secrets;
+    if (integration)
+        secrets = std::make_shared<LibsecretSecretStore>("session");
+    else
+        secrets = std::make_shared<Store>();
     auto http = std::make_shared<Transport>();
     auto *window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     auto *panel = account::create_account_panel(secrets, http);
@@ -164,7 +170,8 @@ int main(int argc, char **argv)
     gtk_entry_set_text(GTK_ENTRY(code), "123456");
     click(panel, "登录");
     wait([&] { return gtk_widget_get_sensitive(panel); });
-    require(secrets->record.status == SecretStatus::Found, "login credentials not saved");
+    require(secrets->lookup(SecretKind::AccountSession, "msime").status == SecretStatus::Found,
+            "login credentials not saved");
     require(std::string(gtk_entry_get_text(GTK_ENTRY(code))).empty(), "verification code not cleared");
     auto *nickname = find(panel, "昵称");
     require(std::string(gtk_entry_get_text(GTK_ENTRY(nickname))) == "测试用户", "profile not loaded");
@@ -172,7 +179,10 @@ int main(int argc, char **argv)
     click(panel, "保存昵称");
     wait([&] { return gtk_widget_get_sensitive(panel); });
     require(std::string(gtk_entry_get_text(GTK_ENTRY(nickname))) == "新昵称" &&
-                boost::json::parse(secrets->record.value).at("user").at("display_name").as_string() == "新昵称",
+                boost::json::parse(secrets->lookup(SecretKind::AccountSession, "msime").value)
+                        .at("user")
+                        .at("display_name")
+                        .as_string() == "新昵称",
             "nickname did not reach service and credential store");
     gtk_combo_box_set_active_id(GTK_COMBO_BOX(find(panel, "登录渠道")), "phone");
     gtk_entry_set_text(GTK_ENTRY(target), "+819012345678");
@@ -183,13 +193,17 @@ int main(int argc, char **argv)
     wait([&] { return gtk_widget_get_sensitive(panel); });
     require(http->linked, "signed-in flow did not bind identity");
     require(find(panel, "已绑定登录方式：邮箱、手机号码") != nullptr, "linked identity not shown");
-    require(boost::json::parse(secrets->record.value).at("user").at("id").as_string() == "synthetic",
+    require(boost::json::parse(secrets->lookup(SecretKind::AccountSession, "msime").value)
+                    .at("user")
+                    .at("id")
+                    .as_string() == "synthetic",
             "binding replaced user");
     click(panel, "刷新资料");
     wait([&] { return gtk_widget_get_sensitive(panel); });
     click(panel, "退出登录");
     wait([&] { return gtk_widget_get_sensitive(panel); });
-    require(secrets->record.status == SecretStatus::NotFound, "logout credentials remained");
+    require(secrets->lookup(SecretKind::AccountSession, "msime").status == SecretStatus::NotFound,
+            "logout credentials remained");
     gtk_widget_destroy(window);
     http->block.store(true);
     panel = account::create_account_panel(secrets, http);

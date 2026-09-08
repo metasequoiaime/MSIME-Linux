@@ -208,7 +208,10 @@ if(METASEQUOIA_IME_BUILD_IBUS)
                                   MetasequoiaImeLinuxSettings Boost::json PkgConfig::GTK3)
             target_compile_options(MetasequoiaImeLinuxAccountPanelTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
             add_test(NAME account_panel COMMAND ${XVFB_RUN_EXECUTABLE} -a $<TARGET_FILE:MetasequoiaImeLinuxAccountPanelTests>)
-            set_tests_properties(account_panel PROPERTIES TIMEOUT 45)
+            add_test(NAME account_panel_secret_service COMMAND ${XVFB_RUN_EXECUTABLE} -a
+                     bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/SecretStoreIntegration.sh
+                     $<TARGET_FILE:MetasequoiaImeLinuxAccountPanelTests>)
+            set_tests_properties(account_panel account_panel_secret_service PROPERTIES TIMEOUT 45)
         endif()
 
         add_executable(metasequoia-ime-tools src/DesktopToolsUi.cpp)
