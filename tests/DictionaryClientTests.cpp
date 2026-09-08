@@ -127,12 +127,21 @@ int main()
             {"entries", boost::json::array{base, base}}, {"has_more", false}, {"offset", 0}, {"revision", 0}});
         fails([&] { client.dictionary_catalog(kind, "test", 0, 50, token); }, 0);
     }
+    for (const auto *profile : {"xiaohe", "ziranma", "shoudao", "microsoft"})
+    {
+        http.response.body = R"({"entries":[],"has_more":false,"offset":0,"revision":0})";
+        client.dictionary_catalog("pinyin", "nihc", 0, 50, token, {}, {"shuangpin", profile});
+        require(http.last.url.find(std::string("&scheme=shuangpin&profile=") + profile) != std::string::npos,
+                "double-pinyin options lost");
+    }
     {
         const auto calls = http.calls;
         fails([&] { client.dictionary_catalog("pinyin", "", 0, 20, token); }, 400);
         fails([&] { client.dictionary_catalog("bad", "test", 0, 20, token); }, 400);
         fails([&] { client.dictionary_catalog("quick", "", -1, 20, token); }, 400);
         fails([&] { client.dictionary_catalog("english", "test", 0, 20, token, [] { return true; }); }, 0);
+        fails([&] { client.dictionary_catalog("pinyin", "ni", 0, 20, token, {}, {"bad", "xiaohe"}); }, 400);
+        fails([&] { client.dictionary_catalog("pinyin", "ni", 0, 20, token, {}, {"shuangpin", "bad&other=1"}); }, 400);
         require(http.calls == calls, "invalid or cancelled catalog reached transport");
     }
     const auto before = http.calls;

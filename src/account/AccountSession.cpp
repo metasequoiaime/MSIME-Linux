@@ -304,13 +304,14 @@ DictionaryPage AccountSession::dictionary(std::uint64_t generation, const std::s
 }
 DictionaryPage AccountSession::dictionary_catalog(std::uint64_t generation, const std::string &kind,
                                                   const std::string &query, int offset, int limit,
-                                                  const online::CancellationCheck &cancelled)
+                                                  const online::CancellationCheck &cancelled,
+                                                  DictionaryCatalogOptions options)
 {
     std::lock_guard<std::mutex> lock(mutex_);
     const auto token = authorized(generation, cancelled);
     try
     {
-        return client_.dictionary_catalog(kind, query, offset, limit, token, cancelled);
+        return client_.dictionary_catalog(kind, query, offset, limit, token, cancelled, std::move(options));
     }
     catch (const Failure &error)
     {

@@ -52,6 +52,7 @@ struct Transport final : online::HttpTransport
 {
     int dictionary_requests = 0;
     int catalog_writes = 0, catalog_weight = 8;
+    std::string catalog_url;
     bool catalog_deleted = false;
     int snapshot_reads = 0, snapshot_writes = 0;
     bool snapshot_conflict = false;
@@ -181,6 +182,8 @@ struct Transport final : online::HttpTransport
             auto base_entry =
                 boost::json::object{{"kind", kind}, {"code", "test"}, {"word", "基础词条"}, {"weight", catalog_weight}};
             if (request.url.find("/catalog?") != std::string::npos)
+            {
+                catalog_url = request.url;
                 return {200,
                         boost::json::serialize(boost::json::object{
                             {"entries", catalog_deleted ? boost::json::array{} : boost::json::array{base_entry}},
@@ -188,6 +191,7 @@ struct Transport final : online::HttpTransport
                             {"has_more", false},
                             {"revision", dictionary_revision}}),
                         {}};
+            }
             if (request.url.find("/edit") != std::string::npos)
             {
                 const auto body = boost::json::parse(request.body).as_object();
@@ -340,6 +344,8 @@ template <typename Predicate> void wait(Predicate done)
 }
 GtkWidget *find(GtkWidget *root, const char *text)
 {
+    if (g_strcmp0(gtk_widget_get_name(root), text) == 0)
+        return root;
     if (GTK_IS_TEXT_VIEW(root) && g_strcmp0(text, "云端输入") == 0)
         return root;
     if (GTK_IS_TREE_VIEW(root) && g_strcmp0(text, "云端列表") == 0)
@@ -628,6 +634,16 @@ int main(int argc, char **argv)
         gtk_tree_path_free(path);
     };
     select_base();
+    auto *catalog_scheme = find(dictionary_window, "dictionary-catalog-scheme");
+    require(catalog_scheme, "catalog scheme missing");
+    gtk_combo_box_set_active_id(GTK_COMBO_BOX(catalog_scheme), "microsoft");
+    click(dictionary_window, "修改选中词条");
+    require(http->catalog_writes == 0, "scheme change reused stale selection");
+    click(dictionary_window, "搜索云词条");
+    ready();
+    select_base();
+    require(http->catalog_url.find("&scheme=shuangpin&profile=microsoft") != std::string::npos,
+            "selected double-pinyin scheme did not reach service");
     gtk_entry_set_text(GTK_ENTRY(find(dictionary_window, "词条权重")), "42");
     g_idle_add(respond, GINT_TO_POINTER(GTK_RESPONSE_CANCEL));
     click(dictionary_window, "修改选中词条");

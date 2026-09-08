@@ -619,15 +619,21 @@ DictionaryPage BackendAccountClient::dictionary(const std::string &kind, const s
 }
 DictionaryPage BackendAccountClient::dictionary_catalog(const std::string &kind, const std::string &query, int offset,
                                                         int limit, const std::string &token,
-                                                        const online::CancellationCheck &cancelled)
+                                                        const online::CancellationCheck &cancelled,
+                                                        DictionaryCatalogOptions options)
 {
     require_token(token);
+    if ((options.scheme != "pinyin" && options.scheme != "shuangpin") ||
+        (options.profile != "xiaohe" && options.profile != "ziranma" && options.profile != "shoudao" &&
+         options.profile != "microsoft"))
+        throw Failure(400);
     auto path = dictionary_path(kind);
     require_text(query, 1024);
     if ((query.empty() && kind != "quick") || offset < 0 || offset > 1000000 || limit < 1 || limit > 200)
         throw Failure(400);
     path += "/catalog?q=" + query_component(query) + "&offset=" + std::to_string(offset) +
             "&limit=" + std::to_string(limit);
+    path += "&scheme=" + options.scheme + "&profile=" + options.profile;
     const auto source = object(request(online::HttpMethod::Get, path.c_str(), {}, token, cancelled, 4 * 1024 * 1024));
     const auto *entries = source.if_contains("entries"), *more = source.if_contains("has_more");
     if (!entries || !entries->is_array() || entries->as_array().size() > static_cast<std::size_t>(limit) || !more ||

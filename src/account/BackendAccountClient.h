@@ -98,6 +98,10 @@ struct DictionaryPage
     int offset = 0;
     std::int64_t revision = 0;
 };
+struct DictionaryCatalogOptions
+{
+    std::string scheme = "pinyin", profile = "xiaohe";
+};
 struct DictionaryImportResult
 {
     int imported = 0;
@@ -138,7 +142,8 @@ class BackendAccountClient
     DictionaryPage dictionary(const std::string &kind, const std::string &query, int offset, int limit,
                               const std::string &token, const online::CancellationCheck &cancelled = {});
     DictionaryPage dictionary_catalog(const std::string &kind, const std::string &query, int offset, int limit,
-                                      const std::string &token, const online::CancellationCheck &cancelled = {});
+                                      const std::string &token, const online::CancellationCheck &cancelled = {},
+                                      DictionaryCatalogOptions options = {});
     DictionaryChange manage_dictionary(const std::string &kind, std::int64_t revision, const DictionaryEntry &previous,
                                        const std::optional<DictionaryEntry> &replacement, const std::string &token,
                                        const online::CancellationCheck &cancelled = {});

@@ -14,7 +14,8 @@ struct Window
     std::atomic<bool> closed{false};
     GtkWidget *window, *body, *status, *kind, *query, *list, *code, *word, *weight, *previous, *next;
     GtkListStore *rows;
-    GtkWidget *catalog;
+    GtkWidget *catalog, *catalog_scheme;
+    std::string loaded_catalog_scheme;
     bool loaded_catalog = false;
     DictionaryPage page;
     std::string loaded_kind, loaded_query;
@@ -46,6 +47,7 @@ struct Work
     std::optional<DictionaryEntry> selected;
     DictionaryEntry replacement;
     bool catalog = false;
+    std::string catalog_scheme;
     std::int64_t catalog_revision = 0;
     DictionaryPage result;
     bool success = false, changed = false;
@@ -132,7 +134,10 @@ void worker(GTask *task, gpointer, gpointer data, GCancellable *)
         }
         work.result =
             work.catalog
-                ? state.session->dictionary_catalog(state.generation, work.kind, work.query, work.offset, 50, cancelled)
+                ? state.session->dictionary_catalog(state.generation, work.kind, work.query, work.offset, 50, cancelled,
+                                                    work.catalog_scheme == "pinyin"
+                                                        ? DictionaryCatalogOptions{}
+                                                        : DictionaryCatalogOptions{"shuangpin", work.catalog_scheme})
                 : state.session->dictionary(state.generation, work.kind, work.query, work.offset, 50, cancelled);
         work.success = true;
     }
@@ -224,6 +229,7 @@ void finished(GObject *, GAsyncResult *result, gpointer)
     {
         state.page = std::move(work.result);
         state.loaded_catalog = work.catalog;
+        state.loaded_catalog_scheme = work.catalog_scheme;
         state.loaded_kind = work.kind;
         state.loaded_query = work.query;
         state.loaded = true;
@@ -263,9 +269,12 @@ void clicked(GtkButton *button, gpointer data)
     work.kind = gtk_combo_box_get_active_id(GTK_COMBO_BOX(state->kind));
     work.query = gtk_entry_get_text(GTK_ENTRY(state->query));
     work.catalog = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(state->catalog));
+    work.catalog_scheme = work.catalog && work.kind == "pinyin"
+                              ? gtk_combo_box_get_active_id(GTK_COMBO_BOX(state->catalog_scheme))
+                              : "pinyin";
     work.catalog_revision = state->page.revision;
     const bool same = state->loaded && work.kind == state->loaded_kind && work.query == state->loaded_query &&
-                      work.catalog == state->loaded_catalog;
+                      work.catalog == state->loaded_catalog && work.catalog_scheme == state->loaded_catalog_scheme;
     if (work.action == Action::Previous || work.action == Action::Next)
     {
         if (!same)
@@ -511,8 +520,22 @@ GtkWidget *create_dictionary_window(GtkWindow *parent, std::shared_ptr<AccountSe
     };
     state->catalog = gtk_check_button_new_with_label("包含基础词库（按编码搜索）");
     gtk_box_pack_start(GTK_BOX(state->body), state->catalog, FALSE, FALSE, 0);
-    gtk_widget_set_tooltip_text(state->catalog, "目录包含个人调整并排除已删除词条；拼音使用全拼，五笔、英文和快捷短语按"
-                                                "编码前缀查询。仅快捷短语可留空。修改只作用于当前账号。");
+    gtk_widget_set_tooltip_text(state->catalog,
+                                "目录包含个人调整并排除已删除词条；拼音使用所选方案，五笔、英文和快捷短语按"
+                                "编码前缀查询。仅快捷短语可留空。修改只作用于当前账号。");
+    auto *scheme_label = gtk_label_new("拼音目录查询方案");
+    gtk_box_pack_start(GTK_BOX(state->body), scheme_label, FALSE, FALSE, 0);
+    state->catalog_scheme = gtk_combo_box_text_new();
+    gtk_widget_set_name(state->catalog_scheme, "dictionary-catalog-scheme");
+    for (const auto &pair : {std::pair{"pinyin", "全拼"},
+                             {"xiaohe", "小鹤双拼"},
+                             {"ziranma", "自然码双拼"},
+                             {"shoudao", "Shoudao 双拼"},
+                             {"microsoft", "微软双拼"}})
+        gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(state->catalog_scheme), pair.first, pair.second);
+    gtk_combo_box_set_active(GTK_COMBO_BOX(state->catalog_scheme), 0);
+    gtk_widget_set_tooltip_text(state->catalog_scheme, "仅用于包含基础词库的拼音目录查询；编辑使用返回的规范编码。");
+    gtk_box_pack_start(GTK_BOX(state->body), state->catalog_scheme, FALSE, FALSE, 0);
     state->query = entry("搜索编码或词条");
     auto *navigation = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
     gtk_box_pack_start(GTK_BOX(state->body), navigation, FALSE, FALSE, 0);

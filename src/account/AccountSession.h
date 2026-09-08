@@ -56,7 +56,8 @@ class AccountSession
     DictionaryPage dictionary(std::uint64_t generation, const std::string &kind, const std::string &query, int offset,
                               int limit, const online::CancellationCheck &cancelled = {});
     DictionaryPage dictionary_catalog(std::uint64_t generation, const std::string &kind, const std::string &query,
-                                      int offset, int limit, const online::CancellationCheck &cancelled = {});
+                                      int offset, int limit, const online::CancellationCheck &cancelled = {},
+                                      DictionaryCatalogOptions options = {});
     DictionaryChange manage_dictionary(std::uint64_t generation, const std::string &kind, std::int64_t revision,
                                        const DictionaryEntry &previous,
                                        const std::optional<DictionaryEntry> &replacement,
