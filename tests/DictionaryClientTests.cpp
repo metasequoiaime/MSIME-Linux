@@ -114,5 +114,43 @@ int main()
     fails([&] { client.dictionary("pinyin", "", 0, 2, token); }, 0);
     http.response.body = R"({"entries":[],"has_more":true,"offset":0})";
     fails([&] { client.dictionary("pinyin", "", 0, 2, token); }, 0);
+    for (const auto &kind : {"pinyin", "wubi", "english", "quick"})
+    {
+        for (const auto &format : {"standard", "windows"})
+        {
+            const std::string tsv =
+                std::string(format) == "windows" && (std::string(kind) == "english" || std::string(kind) == "quick")
+                    ? "test\tTest\t10\n"
+                    : "Test\ttest\t10\n";
+            http.response.body = R"({"imported":1,"revision":8})";
+            const auto result = client.import_dictionary(kind, tsv, format, token);
+            require(result.imported == 1 && result.revision == 8, "import result wrong");
+            require(boost::json::parse(http.last.body).at("text").as_string() == tsv, "import column order changed");
+            http.response.body = tsv;
+            require(client.export_dictionary(kind, format, token) == tsv, "export changed bytes");
+        }
+    }
+    const auto calls = http.calls;
+    for (const auto &bad : {"", "bad", "word\tcode\t-1", "word\tcode\t1oops", "word\tcode\t1\textra"})
+        fails([&] { client.import_dictionary("pinyin", bad, "standard", token); }, 400);
+    fails([&] { client.import_dictionary("pinyin", "word\tcode\t1", "other", token); }, 400);
+    std::string too_many;
+    for (int i = 0; i < 501; ++i)
+        too_many += "word\tcode\t1\n";
+    fails([&] { client.import_dictionary("pinyin", too_many, "standard", token); }, 400);
+    std::string escaped;
+    for (int i = 0; i < 400; ++i)
+        escaped += std::string(100, '"') + "\tcode\t1\n";
+    fails([&] { client.import_dictionary("quick", escaped, "standard", token); }, 400);
+    fails([&] { client.export_dictionary("quick", "standard&other=1", token); }, 400);
+    require(http.calls == calls, "invalid import reached transport");
+    http.response.body = R"({"error":"upstream failure"})";
+    fails([&] { client.export_dictionary("pinyin", "standard", token); }, 0);
+    http.response.body = "word\tcode\t1";
+    fails([&] { client.export_dictionary("pinyin", "standard", token); }, 0);
+    http.response.body = "";
+    require(client.export_dictionary("quick", "windows", token).empty(), "empty export rejected");
+    http.response.body = R"({"imported":2,"revision":8})";
+    fails([&] { client.import_dictionary("quick", "word\tcode\t1", "standard", token); }, 0);
     std::cout << "Four dictionary CRUD, pagination and validation tests passed\n";
 }

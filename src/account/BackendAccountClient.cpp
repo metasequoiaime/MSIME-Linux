@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <charconv>
 #include <limits>
 
 namespace metasequoia::linux_ime::account
@@ -144,6 +145,56 @@ void require_dictionary_entry(const DictionaryEntry &entry, const std::string &k
         if (units > 199)
             throw Failure(400);
     }
+}
+void dictionary_format(const std::string &format)
+{
+    if (format != "standard" && format != "windows")
+        throw Failure(400);
+}
+std::size_t dictionary_tsv(const std::string &text, const std::string &kind, const std::string &format,
+                           std::size_t maximum, bool exported)
+{
+    std::size_t count = 0, start = text.compare(0, 3, "\xef\xbb\xbf") == 0 ? 3 : 0;
+    while (start < text.size())
+    {
+        auto end = text.find('\n', start);
+        if (end == std::string::npos)
+        {
+            if (exported)
+                throw Failure(400);
+            end = text.size();
+        }
+        auto size = end - start;
+        if (size && text[start + size - 1] == '\r')
+            --size;
+        if (size)
+        {
+            if (++count > maximum || size > 2624)
+                throw Failure(400);
+            const auto line = text.substr(start, size);
+            const auto first = line.find('\t');
+            const auto second = first == std::string::npos ? std::string::npos : line.find('\t', first + 1);
+            if (second == std::string::npos || line.find('\t', second + 1) != std::string::npos)
+                throw Failure(400);
+            DictionaryEntry entry;
+            entry.word = line.substr(0, first);
+            entry.code = line.substr(first + 1, second - first - 1);
+            if (format == "windows" && (kind == "english" || kind == "quick"))
+                std::swap(entry.word, entry.code);
+            auto weight = line.substr(second + 1);
+            const auto begin = weight.find_first_not_of(" \r");
+            const auto last = weight.find_last_not_of(" \r");
+            if (begin == std::string::npos)
+                throw Failure(400);
+            weight = weight.substr(begin, last - begin + 1);
+            const auto parsed = std::from_chars(weight.data(), weight.data() + weight.size(), entry.weight);
+            if (parsed.ec != std::errc{} || parsed.ptr != weight.data() + weight.size())
+                throw Failure(400);
+            require_dictionary_entry(entry, kind);
+        }
+        start = end == text.size() ? end : end + 1;
+    }
+    return count;
 }
 std::int64_t dictionary_number(const boost::json::object &source, const char *key, std::int64_t minimum)
 {
@@ -585,6 +636,43 @@ DictionaryChange BackendAccountClient::edit_dictionary(const std::string &kind, 
          (change.replacement->revision != change.revision || (!id.empty() && change.replacement->id != id))))
         throw Failure(0);
     return change;
+}
+DictionaryImportResult BackendAccountClient::import_dictionary(const std::string &kind, const std::string &text,
+                                                               const std::string &format, const std::string &token,
+                                                               const online::CancellationCheck &cancelled)
+{
+    require_token(token);
+    const auto path = dictionary_path(kind) + "/import";
+    dictionary_format(format);
+    if (text.size() > 65536)
+        throw Failure(400);
+    const auto count = dictionary_tsv(text, kind, format, 500, false);
+    if (count == 0)
+        throw Failure(400);
+    const auto body = boost::json::serialize(boost::json::object{{"text", text}, {"format", format}});
+    const auto result = object(request(online::HttpMethod::Post, path.c_str(), body, token, cancelled));
+    const auto imported = dictionary_number(result, "imported", 1);
+    if (imported != static_cast<std::int64_t>(count))
+        throw Failure(0);
+    return {static_cast<int>(imported), dictionary_number(result, "revision", 1)};
+}
+std::string BackendAccountClient::export_dictionary(const std::string &kind, const std::string &format,
+                                                    const std::string &token,
+                                                    const online::CancellationCheck &cancelled)
+{
+    require_token(token);
+    const auto path = dictionary_path(kind) + "/export?format=" + format;
+    dictionary_format(format);
+    auto text = request(online::HttpMethod::Get, path.c_str(), {}, token, cancelled, 256 * 1024 * 1024);
+    try
+    {
+        (void)dictionary_tsv(text, kind, format, 100000, true);
+    }
+    catch (const Failure &)
+    {
+        throw Failure(0);
+    }
+    return text;
 }
 void BackendAccountClient::logout(const std::string &token, bool all, const online::CancellationCheck &cancelled)
 {

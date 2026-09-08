@@ -320,6 +320,39 @@ DictionaryChange AccountSession::edit_dictionary(std::uint64_t generation, const
         throw;
     }
 }
+DictionaryImportResult AccountSession::import_dictionary(std::uint64_t generation, const std::string &kind,
+                                                         const std::string &text, const std::string &format,
+                                                         const online::CancellationCheck &cancelled)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto token = authorized(generation, cancelled);
+    try
+    {
+        return client_.import_dictionary(kind, text, format, token, cancelled);
+    }
+    catch (const Failure &error)
+    {
+        if (error.status() == 401)
+            discard();
+        throw;
+    }
+}
+std::string AccountSession::export_dictionary(std::uint64_t generation, const std::string &kind,
+                                              const std::string &format, const online::CancellationCheck &cancelled)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto token = authorized(generation, cancelled);
+    try
+    {
+        return client_.export_dictionary(kind, format, token, cancelled);
+    }
+    catch (const Failure &error)
+    {
+        if (error.status() == 401)
+            discard();
+        throw;
+    }
+}
 void AccountSession::logout(std::uint64_t generation, bool all, const online::CancellationCheck &cancelled)
 {
     std::lock_guard<std::mutex> lock(mutex_);

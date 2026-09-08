@@ -97,6 +97,11 @@ struct DictionaryPage
     bool has_more = false;
     int offset = 0;
 };
+struct DictionaryImportResult
+{
+    int imported = 0;
+    std::int64_t revision = 0;
+};
 struct DictionaryChange
 {
     std::int64_t revision = 0;
@@ -136,6 +141,11 @@ class BackendAccountClient
     DictionaryChange edit_dictionary(const std::string &kind, const std::string &id, std::int64_t revision,
                                      const std::optional<DictionaryEntry> &replacement, const std::string &token,
                                      const online::CancellationCheck &cancelled = {});
+    DictionaryImportResult import_dictionary(const std::string &kind, const std::string &text,
+                                             const std::string &format, const std::string &token,
+                                             const online::CancellationCheck &cancelled = {});
+    std::string export_dictionary(const std::string &kind, const std::string &format, const std::string &token,
+                                  const online::CancellationCheck &cancelled = {});
     void logout(const std::string &token, bool all = false, const online::CancellationCheck &cancelled = {});
     void delete_account(const std::string &token, const online::CancellationCheck &cancelled = {});
 

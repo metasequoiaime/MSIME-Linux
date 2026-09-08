@@ -58,6 +58,11 @@ class AccountSession
     DictionaryChange edit_dictionary(std::uint64_t generation, const std::string &kind, const std::string &id,
                                      std::int64_t revision, const std::optional<DictionaryEntry> &replacement,
                                      const online::CancellationCheck &cancelled = {});
+    DictionaryImportResult import_dictionary(std::uint64_t generation, const std::string &kind, const std::string &text,
+                                             const std::string &format,
+                                             const online::CancellationCheck &cancelled = {});
+    std::string export_dictionary(std::uint64_t generation, const std::string &kind, const std::string &format,
+                                  const online::CancellationCheck &cancelled = {});
     void logout(std::uint64_t generation, bool all = false, const online::CancellationCheck &cancelled = {});
     void delete_account(std::uint64_t generation, const online::CancellationCheck &cancelled = {});
 
