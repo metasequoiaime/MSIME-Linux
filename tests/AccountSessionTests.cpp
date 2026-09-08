@@ -125,6 +125,9 @@ int main()
     fails([&] { session.login(initial.generation, "stale", "credential"); });
     fails([&] { session.access_token(initial.generation); });
     fails([&] { session.profile(initial.generation); });
+    fails([&] { session.clipboard(initial.generation); });
+    fails([&] { session.add_clipboard(initial.generation, "旧账号不得上传"); });
+    fails([&] { session.delete_clipboard(initial.generation, {}); });
     require(transport.calls == before_stale, "stale operation reached network");
     require(session.restore().generation == logged.generation, "restore replaced live session");
     now = 1900;

@@ -30,6 +30,14 @@ class AccountSession
     std::string access_token(std::uint64_t generation, const online::CancellationCheck &cancelled = {});
     Profile profile(std::uint64_t generation, const online::CancellationCheck &cancelled = {});
     Profile rename(std::uint64_t generation, const std::string &name, const online::CancellationCheck &cancelled = {});
+    ClipboardSnapshot clipboard(std::uint64_t generation, const std::string &query = {},
+                                const online::CancellationCheck &cancelled = {});
+    ClipboardSnapshot set_clipboard_enabled(std::uint64_t generation, bool enabled,
+                                            const online::CancellationCheck &cancelled = {});
+    ClipboardSnapshot add_clipboard(std::uint64_t generation, const std::string &text,
+                                    const online::CancellationCheck &cancelled = {});
+    ClipboardSnapshot delete_clipboard(std::uint64_t generation, const std::string &id,
+                                       const online::CancellationCheck &cancelled = {});
     void logout(std::uint64_t generation, bool all = false, const online::CancellationCheck &cancelled = {});
     void delete_account(std::uint64_t generation, const online::CancellationCheck &cancelled = {});
 
@@ -39,6 +47,8 @@ class AccountSession
     std::string authorized(std::uint64_t generation, const online::CancellationCheck &cancelled);
     SavedSession saved(Tokens tokens) const;
     void discard();
+    ClipboardSnapshot clipboard_operation(std::uint64_t generation, const online::CancellationCheck &cancelled,
+                                          const std::function<ClipboardSnapshot(const std::string &)> &operation);
     Profile read_profile(const std::string &token, const online::CancellationCheck &cancelled);
     BackendAccountClient &client_;
     AccountCredentialStore &store_;
