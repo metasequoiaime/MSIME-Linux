@@ -118,7 +118,7 @@ std::filesystem::path NativeInstallation::generation(const std::string &name) co
     identifier(name);
     return root_ / "generations" / name;
 }
-RuntimePaths NativeInstallation::prepared(const std::string &name, const std::string &content_id) const
+RuntimePaths NativeInstallation::prepared_paths(const std::string &name, const std::string &content_id) const
 {
     const auto folder = generation(name);
     RuntimePaths paths{resources(content_id), folder / "user", folder / "cache",
@@ -145,12 +145,12 @@ ActiveDictionary NativeInstallation::active() const
     if (!value)
         return {legacy_, {}, {}, {}};
     const auto names = decode(*value);
-    return {prepared(names.first, names.second), names.first, names.second, *value};
+    return {prepared_paths(names.first, names.second), names.first, names.second, *value};
 }
 NativePublication NativeInstallation::publish(const std::string &name, const std::string &content_id,
                                               const std::string &expected_token) const
 {
-    (void)prepared(name, content_id);
+    (void)prepared_paths(name, content_id);
     Descriptor root{directory(root_)};
     const auto current = read_file(root.value, marker, true);
     if (current)

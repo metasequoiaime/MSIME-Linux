@@ -24,6 +24,8 @@ class NativeInstallation
     std::filesystem::path resources(const std::string &content_id) const;
     std::filesystem::path generation(const std::string &identifier) const;
     ActiveDictionary active() const;
+    // Validate a staged layout before dropping the running session references.
+    RuntimePaths prepared_paths(const std::string &identifier, const std::string &content_id) const;
     // Compare the preview's active token AND native journal revision under the
     // exclusive lease before calling. False means token conflict. A successful
     // rename with failed directory fsync reports published=true,durable=false.
@@ -31,7 +33,6 @@ class NativeInstallation
                               const std::string &expected_token) const;
 
   private:
-    RuntimePaths prepared(const std::string &identifier, const std::string &content_id) const;
     std::filesystem::path root_;
     RuntimePaths legacy_;
 };

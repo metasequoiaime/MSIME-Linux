@@ -1,6 +1,7 @@
 #include "DictionaryBootstrap.h"
 #include "DictionaryLease.h"
 #include "account/NativeInstallation.h"
+#include "account/NativeDictionaryRevision.h"
 #include "InputController.h"
 #include "IBusKeyMapper.h"
 #include "SettingsStore.h"
@@ -17,11 +18,14 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <limits>
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
+#include <type_traits>
 #include <string>
 #include <system_error>
 #include <thread>
@@ -59,6 +63,7 @@ using metasequoia::linux_ime::online::TranslationService;
 struct DictionaryRuntime
 {
     metasequoia::RuntimePaths paths;
+    metasequoia::RuntimePaths legacy_paths;
     bool legacy = true;
     std::unique_ptr<metasequoia::linux_ime::DictionaryLease> lease;
 };
@@ -141,6 +146,9 @@ using MetasequoiaEngineClass = _MetasequoiaEngineClass;
 #define METASEQUOIA_ENGINE(object) (reinterpret_cast<MetasequoiaEngine *>(object))
 
 G_DEFINE_TYPE(MetasequoiaEngine, metasequoia_engine, IBUS_TYPE_ENGINE)
+
+// Main-loop-only registry; entries are removed before GObject teardown.
+std::set<MetasequoiaEngine *> native_contexts;
 
 IBusText *text(const char *value)
 {
@@ -934,6 +942,7 @@ void dispose(GObject *object)
 void finalize(GObject *object)
 {
     auto *engine = METASEQUOIA_ENGINE(object);
+    native_contexts.erase(engine);
     // Before anything is torn down: a worker may already be inside its callback, and a delivery it
     // queues from now on has to find an empty handle instead of a half-destroyed engine.
     if (engine->delivery_handle != nullptr)
@@ -1044,7 +1053,7 @@ InputOptions build_input_options(const InputSettings &settings)
 // no way to hand it new ones, so this is what a settings reload has to go through as well.
 InputController *create_controller(const InputSettings &settings, const metasequoia::RuntimePaths &paths)
 {
-    auto *controller = new InputController(settings.scheme, build_input_options(settings), paths);
+    auto controller = std::make_unique<InputController>(settings.scheme, build_input_options(settings), paths);
     (void)controller->set_mode(settings.mode);
     // After set_mode, which early-returns when the mode is already the default and so would not
     // apply the lock itself.
@@ -1056,7 +1065,7 @@ InputController *create_controller(const InputSettings &settings, const metasequ
         // manual toggle or the settings window's choice -- has to be put back.
         (void)controller->set_punctuation_mode(settings.punctuation_mode);
     }
-    return controller;
+    return controller.release();
 }
 
 // The settings the engine itself reads rather than the controller. mode_toggle has to exist already.
@@ -1280,6 +1289,17 @@ void settings_file_changed(GFileMonitor *monitor, GFile *file, GFile *other_file
     reload_settings(engine);
 }
 
+TranslationService *create_translation_service(MetasequoiaEngine *engine, const metasequoia::RuntimePaths &paths)
+{
+    const auto provider =
+        std::make_shared<TranslationProvider>(paths, std::make_shared<CurlHttpTransport>(), *engine->http_timeouts);
+    const auto handle = *engine->delivery_handle;
+    return new TranslationService(
+        provider, [handle](std::uint64_t generation, std::vector<std::pair<std::string, std::string>> results) {
+            queue_translation_result(handle, generation, std::move(results));
+        });
+}
+
 void metasequoia_engine_init(MetasequoiaEngine *engine)
 {
     engine->dictionary_runtime = new std::shared_ptr<DictionaryRuntime>(dictionary_runtime);
@@ -1340,12 +1360,8 @@ void metasequoia_engine_init(MetasequoiaEngine *engine)
         },
         std::chrono::milliseconds(500), ai_provider);
 
-    const auto translation_provider = std::make_shared<TranslationProvider>(*engine->paths, transport, timeouts);
-    engine->translation_service = new TranslationService(
-        translation_provider,
-        [handle](std::uint64_t generation, std::vector<std::pair<std::string, std::string>> results) {
-            queue_translation_result(handle, generation, std::move(results));
-        });
+    engine->translation_service = create_translation_service(engine, *engine->paths);
+    native_contexts.insert(engine);
 
     // Last, so an event arriving on the next main-loop turn finds a fully built engine. The settings window is a
     // separate process: without this watch the engine would go on writing the copy it read here over whatever the user
@@ -1367,6 +1383,195 @@ void metasequoia_engine_init(MetasequoiaEngine *engine)
     g_clear_error(&monitor_error);
 }
 
+// Called only from the owning main loop. No callback can observe the temporary
+// absence of native references. New controllers receive fresh async generations.
+std::pair<const char *, bool> publish_native_dictionary(const std::string &generation, const std::string &content,
+                                                        const std::string &token, const std::string &revision)
+{
+    using metasequoia::linux_ime::account::native_dictionary_revision;
+    using metasequoia::linux_ime::account::NativeInstallation;
+    static_assert(std::is_nothrow_swappable_v<metasequoia::RuntimePaths>);
+    if (revision.size() != 64 || token.size() > 512 || !std::all_of(revision.begin(), revision.end(), [](char c) {
+            return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+        }))
+        throw std::runtime_error("Invalid native publication request");
+    for (auto *engine : native_contexts)
+        if (engine->controller->has_composition())
+            return {"busy", false};
+    NativeInstallation installation(dictionary_runtime->legacy_paths.user_data / "runtime",
+                                    dictionary_runtime->legacy_paths);
+    auto target = installation.prepared_paths(generation, content);
+    struct Replacement
+    {
+        MetasequoiaEngine *engine;
+        metasequoia::RuntimePaths paths;
+        std::unique_ptr<InputController> controller;
+        std::unique_ptr<TranslationService> translation;
+    };
+    std::vector<Replacement> replacements;
+    replacements.reserve(native_contexts.size());
+    std::unique_ptr<InputController> probe;
+    for (auto *engine : native_contexts)
+    {
+        save_settings(engine);
+        replacements.push_back({engine, *engine->paths, {}, {}});
+    }
+    auto build = [&](const metasequoia::RuntimePaths &paths) {
+        if (replacements.empty())
+            probe.reset(create_controller(SettingsStore().load(), paths));
+        for (auto &item : replacements)
+        {
+            item.paths = paths;
+            item.controller.reset(create_controller(*item.engine->settings, paths));
+            item.translation.reset(create_translation_service(item.engine, paths));
+        }
+    };
+    auto install = [&]() noexcept {
+        for (auto &item : replacements)
+        {
+            item.engine->controller = item.controller.release();
+            item.engine->translation_service = item.translation.release();
+            std::swap(*item.engine->paths, item.paths);
+            item.engine->translation_glosses->clear();
+        }
+    };
+    // Translation providers also retain the old dictionaries, so cancelling a
+    // request alone is insufficient: join/destroy every provider before upgrade.
+    for (auto &item : replacements)
+    {
+        item.engine->online_service->clear();
+        delete item.engine->translation_service;
+        item.engine->translation_service = nullptr;
+        delete item.engine->controller;
+        item.engine->controller = nullptr;
+    }
+    bool published = false, durable = false;
+    const char *status = "conflict";
+    auto recover = [&] {
+        try
+        {
+            build(dictionary_runtime->paths);
+            install();
+        }
+        catch (...)
+        {
+            // Returning to the main loop would expose null controllers to queued
+            // key events. No composition was active and the marker is unchanged;
+            // terminate without processing more events if the old state cannot reopen.
+            g_printerr("Unable to reopen the previous native dictionary; restart the input method.\n");
+            std::_Exit(1);
+        }
+    };
+    try
+    {
+        const bool exclusive = dictionary_runtime->lease->exclusively([&] {
+            const auto current = installation.active();
+            if (current.token != token || native_dictionary_revision(current.paths) != revision)
+                return;
+            build(target); // Prove every replacement session opens before changing the marker.
+            const auto result = installation.publish(generation, content, token);
+            if (!result.published)
+                return;
+            published = true;
+            durable = result.durable;
+            install(); // All remaining adoption operations are noexcept.
+            std::swap(dictionary_runtime->paths, target);
+            dictionary_runtime->legacy = false;
+        });
+        if (!exclusive)
+            status = "busy";
+    }
+    catch (...)
+    {
+        if (published)
+        {
+            // The marker was committed even if restoring the shared lease failed.
+            // Report the publication truthfully and let a fresh process reopen it.
+            ibus_quit();
+            return {"published", durable};
+        }
+        recover();
+        throw;
+    }
+    if (!published)
+        recover();
+    return {published ? "published" : status, durable};
+}
+
+void dictionary_method(GDBusConnection *, const gchar *, const gchar *, const gchar *, const gchar *method,
+                       GVariant *parameters, GDBusMethodInvocation *invocation, gpointer)
+{
+    try
+    {
+        if (std::strcmp(method, "Inspect") == 0)
+        {
+            metasequoia::linux_ime::account::NativeInstallation installation(
+                dictionary_runtime->legacy_paths.user_data / "runtime", dictionary_runtime->legacy_paths);
+            const auto active = installation.active();
+            const auto revision = metasequoia::linux_ime::account::native_dictionary_revision(active.paths);
+            g_dbus_method_invocation_return_value(
+                invocation, g_variant_new("(sss)", dictionary_runtime->legacy_paths.user_data.c_str(),
+                                          active.token.c_str(), revision.c_str()));
+            return;
+        }
+        if (std::strcmp(method, "Publish") == 0)
+        {
+            const gchar *generation, *content, *token, *revision;
+            g_variant_get(parameters, "(&s&s&s&s)", &generation, &content, &token, &revision);
+            const auto result = publish_native_dictionary(generation, content, token, revision);
+            g_dbus_method_invocation_return_value(invocation, g_variant_new("(sb)", result.first, result.second));
+            return;
+        }
+        throw std::runtime_error("Unknown native dictionary method");
+    }
+    catch (...)
+    {
+        g_dbus_method_invocation_return_dbus_error(invocation, "app.msime.Dictionary.Error",
+                                                   "Unable to inspect or switch the native dictionary.");
+    }
+}
+
+class DictionaryService
+{
+  public:
+    DictionaryService()
+    {
+        connection_ = g_bus_get_sync(G_BUS_TYPE_SESSION, nullptr, nullptr);
+        if (!connection_)
+            return;
+        constexpr auto xml = R"XML(<node><interface name="app.msime.Dictionary">
+          <method name="Inspect"><arg type="s" direction="out" name="root"/>
+            <arg type="s" direction="out" name="token"/><arg type="s" direction="out" name="revision"/></method>
+          <method name="Publish"><arg type="s" direction="in" name="generation"/>
+            <arg type="s" direction="in" name="content"/><arg type="s" direction="in" name="token"/>
+            <arg type="s" direction="in" name="revision"/><arg type="s" direction="out" name="status"/>
+            <arg type="b" direction="out" name="durable"/></method>
+        </interface></node>)XML";
+        auto *node = g_dbus_node_info_new_for_xml(xml, nullptr);
+        static const GDBusInterfaceVTable vtable{dictionary_method, nullptr, nullptr, {}};
+        registration_ = g_dbus_connection_register_object(connection_, "/app/msime/Dictionary", node->interfaces[0],
+                                                          &vtable, nullptr, nullptr, nullptr);
+        g_dbus_node_info_unref(node);
+        if (registration_)
+            owner_ = g_bus_own_name_on_connection(connection_, "app.msime.Dictionary", G_BUS_NAME_OWNER_FLAGS_NONE,
+                                                  nullptr, nullptr, nullptr, nullptr);
+    }
+    ~DictionaryService()
+    {
+        if (owner_)
+            g_bus_unown_name(owner_);
+        if (registration_)
+            g_dbus_connection_unregister_object(connection_, registration_);
+        g_clear_object(&connection_);
+    }
+    DictionaryService(const DictionaryService &) = delete;
+    DictionaryService &operator=(const DictionaryService &) = delete;
+
+  private:
+    GDBusConnection *connection_ = nullptr;
+    guint registration_ = 0, owner_ = 0;
+};
+
 void bus_disconnected(IBusBus *bus, gpointer user_data)
 {
     (void)bus;
@@ -1383,6 +1588,7 @@ int main(int argc, char **argv)
     {
         auto runtime = std::make_shared<DictionaryRuntime>();
         runtime->paths = metasequoia::RuntimePaths::legacy();
+        runtime->legacy_paths = runtime->paths;
         runtime->lease = metasequoia::linux_ime::DictionaryLease::acquire(
             runtime->paths.user_data, metasequoia::linux_ime::DictionaryLease::Mode::Shared);
         if (!runtime->lease)
@@ -1448,7 +1654,10 @@ int main(int argc, char **argv)
         g_object_unref(bus);
         return 1;
     }
-    ibus_main();
+    {
+        DictionaryService dictionary_service;
+        ibus_main();
+    }
 
     g_object_unref(factory);
     g_object_unref(bus);
