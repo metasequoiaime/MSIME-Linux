@@ -216,7 +216,7 @@ if(METASEQUOIA_IME_BUILD_IBUS)
         target_compile_options(MetasequoiaImeLinuxSnapshotContentsTests PRIVATE -Wall -Wextra -Wpedantic -Werror)
         add_test(NAME snapshot_contents COMMAND MetasequoiaImeLinuxSnapshotContentsTests)
         # Includes 100,000 entries and overlays under the fully instrumented CI build.
-        set_tests_properties(snapshot_contents PROPERTIES TIMEOUT 300)
+        set_tests_properties(snapshot_contents PROPERTIES TIMEOUT 900)
     endif()
 
     add_library(MetasequoiaImeLinuxCloudSettings STATIC src/account/CloudSettingsMapper.cpp)

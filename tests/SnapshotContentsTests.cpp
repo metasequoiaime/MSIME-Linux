@@ -48,7 +48,8 @@ std::string envelope(const std::vector<json::object> &records)
     g_free(hash);
     return body;
 }
-void check(const std::filesystem::path &file, const std::vector<json::object> &records, bool valid)
+std::unique_ptr<PreparedSnapshot> check(const std::filesystem::path &file, const std::vector<json::object> &records,
+                                        bool valid)
 {
     {
         std::ofstream output(file);
@@ -68,6 +69,7 @@ void check(const std::filesystem::path &file, const std::vector<json::object> &r
         passed = false;
     }
     require(passed == valid, "wrong content validation result");
+    return snapshot;
 }
 } // namespace
 int main()
@@ -143,8 +145,7 @@ int main()
         many.push_back(entry("entry", "词条" + std::to_string(i)));
     for (int i = 0; i < 100000; ++i)
         many.push_back(entry("overlay", "词条" + std::to_string(i)));
-    check(file, many, true);
-    auto snapshot = PreparedSnapshot::open(file.string());
+    auto snapshot = check(file, many, true);
     bool cancelled = false;
     int calls = 0;
     try
