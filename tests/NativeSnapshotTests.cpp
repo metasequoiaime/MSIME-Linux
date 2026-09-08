@@ -1,4 +1,5 @@
 #include "account/NativeSnapshot.h"
+#include "account/NativeDictionaryRevision.h"
 #include "../vendor/MetasequoiaImeEngine/contracts/assets/assets.h"
 #include "../vendor/MetasequoiaImeEngine/english/english_dictionary.h"
 #include <boost/json.hpp>
@@ -107,6 +108,41 @@ int main()
     auto snapshot = fixture(records);
     const auto generation = root / "generation";
     const auto paths = stage_native_snapshot(*snapshot, resources, generation, "synthetic-fixture");
+    const auto revision = native_dictionary_revision(paths);
+    require(revision.size() == 64 && native_dictionary_revision(paths) == revision, "unstable native revision");
+    const auto same_paths = stage_native_snapshot(*snapshot, resources, root / "same", "synthetic-fixture");
+    require(native_dictionary_revision(same_paths) == revision, "same state has different revision in new directory");
+    auto changed_records = records;
+    changed_records.back().at("data").as_object()["count"] = 8;
+    auto changed_snapshot = fixture(changed_records);
+    const auto changed_paths =
+        stage_native_snapshot(*changed_snapshot, resources, root / "changed", "synthetic-fixture");
+    require(native_dictionary_revision(changed_paths) != revision, "native frequency mutation was invisible");
+    auto require_changed = [&](const char *name, const std::vector<json::object> &rows) {
+        auto modified = fixture(rows);
+        const auto modified_paths = stage_native_snapshot(*modified, resources, root / name, "synthetic-fixture");
+        require(native_dictionary_revision(modified_paths) != revision, "native mutation was invisible");
+    };
+    changed_records = records;
+    changed_records[0].at("data").as_object()["weight"] = 151;
+    changed_records[4].at("data").as_object()["weight"] = 151;
+    require_changed("weight", changed_records);
+    changed_records = records;
+    changed_records[changed_records.size() - 2].at("data").as_object()["position"] = 2;
+    require_changed("position", changed_records);
+    changed_records = records;
+    changed_records[9]["deleted"] = true; // Base override becomes a tombstone without changing its weight.
+    require_changed("deletion", changed_records);
+    changed_records = records;
+    changed_records[8].at("data").as_object()["user_inserted"] = false;
+    require_changed("ownership", changed_records);
+    changed_records = records;
+    changed_records.pop_back();
+    require_changed("removed-frequency", changed_records);
+    fails([&] { native_dictionary_revision(paths, [] { return true; }); });
+    int emitted = 0;
+    fails([&] { native_dictionary_revision(paths, [&] { return ++emitted == 3; }); });
+    require(native_dictionary_revision(paths) == revision, "cancelled inspection changed native state");
     int entries = 0, positions = 0, selections = 0;
     stream_dictionary_state(paths, [&](const auto &record) {
         if (const auto *value = std::get_if<DictionaryStateEntry>(&record))
@@ -172,6 +208,7 @@ int main()
     require(restored == 20, "chunk boundary truncated snapshot");
     auto empty = fixture({});
     const auto empty_paths = stage_native_snapshot(*empty, resources, root / "empty", "synthetic-fixture");
+    require(native_dictionary_revision(empty_paths) != revision, "empty state reused populated revision");
     stream_dictionary_state(empty_paths, [](const auto &) {
         throw std::runtime_error("empty restore retained records");
         return true;
