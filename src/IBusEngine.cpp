@@ -1,5 +1,6 @@
 #include "DictionaryBootstrap.h"
 #include "DictionaryLease.h"
+#include "account/NativeInstallation.h"
 #include "InputController.h"
 #include "IBusKeyMapper.h"
 #include "SettingsStore.h"
@@ -58,6 +59,7 @@ using metasequoia::linux_ime::online::TranslationService;
 struct DictionaryRuntime
 {
     metasequoia::RuntimePaths paths;
+    bool legacy = true;
     std::unique_ptr<metasequoia::linux_ime::DictionaryLease> lease;
 };
 std::shared_ptr<DictionaryRuntime> dictionary_runtime;
@@ -1388,11 +1390,16 @@ int main(int argc, char **argv)
             g_printerr("Dictionary publication is in progress; retry starting the input method after it finishes.\n");
             return 1;
         }
+        metasequoia::linux_ime::account::NativeInstallation installation(runtime->paths.user_data / "runtime",
+                                                                         runtime->paths);
+        const auto active = installation.active();
+        runtime->paths = active.paths;
+        runtime->legacy = active.generation.empty();
         dictionary_runtime = std::move(runtime);
     }
     catch (const std::exception &)
     {
-        g_printerr("Unable to acquire dictionary session lease.\n");
+        g_printerr("Unable to open the dictionary installation or acquire its session lease.\n");
         return 1;
     }
     // A packaged install leaves the dictionaries in a system directory that the
@@ -1404,8 +1411,11 @@ int main(int argc, char **argv)
     // not success either -- the run that copies the main dictionary and then fails on the others leaves an installation
     // that produces Chinese candidates but no Emoji, kaomoji or English ones, with nothing said about why.
     std::vector<std::string> seed_errors;
-    const std::size_t seeded = metasequoia::linux_ime::seed_user_data(
-        dictionary_runtime->paths.user_data, metasequoia::linux_ime::system_data_directories(), &seed_errors);
+    const std::size_t seeded =
+        dictionary_runtime->legacy
+            ? metasequoia::linux_ime::seed_user_data(dictionary_runtime->paths.user_data,
+                                                     metasequoia::linux_ime::system_data_directories(), &seed_errors)
+            : 0;
     for (const std::string &failure : seed_errors)
     {
         g_warning("Unable to seed the user data directory: %s", failure.c_str());

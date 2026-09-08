@@ -20,6 +20,15 @@ with tempfile.TemporaryDirectory(prefix="msime-ibus-lease-") as directory:
     lock.chmod(0o666)
     result = subprocess.run([sys.argv[1]], env=environment, capture_output=True, text=True, timeout=5)
     assert result.returncode == 1, result
-    assert "Unable to acquire dictionary session lease" in result.stderr, result.stderr
+    assert "Unable to open the dictionary installation or acquire its session lease" in result.stderr, result.stderr
     assert set(root.iterdir()) == {lock, root / "dictionary-publication.lock"}, "IBus opened dictionaries without a safe lease"
+    lock.chmod(0o600)
+    runtime = root / "runtime"
+    runtime.mkdir()
+    marker = runtime / "active-dictionary"
+    marker.write_text("corrupt")
+    marker.chmod(0o600)
+    result = subprocess.run([sys.argv[1]], env=environment, capture_output=True, text=True, timeout=5)
+    assert result.returncode == 1 and "Unable to open the dictionary installation" in result.stderr, result
+    assert not (root / "msime.db").exists() and not (root / "msime_user.db").exists(), "corruption triggered legacy fallback"
 print("IBus refuses busy/unsafe dictionary leases before writing")

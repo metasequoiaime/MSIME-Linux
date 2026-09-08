@@ -1,6 +1,6 @@
 #include "NativeInstallation.h"
 #include "contracts/assets/assets.h"
-#include <glib.h>
+#include <random>
 #include <algorithm>
 #include <cerrno>
 #include <fcntl.h>
@@ -158,10 +158,9 @@ NativePublication NativeInstallation::publish(const std::string &name, const std
     if (current.value_or("") != expected_token)
         return {};
     const std::string contents = prefix + name + "\n" + content_id + "\n";
-    gchar *random = g_uuid_string_random();
-    require(random != nullptr);
-    const std::string temporary = ".active-" + std::string(random);
-    g_free(random);
+    std::random_device random;
+    const std::string temporary = ".active-" + std::to_string(random()) + "-" + std::to_string(random()) + "-" +
+                                  std::to_string(random()) + "-" + std::to_string(random());
     Descriptor output{
         openat(root.value, temporary.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600)};
     require(output.value >= 0);
