@@ -91,6 +91,13 @@ int main()
     secrets.available = true;
     auto logged = session.login(initial.generation, "challenge", "credential");
     require(logged.user->id == "one" && logged.generation != initial.generation, "login missing generation change");
+    int commits = 0;
+    session.with_current_user(logged.generation, "one", [&] { ++commits; });
+    fails([&] { session.with_current_user(initial.generation, "one", [&] { ++commits; }); });
+    fails([&] { session.with_current_user(logged.generation, "other", [&] { ++commits; }); });
+    fails([&] { session.with_current_user(logged.generation, "one", [] { throw account::Failure(409); }); });
+    require(commits == 1 && session.snapshot().user->id == "one",
+            "local commit guard changed identity or kept its mutex");
     transport.response = {201, R"({"challenge_id":"link-challenge","expires_in":300})", {}};
     const auto challenge = session.begin_link(logged.generation, "email", "synthetic@example.invalid");
     require(boost::json::parse(transport.last.body).at("purpose").as_string() == "link", "binding purpose missing");
@@ -168,5 +175,30 @@ int main()
     require(!session.snapshot().user, "revoked account kept usable after keyring failure");
     secrets.available = true;
     storage.clear();
+    {
+        Store guard_secrets;
+        account::AccountCredentialStore guard_storage(guard_secrets);
+        guard_storage.save({{std::string(64, 'a'), std::string(64, 'b'), 900, {"guard", "测试", "now"}}, 1900});
+        Transport guard_transport;
+        guard_transport.response = {200, "{}", {}};
+        account::BackendAccountClient guard_client(guard_transport);
+        account::AccountSession guard(guard_client, guard_storage, [] { return std::int64_t(1000); });
+        const auto guard_generation = guard.restore().generation;
+        std::promise<void> entered, release;
+        auto released = release.get_future();
+        auto commit = std::async(std::launch::async, [&] {
+            guard.with_current_user(guard_generation, "guard", [&] {
+                entered.set_value();
+                released.wait();
+            });
+        });
+        entered.get_future().wait();
+        auto logout = std::async(std::launch::async, [&] { guard.logout(guard_generation); });
+        const bool waited = logout.wait_for(std::chrono::milliseconds(30)) == std::future_status::timeout;
+        release.set_value();
+        commit.get();
+        logout.get();
+        require(waited && !guard.snapshot().user, "logout crossed a confirmed local commit");
+    }
     std::cout << "account session lifecycle tests passed\n";
 }

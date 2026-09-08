@@ -29,6 +29,10 @@ class AccountSession
     AccountSession(BackendAccountClient &client, AccountCredentialStore &store, Clock clock = {});
     SessionSnapshot restore();
     SessionSnapshot snapshot() const;
+    // Serialize a confirmed local commit with logout/account replacement. The
+    // callback must not reenter this AccountSession and receives no credentials.
+    void with_current_user(std::uint64_t generation, const std::string &user_id,
+                           const std::function<void()> &operation);
     SessionSnapshot login(std::uint64_t generation, const std::string &challenge, const std::string &credential,
                           const online::CancellationCheck &cancelled = {});
     Challenge begin_link(std::uint64_t generation, const std::string &provider, const std::string &target,
