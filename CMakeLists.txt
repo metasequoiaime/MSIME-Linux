@@ -225,12 +225,19 @@ if(METASEQUOIA_IME_BUILD_IBUS)
                   scripts/dictionary_product.py "${CMAKE_CURRENT_BINARY_DIR}/native-resource-lock.json"
             DESTINATION ${CMAKE_INSTALL_LIBEXECDIR}/metasequoia-native-resources COMPONENT NativeResources)
     if(BUILD_TESTING)
+        # Tests carry a label when they need something beyond a compiler and this source tree: the
+        # built dictionary, a desktop session bus with IBus and a Secret Service, or an installed
+        # tree. This repository's CI stands all of that up and runs everything. MSIME-Engine builds
+        # this frontend against a candidate engine to catch interface breakage and deliberately
+        # provides none of it, so it selects on these labels rather than on a list of names that
+        # went stale every time a suite was added. See metasequoiaime/MSIME-Linux#134.
         add_test(NAME installed_native_resources COMMAND ${Python3_EXECUTABLE}
                  "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_installed_native_resources.py"
                  "${CMAKE_CURRENT_BINARY_DIR}" "${CMAKE_INSTALL_LIBEXECDIR}"
                  "${METASEQUOIA_IME_DICTIONARY}" "${METASEQUOIA_IME_HELPCODE_DIRECTORY}"
                  $<TARGET_FILE:MetasequoiaImeLinuxNativeResourcesTests>)
-        set_tests_properties(installed_native_resources PROPERTIES TIMEOUT 60 RESOURCE_LOCK cmake_install_tree)
+        set_tests_properties(installed_native_resources PROPERTIES TIMEOUT 60 RESOURCE_LOCK cmake_install_tree
+                             LABELS needs-dictionary)
     endif()
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(IBUS REQUIRED IMPORTED_TARGET ibus-1.0)
@@ -334,6 +341,7 @@ if(METASEQUOIA_IME_BUILD_IBUS)
                      "${METASEQUOIA_IME_HELPCODE_DIRECTORY}" "${CMAKE_CURRENT_BINARY_DIR}/metasequoia-native-resources"
                      $<TARGET_FILE:metasequoia-ime-ibus>)
             set_tests_properties(native_restore_window native_restore_live PROPERTIES TIMEOUT 180
+                                 LABELS "needs-dictionary;needs-desktop-services"
                                  ENVIRONMENT "LSAN_OPTIONS=suppressions=${CMAKE_CURRENT_SOURCE_DIR}/tests/gtk-lsan.supp:print_suppressions=1")
             add_executable(MetasequoiaImeLinuxAccountPanelTests tests/AccountPanelTests.cpp src/account/AccountPanel.cpp src/account/DictionaryWindow.cpp src/account/DictionaryExport.cpp)
             target_link_libraries(MetasequoiaImeLinuxAccountPanelTests PRIVATE MetasequoiaImeLinuxSnapshot MetasequoiaImeLinuxCloudSettings MetasequoiaImeLinuxOnline
@@ -344,6 +352,7 @@ if(METASEQUOIA_IME_BUILD_IBUS)
                      bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/SecretStoreIntegration.sh
                      $<TARGET_FILE:MetasequoiaImeLinuxAccountPanelTests>)
             set_tests_properties(account_panel account_panel_secret_service PROPERTIES TIMEOUT 45
+                                 LABELS needs-desktop-services
                                  ENVIRONMENT "LSAN_OPTIONS=suppressions=${CMAKE_CURRENT_SOURCE_DIR}/tests/gtk-lsan.supp:print_suppressions=1")
         endif()
 
@@ -419,20 +428,22 @@ if(METASEQUOIA_IME_BUILD_IBUS)
         add_test(NAME secret_store
                  COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/SecretStoreIntegration.sh
                               $<TARGET_FILE:MetasequoiaImeLinuxSecretStoreTests>)
-        set_tests_properties(secret_store PROPERTIES TIMEOUT 15)
+        set_tests_properties(secret_store PROPERTIES TIMEOUT 15 LABELS needs-desktop-services)
 
         add_executable(MetasequoiaImeLinuxPrepareInstallation tests/PrepareNativeInstallation.cpp)
         target_link_libraries(MetasequoiaImeLinuxPrepareInstallation PRIVATE MetasequoiaImeLinuxCore)
         target_compile_options(MetasequoiaImeLinuxPrepareInstallation PRIVATE -Wall -Wextra -Wpedantic -Werror)
         add_test(NAME ibus_dictionary_publication
                  COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/IBusSmoke.sh ${CMAKE_CURRENT_BINARY_DIR} live)
-        set_tests_properties(ibus_dictionary_publication PROPERTIES TIMEOUT 120)
+        set_tests_properties(ibus_dictionary_publication PROPERTIES TIMEOUT 120
+                             LABELS "needs-dictionary;needs-desktop-services")
         add_test(NAME ibus_active_dictionary
                  COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/IBusSmoke.sh ${CMAKE_CURRENT_BINARY_DIR} active)
-        set_tests_properties(ibus_active_dictionary PROPERTIES TIMEOUT 60)
+        set_tests_properties(ibus_active_dictionary PROPERTIES TIMEOUT 60
+                             LABELS "needs-dictionary;needs-desktop-services")
         add_test(NAME ibus_smoke
                  COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/IBusSmoke.sh ${CMAKE_CURRENT_BINARY_DIR})
-        set_tests_properties(ibus_smoke PROPERTIES TIMEOUT 60)
+        set_tests_properties(ibus_smoke PROPERTIES TIMEOUT 60 LABELS needs-desktop-services)
         add_test(NAME ibus_dictionary_lease COMMAND ${Python3_EXECUTABLE}
                  ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_ibus_dictionary_lease_tests.py
                  $<TARGET_FILE:metasequoia-ime-ibus>)
@@ -442,7 +453,8 @@ if(METASEQUOIA_IME_BUILD_IBUS)
         # dictionaries takes a while, so this needs more than the default.
         add_test(NAME uninstall_smoke
                  COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/UninstallSmoke.sh ${CMAKE_CURRENT_BINARY_DIR})
-        set_tests_properties(uninstall_smoke PROPERTIES TIMEOUT 300 RESOURCE_LOCK cmake_install_tree)
+        set_tests_properties(uninstall_smoke PROPERTIES TIMEOUT 300 RESOURCE_LOCK cmake_install_tree
+                             LABELS needs-installed-tree)
     endif()
 
     add_executable(metasequoia-ime-ibus src/IBusEngine.cpp)
