@@ -223,13 +223,11 @@ void worker(GTask *task, gpointer, gpointer data, GCancellable *)
     }
     catch (const std::exception &)
     {
-        work.message = work.action == Action::NativeExport
-                           ? "本机词库导出未完成，请检查词库及保存位置。"
+        work.message = work.action == Action::NativeExport ? "本机词库导出未完成，请检查词库及保存位置。"
                        : work.action == Action::NativePublish
                            ? "切换结果未确认，请重新连接输入法并核对，勿直接重复提交。"
-                       : work.action == Action::NativePrepare
-                           ? "未能准备完整词库，请检查快照及安装的词库资源。"
-                           : "云词库暂时不可用。";
+                       : work.action == Action::NativePrepare ? "未能准备完整词库，请检查快照及安装的词库资源。"
+                                                              : "云词库暂时不可用。";
     }
     g_task_return_boolean(task, TRUE);
 }
