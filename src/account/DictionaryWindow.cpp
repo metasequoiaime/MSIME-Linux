@@ -1,6 +1,9 @@
 #include "DictionaryWindow.h"
 #include "DictionaryExport.h"
 #include "SnapshotTransfer.h"
+#include "NativeSnapshot.h"
+#include "NativeInstallation.h"
+#include "DictionaryLease.h"
 #include <atomic>
 #include <charconv>
 namespace metasequoia::linux_ime::account
@@ -20,6 +23,7 @@ struct Window
     }
     GtkWidget *window, *body, *status, *kind, *query, *list, *code, *word, *weight, *previous, *next;
     GtkListStore *rows;
+    RuntimePaths native_paths = RuntimePaths::legacy();
     GtkWidget *catalog, *catalog_scheme;
     std::string loaded_catalog_scheme;
     bool loaded_catalog = false;
@@ -42,6 +46,7 @@ enum class Action
     SnapshotPrepare,
     SnapshotRestore,
     SnapshotExport,
+    NativeExport,
     NativePrepare,
     NativePublish
 };
@@ -134,16 +139,28 @@ void worker(GTask *task, gpointer, gpointer data, GCancellable *)
             if (!work.catalog)
                 work.query.clear();
         }
-        if (work.action == Action::SnapshotExport)
+        if (work.action == Action::SnapshotExport || work.action == Action::NativeExport)
         {
-            auto snapshot = download_validated_snapshot(*state.session, state.generation, cancelled);
+            std::unique_ptr<PreparedSnapshot> snapshot;
+            if (work.action == Action::NativeExport)
+            {
+                const auto lease =
+                    DictionaryLease::acquire(state.native_paths.user_data, DictionaryLease::Mode::Shared);
+                if (!lease)
+                    throw Failure(423);
+                NativeInstallation installation(state.native_paths.user_data / "runtime", state.native_paths);
+                snapshot = export_native_snapshot(installation.active().paths, cancelled);
+            }
+            else
+                snapshot = download_validated_snapshot(*state.session, state.generation, cancelled);
             save_dictionary_export(
                 work.export_path, snapshot->size(),
                 [&](std::size_t offset, char *data, std::size_t size) {
                     return snapshot->read(offset, data, size, cancelled);
                 },
                 cancelled);
-            work.message = "完整云词库快照已导出。";
+            work.message = work.action == Action::NativeExport ? "本机完整词库快照已导出，可用于预览恢复云词库。"
+                                                               : "完整云词库快照已导出。";
             work.success = true;
             g_task_return_boolean(task, TRUE);
             return;
@@ -169,7 +186,10 @@ void worker(GTask *task, gpointer, gpointer data, GCancellable *)
     }
     catch (const Failure &error)
     {
-        if (work.action == Action::NativePrepare || work.action == Action::NativePublish)
+        if (work.action == Action::NativeExport && (error.status() == 400 || error.status() == 423))
+            work.message = error.status() == 423 ? "本机词库正在切换，请稍后重试。"
+                                                 : "本机记录无法完整保存为当前快照格式，未导出文件。";
+        else if (work.action == Action::NativePrepare || work.action == Action::NativePublish)
         {
             work.message = error.cancelled() ? "操作已取消或账号已变化，请重新预览。"
                            : error.status() == 423 ? "仍有输入或词库操作未结束，请结束后重新预览。"
@@ -190,19 +210,22 @@ void worker(GTask *task, gpointer, gpointer data, GCancellable *)
                                                    : "快照操作未完成，请稍后重试；恢复结果不确定时请先重新下载核对。";
         }
         else
-            work.message =
-                (work.action == Action::Export || work.action == Action::SnapshotExport) && error.status() != 401
-                    ? (error.status() == 409 ? "目标文件已存在，请选择新的文件名。"
-                                             : "导出未完成，请检查保存位置或稍后重试。")
-                : work.changed ? "词条已保存，但列表刷新失败。请重新搜索，勿重复提交。"
-                : error.status() == 409 ? "词条已变化或与已有词条重复，请刷新后核对。"
-                : error.status() == 401 ? "登录已失效，请关闭窗口后重新登录。"
-                : error.status() == 400 ? "词条格式不正确，请检查编码、文字和权重。"
-                                        : "云词库操作未完成，请稍后重试。";
+            work.message = (work.action == Action::Export || work.action == Action::SnapshotExport ||
+                            work.action == Action::NativeExport) &&
+                                   error.status() != 401
+                               ? (error.status() == 409 ? "目标文件已存在，请选择新的文件名。"
+                                                        : "导出未完成，请检查保存位置或稍后重试。")
+                           : work.changed ? "词条已保存，但列表刷新失败。请重新搜索，勿重复提交。"
+                           : error.status() == 409 ? "词条已变化或与已有词条重复，请刷新后核对。"
+                           : error.status() == 401 ? "登录已失效，请关闭窗口后重新登录。"
+                           : error.status() == 400 ? "词条格式不正确，请检查编码、文字和权重。"
+                                                   : "云词库操作未完成，请稍后重试。";
     }
     catch (const std::exception &)
     {
-        work.message = work.action == Action::NativePublish ? "切换结果未确认，请重新连接输入法并核对，勿直接重复提交。"
+        work.message = work.action == Action::NativeExport ? "本机词库导出未完成，请检查词库及保存位置。"
+                       : work.action == Action::NativePublish
+                           ? "切换结果未确认，请重新连接输入法并核对，勿直接重复提交。"
                        : work.action == Action::NativePrepare ? "未能准备完整词库，请检查快照及安装的词库资源。"
                                                               : "云词库暂时不可用。";
     }
@@ -295,7 +318,7 @@ void finished(GObject *, GAsyncResult *result, gpointer)
         start_work(std::move(work));
         return;
     }
-    if (work.action == Action::Export || work.action == Action::SnapshotExport)
+    if (work.action == Action::Export || work.action == Action::SnapshotExport || work.action == Action::NativeExport)
     {
         gtk_label_set_text(GTK_LABEL(state.status), work.message.c_str());
         refresh(state);
@@ -393,7 +416,7 @@ void clicked(GtkButton *button, gpointer data)
             return;
         }
     }
-    if (work.action == Action::SnapshotExport)
+    if (work.action == Action::SnapshotExport || work.action == Action::NativeExport)
     {
         auto *dialog =
             gtk_file_chooser_dialog_new("导出完整快照为新文件", GTK_WINDOW(state->window), GTK_FILE_CHOOSER_ACTION_SAVE,
@@ -672,6 +695,7 @@ GtkWidget *create_dictionary_window(GtkWindow *parent, std::shared_ptr<AccountSe
     auto *snapshots = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
     gtk_box_pack_start(GTK_BOX(state->body), snapshots, FALSE, FALSE, 0);
     add_button(state, snapshots, "导出完整云词库快照", Action::SnapshotExport);
+    add_button(state, snapshots, "导出本机完整词库快照", Action::NativeExport);
     add_button(state, snapshots, "从完整快照恢复云词库", Action::SnapshotPrepare);
     add_button(state, snapshots, "将完整云词库应用到本机", Action::NativePrepare);
     refresh(*state);

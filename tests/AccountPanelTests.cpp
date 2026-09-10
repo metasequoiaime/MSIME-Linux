@@ -1,4 +1,5 @@
 #include "account/AccountPanel.h"
+#include "account/PreparedSnapshot.h"
 #include "account/CloudSettingsMapper.h"
 #include <boost/json.hpp>
 #include <atomic>
@@ -390,6 +391,7 @@ int main(int argc, char **argv)
     auto *window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     gchar *directory = g_dir_make_tmp("msime-settings-ui-XXXXXX", nullptr);
     require(directory != nullptr, "temporary settings directory failed");
+    g_setenv("METASEQUOIA_IME_DATA_DIR", directory, TRUE);
     auto settings_store = std::make_shared<SettingsStore>(directory);
     g_free(directory);
     InputSettings local;
@@ -870,6 +872,18 @@ int main(int argc, char **argv)
                 std::string(snapshot_bytes, snapshot_size) == "keep existing file",
             "snapshot export replaced existing file");
     g_free(snapshot_bytes);
+    ExportAnswer native_export{settings_store->config_path().parent_path().string(), "ui-native-export.ndjson", false};
+    const auto native_reads = http->snapshot_reads, native_writes = http->snapshot_writes;
+    g_timeout_add(30, choose_export, &native_export);
+    click(dictionary_window, "导出本机完整词库快照");
+    ready();
+    auto native_snapshot = account::PreparedSnapshot::open(native_export.directory + "/" + native_export.name);
+    require(native_snapshot->envelope().records == 1 && http->snapshot_reads == native_reads &&
+                http->snapshot_writes == native_writes,
+            "native export contacted cloud or failed to save local snapshot");
+    g_idle_add(respond, GINT_TO_POINTER(GTK_RESPONSE_CANCEL));
+    click(dictionary_window, "导出本机完整词库快照");
+    require(http->snapshot_reads == native_reads, "cancelled native export contacted cloud");
     const auto reads_before_export_cancel = http->snapshot_reads;
     g_idle_add(respond, GINT_TO_POINTER(GTK_RESPONSE_CANCEL));
     click(dictionary_window, "导出完整云词库快照");
