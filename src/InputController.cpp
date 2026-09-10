@@ -1,5 +1,7 @@
 #include "InputController.h"
 
+#include "quanpin/quanpin_utils.h"
+
 #include <algorithm>
 #include <atomic>
 #include <limits>
@@ -37,6 +39,10 @@ SessionOptions session_options(SchemeType scheme, const InputOptions &options, R
     SessionOptions result;
     result.paths = std::move(paths);
     result.scheme = scheme;
+    // This used to ride on SessionOptions::autocorrect, which defaulted to true. The Engine replaced
+    // it with a per-type mask that defaults to 0, so leaving it unset would quietly switch quanpin
+    // autocorrection off for every user who has it today. State the types the old flag covered.
+    result.autocorrect_types = quanpin::kAutocorrectTransposition | quanpin::kAutocorrectNeighbor;
     result.helpcode =
         scheme == SchemeType::Shuangpin ? options.shuangpin_helpcode_enabled : options.quanpin_helpcode_enabled;
     result.helpcode_schema =
