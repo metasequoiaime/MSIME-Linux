@@ -96,6 +96,11 @@ struct DictionaryPage
     std::vector<DictionaryEntry> entries;
     bool has_more = false;
     int offset = 0;
+    std::int64_t revision = 0;
+};
+struct DictionaryCatalogOptions
+{
+    std::string scheme = "pinyin", profile = "xiaohe";
 };
 struct DictionaryImportResult
 {
@@ -136,6 +141,12 @@ class BackendAccountClient
                           const online::CancellationCheck &cancelled = {});
     DictionaryPage dictionary(const std::string &kind, const std::string &query, int offset, int limit,
                               const std::string &token, const online::CancellationCheck &cancelled = {});
+    DictionaryPage dictionary_catalog(const std::string &kind, const std::string &query, int offset, int limit,
+                                      const std::string &token, const online::CancellationCheck &cancelled = {},
+                                      DictionaryCatalogOptions options = {});
+    DictionaryChange manage_dictionary(const std::string &kind, std::int64_t revision, const DictionaryEntry &previous,
+                                       const std::optional<DictionaryEntry> &replacement, const std::string &token,
+                                       const online::CancellationCheck &cancelled = {});
     // Empty id creates an entry (revision must be zero). An existing id requires
     // its exact entry revision; null replacement deletes. No conflict retries.
     DictionaryChange edit_dictionary(const std::string &kind, const std::string &id, std::int64_t revision,

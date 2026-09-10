@@ -15,9 +15,18 @@ struct Window
     std::shared_ptr<AccountSession> session;
     std::uint64_t generation;
     std::atomic<bool> closed{false};
+    GCancellable *cancelled = g_cancellable_new();
+    NativeRestoreLocations native_locations;
+    ~Window()
+    {
+        g_object_unref(cancelled);
+    }
     GtkWidget *window, *body, *status, *kind, *query, *list, *code, *word, *weight, *previous, *next;
     GtkListStore *rows;
     RuntimePaths native_paths = RuntimePaths::legacy();
+    GtkWidget *catalog, *catalog_scheme;
+    std::string loaded_catalog_scheme;
+    bool loaded_catalog = false;
     DictionaryPage page;
     std::string loaded_kind, loaded_query;
     bool loaded = false;
@@ -37,7 +46,9 @@ enum class Action
     SnapshotPrepare,
     SnapshotRestore,
     SnapshotExport,
-    NativeExport
+    NativeExport,
+    NativePrepare,
+    NativePublish
 };
 struct Work
 {
@@ -48,9 +59,13 @@ struct Work
     int offset = 0;
     std::optional<DictionaryEntry> selected;
     DictionaryEntry replacement;
+    bool catalog = false;
+    std::string catalog_scheme;
+    std::int64_t catalog_revision = 0;
     DictionaryPage result;
     bool success = false, changed = false;
     std::unique_ptr<SnapshotRestoreReview> snapshot_review;
+    std::unique_ptr<NativeRestoreReview> native_review;
 };
 void start_work(Work work);
 void refresh(Window &state)
@@ -65,6 +80,23 @@ void worker(GTask *task, gpointer, gpointer data, GCancellable *)
     const auto cancelled = [&state] { return state.closed.load(); };
     try
     {
+        if (work.action == Action::NativePrepare)
+        {
+            work.native_review =
+                NativeRestoreReview::prepare(state.session, state.generation, state.native_locations, state.cancelled);
+            work.success = true;
+            g_task_return_boolean(task, TRUE);
+            return;
+        }
+        if (work.action == Action::NativePublish)
+        {
+            const auto result = work.native_review->publish(state.cancelled);
+            work.success = true;
+            work.message =
+                result.durable ? "完整云词库已应用到本机。" : "本机词库已切换，但持久化尚未确认，请勿重复提交。";
+            g_task_return_boolean(task, TRUE);
+            return;
+        }
         if (work.action == Action::SnapshotPrepare)
         {
             work.snapshot_review =
@@ -77,15 +109,22 @@ void worker(GTask *task, gpointer, gpointer data, GCancellable *)
         {
             work.snapshot_review->restore(cancelled);
             work.changed = true;
-            work.query.clear();
+            if (!work.catalog)
+                work.query.clear();
         }
         if (work.action == Action::Add || work.action == Action::Update || work.action == Action::Delete)
         {
-            state.session->edit_dictionary(
-                state.generation, work.kind, work.selected ? work.selected->id : "",
-                work.selected ? work.selected->revision : 0,
-                work.action == Action::Delete ? std::nullopt : std::optional<DictionaryEntry>(work.replacement),
-                cancelled);
+            if (work.catalog && work.selected)
+                state.session->manage_dictionary(
+                    state.generation, work.kind, work.catalog_revision, *work.selected,
+                    work.action == Action::Delete ? std::nullopt : std::optional<DictionaryEntry>(work.replacement),
+                    cancelled);
+            else
+                state.session->edit_dictionary(
+                    state.generation, work.kind, work.selected ? work.selected->id : "",
+                    work.selected ? work.selected->revision : 0,
+                    work.action == Action::Delete ? std::nullopt : std::optional<DictionaryEntry>(work.replacement),
+                    cancelled);
             work.changed = true;
         }
         if (work.action == Action::Import)
@@ -97,7 +136,8 @@ void worker(GTask *task, gpointer, gpointer data, GCancellable *)
                                                                        work.import_format, cancelled);
             work.imported = result.imported;
             work.changed = true;
-            work.query.clear();
+            if (!work.catalog)
+                work.query.clear();
         }
         if (work.action == Action::SnapshotExport || work.action == Action::NativeExport)
         {
@@ -135,7 +175,13 @@ void worker(GTask *task, gpointer, gpointer data, GCancellable *)
             g_task_return_boolean(task, TRUE);
             return;
         }
-        work.result = state.session->dictionary(state.generation, work.kind, work.query, work.offset, 50, cancelled);
+        work.result =
+            work.catalog
+                ? state.session->dictionary_catalog(state.generation, work.kind, work.query, work.offset, 50, cancelled,
+                                                    work.catalog_scheme == "pinyin"
+                                                        ? DictionaryCatalogOptions{}
+                                                        : DictionaryCatalogOptions{"shuangpin", work.catalog_scheme})
+                : state.session->dictionary(state.generation, work.kind, work.query, work.offset, 50, cancelled);
         work.success = true;
     }
     catch (const Failure &error)
@@ -143,6 +189,17 @@ void worker(GTask *task, gpointer, gpointer data, GCancellable *)
         if (work.action == Action::NativeExport && (error.status() == 400 || error.status() == 423))
             work.message = error.status() == 423 ? "本机词库正在切换，请稍后重试。"
                                                  : "本机记录无法完整保存为当前快照格式，未导出文件。";
+        else if (work.action == Action::NativePrepare || work.action == Action::NativePublish)
+        {
+            work.message = error.cancelled() ? "操作已取消或账号已变化，请重新预览。"
+                           : error.status() == 423 ? "仍有输入或词库操作未结束，请结束后重新预览。"
+                           : error.status() == 409 ? "本机词库已变化，请重新预览后确认。"
+                           : error.status() == 401 ? "登录已失效，请重新登录。"
+                           : work.action == Action::NativePublish
+                               ? "切换结果未确认，请重新连接输入法并核对，勿直接重复提交。"
+                           : error.status() == 503 ? "请先启动同一用户下的最新版水杉输入法，再准备本机恢复。"
+                                                   : "未能准备完整词库，请检查快照及安装的词库资源。";
+        }
         else if (work.action == Action::SnapshotPrepare || work.action == Action::SnapshotRestore)
         {
             work.message = work.changed ? "云词库已恢复，但列表刷新失败。请重新搜索，勿重复提交。"
@@ -166,8 +223,13 @@ void worker(GTask *task, gpointer, gpointer data, GCancellable *)
     }
     catch (const std::exception &)
     {
-        work.message =
-            work.action == Action::NativeExport ? "本机词库导出未完成，请检查词库及保存位置。" : "云词库暂时不可用。";
+        work.message = work.action == Action::NativeExport
+                           ? "本机词库导出未完成，请检查词库及保存位置。"
+                       : work.action == Action::NativePublish
+                           ? "切换结果未确认，请重新连接输入法并核对，勿直接重复提交。"
+                       : work.action == Action::NativePrepare
+                           ? "未能准备完整词库，请检查快照及安装的词库资源。"
+                           : "云词库暂时不可用。";
     }
     g_task_return_boolean(task, TRUE);
 }
@@ -178,6 +240,48 @@ void finished(GObject *, GAsyncResult *result, gpointer)
     if (state.closed.load())
         return;
     gtk_widget_set_sensitive(state.body, TRUE);
+    if (work.action == Action::NativePublish)
+    {
+        gtk_label_set_text(GTK_LABEL(state.status), work.message.c_str());
+        refresh(state);
+        return;
+    }
+    if (work.action == Action::NativePrepare)
+    {
+        if (!work.success)
+        {
+            gtk_label_set_text(GTK_LABEL(state.status), work.message.c_str());
+            return;
+        }
+        const auto &source = work.native_review->source();
+        const auto message = "账号：" + work.native_review->user().display_name + "\n\n云端完整快照：个人词条 " +
+                             std::to_string(source.counts[0]) + " 条，词库调整 " + std::to_string(source.counts[1]) +
+                             " 条，固定候选 " + std::to_string(source.counts[2]) + " 条，使用频次记录 " +
+                             std::to_string(source.counts[3]) +
+                             " 条。\n\n确认后将替换本机全部个人词条、词库调整、固定候选和使用频次记录。"
+                             "本机在预览期间有变化时需要重新预览。";
+        auto *dialog = gtk_message_dialog_new(GTK_WINDOW(state.window), GTK_DIALOG_DESTROY_WITH_PARENT,
+                                              GTK_MESSAGE_WARNING, GTK_BUTTONS_NONE, "%s", message.c_str());
+        g_object_ref_sink(dialog);
+        gtk_window_set_title(GTK_WINDOW(dialog), "确认应用到本机");
+        gtk_dialog_add_buttons(GTK_DIALOG(dialog), "取消", GTK_RESPONSE_CANCEL, "确认替换本机词库", GTK_RESPONSE_ACCEPT,
+                               nullptr);
+        gtk_dialog_set_default_response(GTK_DIALOG(dialog), GTK_RESPONSE_CANCEL);
+        const auto response = gtk_dialog_run(GTK_DIALOG(dialog));
+        gtk_widget_destroy(dialog);
+        g_object_unref(dialog);
+        if (state.closed.load())
+            return;
+        if (response != GTK_RESPONSE_ACCEPT)
+        {
+            gtk_label_set_text(GTK_LABEL(state.status), "已取消，本机词库未修改。");
+            return;
+        }
+        work.action = Action::NativePublish;
+        work.success = false;
+        start_work(std::move(work));
+        return;
+    }
     if (work.action == Action::SnapshotPrepare)
     {
         if (!work.success)
@@ -230,6 +334,8 @@ void finished(GObject *, GAsyncResult *result, gpointer)
     if (work.success)
     {
         state.page = std::move(work.result);
+        state.loaded_catalog = work.catalog;
+        state.loaded_catalog_scheme = work.catalog_scheme;
         state.loaded_kind = work.kind;
         state.loaded_query = work.query;
         state.loaded = true;
@@ -245,7 +351,8 @@ void finished(GObject *, GAsyncResult *result, gpointer)
         work.message = (work.action == Action::SnapshotRestore ? "完整云词库已恢复。"
                         : work.action == Action::Import ? "已导入 " + std::to_string(work.imported) + " 条。"
                                                         : std::string{}) +
-                       "云端个人词条：第 " + std::to_string(state.page.offset / 50 + 1) + " 页，本页 " +
+                       std::string(work.catalog ? "云端完整词库目录：第 " : "云端个人词条：第 ") +
+                       std::to_string(state.page.offset / 50 + 1) + " 页，本页 " +
                        std::to_string(state.page.entries.size()) + " 条。";
     }
     else
@@ -267,7 +374,13 @@ void clicked(GtkButton *button, gpointer data)
     work.action = static_cast<Action>(GPOINTER_TO_INT(g_object_get_data(G_OBJECT(button), "dictionary-action")));
     work.kind = gtk_combo_box_get_active_id(GTK_COMBO_BOX(state->kind));
     work.query = gtk_entry_get_text(GTK_ENTRY(state->query));
-    const bool same = state->loaded && work.kind == state->loaded_kind && work.query == state->loaded_query;
+    work.catalog = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(state->catalog));
+    work.catalog_scheme = work.catalog && work.kind == "pinyin"
+                              ? gtk_combo_box_get_active_id(GTK_COMBO_BOX(state->catalog_scheme))
+                              : "pinyin";
+    work.catalog_revision = state->page.revision;
+    const bool same = state->loaded && work.kind == state->loaded_kind && work.query == state->loaded_query &&
+                      work.catalog == state->loaded_catalog && work.catalog_scheme == state->loaded_catalog_scheme;
     if (work.action == Action::Previous || work.action == Action::Next)
     {
         if (!same)
@@ -433,14 +546,16 @@ void clicked(GtkButton *button, gpointer data)
     }
     if (work.action == Action::Update || work.action == Action::Delete)
     {
-        const auto message = work.action == Action::Delete
-                                 ? "删除云词条：“" + work.selected->word + "”？"
-                                 : "将云词条“" + work.selected->word + "”修改为“" + work.replacement.word + "”，编码“" +
-                                       work.replacement.code + "”，权重 " + std::to_string(work.replacement.weight) +
-                                       "？";
+        auto message = work.action == Action::Delete
+                           ? "删除云词条：“" + work.selected->word + "”？"
+                           : "将云词条“" + work.selected->word + "”修改为“" + work.replacement.word + "”，编码“" +
+                                 work.replacement.code + "”，权重 " + std::to_string(work.replacement.weight) + "？";
+        if (work.catalog)
+            message += "\n变更仅保存到当前账号的词库调整中。";
         auto *dialog = gtk_message_dialog_new(GTK_WINDOW(state->window),
                                               GtkDialogFlags(GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT),
                                               GTK_MESSAGE_QUESTION, GTK_BUTTONS_OK_CANCEL, "%s", message.c_str());
+        gtk_dialog_set_default_response(GTK_DIALOG(dialog), GTK_RESPONSE_CANCEL);
         g_object_ref_sink(dialog);
         const auto response = gtk_dialog_run(GTK_DIALOG(dialog));
         gtk_widget_destroy(dialog);
@@ -456,10 +571,12 @@ void start_work(Work work)
     if (state->closed.load())
         return;
     gtk_widget_set_sensitive(state->body, FALSE);
-    gtk_label_set_text(GTK_LABEL(state->status), work.action == Action::SnapshotPrepare
-                                                     ? "正在下载并校验快照，准备恢复预览…"
-                                                     : "正在处理云词库…");
-    auto *task = g_task_new(nullptr, nullptr, finished, nullptr);
+    gtk_label_set_text(GTK_LABEL(state->status),
+                       work.action == Action::NativePrepare     ? "正在下载、校验并准备本机恢复预览…"
+                       : work.action == Action::NativePublish   ? "正在切换本机词库…"
+                       : work.action == Action::SnapshotPrepare ? "正在下载并校验快照，准备恢复预览…"
+                                                                : "正在处理云词库…");
+    auto *task = g_task_new(nullptr, state->cancelled, finished, nullptr);
     g_task_set_task_data(task, new Work(std::move(work)), [](gpointer data) { delete static_cast<Work *>(data); });
     g_task_run_in_thread(task, worker);
     g_object_unref(task);
@@ -477,9 +594,10 @@ void add_button(const Handle &state, GtkWidget *box, const char *label, Action a
 }
 } // namespace
 GtkWidget *create_dictionary_window(GtkWindow *parent, std::shared_ptr<AccountSession> session,
-                                    std::uint64_t generation)
+                                    std::uint64_t generation, std::optional<NativeRestoreLocations> native_locations)
 {
     auto state = std::make_shared<Window>();
+    state->native_locations = native_locations ? std::move(*native_locations) : installed_native_restore_locations();
     state->session = std::move(session);
     state->generation = generation;
     state->window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
@@ -489,8 +607,11 @@ GtkWidget *create_dictionary_window(GtkWindow *parent, std::shared_ptr<AccountSe
     gtk_window_set_destroy_with_parent(GTK_WINDOW(state->window), TRUE);
     gtk_window_set_modal(GTK_WINDOW(state->window), TRUE);
     g_signal_connect_data(
-        state->window, "destroy",
-        G_CALLBACK(+[](GtkWidget *, gpointer data) { (*static_cast<Handle *>(data))->closed.store(true); }),
+        state->window, "destroy", G_CALLBACK(+[](GtkWidget *, gpointer data) {
+            const auto &state = *static_cast<Handle *>(data);
+            state->closed.store(true);
+            g_cancellable_cancel(state->cancelled);
+        }),
         new Handle(state), [](gpointer data, GClosure *) { delete static_cast<Handle *>(data); }, G_CONNECT_DEFAULT);
     state->body = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
     gtk_container_set_border_width(GTK_CONTAINER(state->body), 16);
@@ -509,6 +630,24 @@ GtkWidget *create_dictionary_window(GtkWindow *parent, std::shared_ptr<AccountSe
         gtk_box_pack_start(GTK_BOX(state->body), widget, FALSE, FALSE, 0);
         return widget;
     };
+    state->catalog = gtk_check_button_new_with_label("包含基础词库（按编码搜索）");
+    gtk_box_pack_start(GTK_BOX(state->body), state->catalog, FALSE, FALSE, 0);
+    gtk_widget_set_tooltip_text(state->catalog,
+                                "目录包含个人调整并排除已删除词条；拼音使用所选方案，五笔、英文和快捷短语按"
+                                "编码前缀查询。仅快捷短语可留空。修改只作用于当前账号。");
+    auto *scheme_label = gtk_label_new("拼音目录查询方案");
+    gtk_box_pack_start(GTK_BOX(state->body), scheme_label, FALSE, FALSE, 0);
+    state->catalog_scheme = gtk_combo_box_text_new();
+    gtk_widget_set_name(state->catalog_scheme, "dictionary-catalog-scheme");
+    for (const auto &pair : {std::pair{"pinyin", "全拼"},
+                             {"xiaohe", "小鹤双拼"},
+                             {"ziranma", "自然码双拼"},
+                             {"shoudao", "Shoudao 双拼"},
+                             {"microsoft", "微软双拼"}})
+        gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(state->catalog_scheme), pair.first, pair.second);
+    gtk_combo_box_set_active(GTK_COMBO_BOX(state->catalog_scheme), 0);
+    gtk_widget_set_tooltip_text(state->catalog_scheme, "仅用于包含基础词库的拼音目录查询；编辑使用返回的规范编码。");
+    gtk_box_pack_start(GTK_BOX(state->body), state->catalog_scheme, FALSE, FALSE, 0);
     state->query = entry("搜索编码或词条");
     auto *navigation = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
     gtk_box_pack_start(GTK_BOX(state->body), navigation, FALSE, FALSE, 0);
@@ -560,6 +699,7 @@ GtkWidget *create_dictionary_window(GtkWindow *parent, std::shared_ptr<AccountSe
     add_button(state, snapshots, "导出完整云词库快照", Action::SnapshotExport);
     add_button(state, snapshots, "导出本机完整词库快照", Action::NativeExport);
     add_button(state, snapshots, "从完整快照恢复云词库", Action::SnapshotPrepare);
+    add_button(state, snapshots, "将完整云词库应用到本机", Action::NativePrepare);
     refresh(*state);
     gtk_widget_show_all(state->window);
     return state->window;

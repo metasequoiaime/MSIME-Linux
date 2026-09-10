@@ -29,6 +29,10 @@ class AccountSession
     AccountSession(BackendAccountClient &client, AccountCredentialStore &store, Clock clock = {});
     SessionSnapshot restore();
     SessionSnapshot snapshot() const;
+    // Serialize a confirmed local commit with logout/account replacement. The
+    // callback must not reenter this AccountSession and receives no credentials.
+    void with_current_user(std::uint64_t generation, const std::string &user_id,
+                           const std::function<void()> &operation);
     SessionSnapshot login(std::uint64_t generation, const std::string &challenge, const std::string &credential,
                           const online::CancellationCheck &cancelled = {});
     Challenge begin_link(std::uint64_t generation, const std::string &provider, const std::string &target,
@@ -55,6 +59,13 @@ class AccountSession
                                        const online::CancellationCheck &cancelled = {});
     DictionaryPage dictionary(std::uint64_t generation, const std::string &kind, const std::string &query, int offset,
                               int limit, const online::CancellationCheck &cancelled = {});
+    DictionaryPage dictionary_catalog(std::uint64_t generation, const std::string &kind, const std::string &query,
+                                      int offset, int limit, const online::CancellationCheck &cancelled = {},
+                                      DictionaryCatalogOptions options = {});
+    DictionaryChange manage_dictionary(std::uint64_t generation, const std::string &kind, std::int64_t revision,
+                                       const DictionaryEntry &previous,
+                                       const std::optional<DictionaryEntry> &replacement,
+                                       const online::CancellationCheck &cancelled = {});
     DictionaryChange edit_dictionary(std::uint64_t generation, const std::string &kind, const std::string &id,
                                      std::int64_t revision, const std::optional<DictionaryEntry> &replacement,
                                      const online::CancellationCheck &cancelled = {});
