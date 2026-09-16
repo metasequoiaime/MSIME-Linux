@@ -4,7 +4,11 @@ namespace metasequoia::linux_ime
 {
 namespace
 {
-constexpr guint kHostModifierMask = IBUS_CONTROL_MASK | IBUS_MOD1_MASK | IBUS_SUPER_MASK | IBUS_META_MASK;
+// The GNOME Wayland link (text-input bridge / GTK ibus immodule) forwards Super chords with the raw Mod4 bit
+// (1 << 6) rather than the virtual IBUS_SUPER_MASK, so a host shortcut has to be recognised through both.
+// Mod5 stays out on purpose: it is AltGr / Level3 on many layouts and carries characters those layouts need.
+constexpr guint kHostModifierMask =
+    IBUS_CONTROL_MASK | IBUS_MOD1_MASK | IBUS_MOD4_MASK | IBUS_SUPER_MASK | IBUS_META_MASK;
 constexpr guint kHotkeyModifierMask = kHostModifierMask | IBUS_SHIFT_MASK;
 
 IBusKeyTranslation dispatch(FrontendKey key, bool shift_only = false)

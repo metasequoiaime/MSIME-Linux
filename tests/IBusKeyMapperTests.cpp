@@ -53,6 +53,11 @@ int main()
     require(!toggle_tracker.observe(IBUS_Shift_L, IBUS_CONTROL_MASK), "Control+Shift toggled mode on key-down.");
     require(!toggle_tracker.observe(IBUS_Shift_L, IBUS_RELEASE_MASK | IBUS_CONTROL_MASK | IBUS_SHIFT_MASK),
             "Control+Shift toggled mode on key release.");
+    // Super chords are host shortcuts however the modifier is reported, so a Shift tapped under a held Super (raw
+    // Mod4 on GNOME Wayland) must not flip the language either.
+    require(!toggle_tracker.observe(IBUS_Shift_L, IBUS_MOD4_MASK), "Super+Shift armed the Shift toggle.");
+    require(!toggle_tracker.observe(IBUS_Shift_L, IBUS_RELEASE_MASK | IBUS_MOD4_MASK | IBUS_SHIFT_MASK),
+            "Super+Shift toggled mode on key release.");
 
     // Ctrl+Alt+Space is on by default and is an ordinary chord, so it toggles on press.
     require(toggle_tracker.observe(IBUS_space, IBUS_CONTROL_MASK | IBUS_MOD1_MASK),
@@ -146,12 +151,23 @@ int main()
     const auto release = translate_ibus_key(IBUS_a, IBUS_RELEASE_MASK);
     require(release.disposition == IBusKeyDisposition::Ignore, "A key release was dispatched.");
 
-    for (const guint modifier : {IBUS_CONTROL_MASK, IBUS_MOD1_MASK, IBUS_SUPER_MASK, IBUS_META_MASK})
+    for (const guint modifier : {IBUS_CONTROL_MASK, IBUS_MOD1_MASK, IBUS_MOD4_MASK, IBUS_SUPER_MASK, IBUS_META_MASK})
     {
         const auto shortcut = translate_ibus_key(IBUS_a, modifier);
         require(shortcut.disposition == IBusKeyDisposition::Forward && shortcut.event.host_shortcut,
                 "A modified host shortcut was not forwarded.");
     }
+    // The GNOME Wayland link reports a held Super as the raw Mod4 bit (1 << 6) instead of IBUS_SUPER_MASK, so the
+    // release of a chord carries it too and must still be forwarded rather than dispatched as a character.
+    const auto mod4_release = translate_ibus_key(IBUS_a, IBUS_RELEASE_MASK | IBUS_MOD4_MASK);
+    require(mod4_release.disposition == IBusKeyDisposition::Ignore,
+            "The release of a Super chord was dispatched as input.");
+    // Mod5 is AltGr / Level3 on many layouts; treating it as a host shortcut would swallow the characters those
+    // layouts type through it, so it must keep reaching the normal input path.
+    const auto altgr_letter = translate_ibus_key(IBUS_a, IBUS_MOD5_MASK);
+    require(altgr_letter.disposition == IBusKeyDisposition::Dispatch &&
+                altgr_letter.event.key == FrontendKey::Character,
+            "An AltGr-modified letter was mistaken for a host shortcut.");
     const auto unknown = translate_ibus_key(IBUS_F1, 0);
     require(unknown.disposition == IBusKeyDisposition::Forward && unknown.event.host_shortcut,
             "An unknown key was not forwarded.");
